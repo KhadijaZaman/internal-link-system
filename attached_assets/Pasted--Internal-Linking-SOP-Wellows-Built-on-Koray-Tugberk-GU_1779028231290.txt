@@ -1,0 +1,278 @@
+# Internal Linking SOP — Wellows
+
+*Built on Koray Tugberk GUBUR's semantic SEO methodology. Source: `semanticsbykoray` skill, lectures #67, #73, #74, #80, #84, #85, and the four contextual layers framework.*
+
+---
+
+## Section 1 — Foundational Principles
+
+Internal linking is not a volume game and not a sitewide "related posts" feature. In holistic semantic SEO, an internal link is a **contextual bridge** between two pages in the same knowledge base. It carries three signals to a search engine: (a) that the source page's author considers the target relevant enough to cite, (b) that the anchor text describes what the target is about, and (c) that the two pages share a contextual domain — they belong to the same topical map. A link that fails any of these three is not just neutral; it's a negative signal because it tells the crawler the network is incoherent.
+
+The non-negotiables from the methodology:
+
+1. **A contextless link is a worthless link.** Every link must serve meaning at the exact point of insertion. If the surrounding sentence could be deleted without changing the article, the link should not exist.
+2. **Anchor text matches (or lemmatizes) the target page's title/H1.** Not "click here," not "learn more," not unrelated phrases. The anchor is the bridge between the referrer's contextual vector and the target's macro context.
+3. **Factual consistency is enforced across every linked page.** If page A says "5 AI engines" and page B says "four AI engines," the network reads as random to a crawler. Linking inconsistent pages amplifies the contradiction.
+4. **Links go after definition and answer, never before.** You define the concept, answer the inquisitive question it raises, then link to the deeper page. Linking before defining tells the crawler the page can't stand on its own.
+5. **Quality nodes accept links; they don't always return them.** The most authoritative pages in the network (root pages, pillar pages, money pages) should be linked TO from many places. They don't need to link back to every supplementary page that cites them. This is how PageRank concentrates.
+6. **2–4 links per 1,000 words is the corridor.** Below 2, the network is disconnected. Above 4, link value spreads too thin and the crawler reads the page as a directory rather than a content node.
+7. **≥95% of links must be topically relevant; ≥80% of anchors must be descriptive.** This is the audit floor, not the target. The target is 100% / 100%.
+
+For Wellows specifically, every internal link is also a positioning decision. The central entity is **AI visibility** (not "SEO"). Every link inside the Wellows content network should reinforce that framing — anchors carry "AI visibility," "AI citations," "GEO," "AEO," "brand visibility score," not generic SEO terms.
+
+---
+
+## Section 2 — The Link Hierarchy: What Links Where
+
+Wellows's content network has four tiers. Links flow asymmetrically between them. Understanding this hierarchy is the single most important automation rule, because it determines which links are allowed and which are forbidden.
+
+**Tier 1 — Money pages (homepage, /pricing, /features, /solutions/[persona]).** These are the conversion endpoints. They receive links from every other tier. They link sparingly outward — only to the next conversion step (homepage → features → pricing) and to one or two pillar pages that prove credibility. They never link to blog posts on first scroll. Linking a money page to a supplementary blog post is a leak; it tells the crawler the money page can't answer the buyer's question on its own.
+
+**Tier 2 — Root pages (the pillars of the core section in the topical map).** These are the canonical pages for the central entity and its primary sub-entities: a root page for AI visibility, a root page for GEO, a root page for AEO, a root page for AI citations, a root page for brand visibility measurement. Root pages must be the first internal link on every page in the core section. They receive links from every page below them and pass authority up to the money pages above. Root pages link to: the money page that owns the relevant CTA, their direct children (cluster pages), and the other root pages in adjacent sub-entities.
+
+**Tier 3 — Cluster pages (core section supporting articles).** These are the attribute-level pages — "how to track ChatGPT citations," "how to optimize for Google AI Overviews," "implicit vs explicit citations." Each cluster page belongs to exactly one root. Cluster pages link up to their root (first internal link), sideways to 1–2 sibling clusters under the same root when the contextual bridge is genuine, and down to any supplementary pages they parent.
+
+**Tier 4 — Supplementary / outer section pages.** Top-of-funnel "know" content, glossary entries, comparison pages, news commentary. These pages exist to capture broad query networks and pass authority inward. They link aggressively to root pages and to relevant clusters. They rarely link to each other unless the bridge is explicit. They almost never link directly to money pages — that's a contextual jump too long for the user journey.
+
+The flow looks like this:
+
+```
+Money Pages (Tier 1)
+        ▲          ▼ (sparingly, to next conversion step)
+        │
+Root Pages (Tier 2) ◄──► Root Pages (Tier 2)
+        ▲          ▼
+        │
+Cluster Pages (Tier 3) ◄──► Cluster Pages (Tier 3, sibling only)
+        ▲          ▼
+        │
+Supplementary (Tier 4)
+```
+
+**The rule for automation:** classify every page in the site into one of these four tiers before any linking decision is made. Every proposed link must be checked against the tier rules below. A link that violates the tier flow is auto-rejected.
+
+---
+
+## Section 3 — Anchor Text Rules
+
+Anchor text is the most algorithmically weighted element of an internal link, and the methodology is uncompromising on what makes an anchor correct. There are seven rules, applied in order.
+
+**Rule 1 — Anchor matches target H1, lemmatized.** If the target page's H1 is "How to Track ChatGPT Citations," valid anchors are "track ChatGPT citations," "tracking ChatGPT citations," "how to track ChatGPT citations," or "ChatGPT citation tracking." Invalid anchors are "ChatGPT," "citation tool," "this guide," "our methodology." The lemmatization (changing tense, number, or word order while keeping the same entity-predicate pair) is what makes the anchor read naturally in surrounding prose without breaking the bridge.
+
+**Rule 2 — Anchor passes the CRS check, scoring 4/4.** Every anchor must contain a noun (the entity), a predicate (the verb or action), a semantic pairing between them, and sit in the right zone (mid-paragraph, after definition). "Explore KIVA's clustering logic" passes — noun (KIVA's clustering logic), predicate (explore), pairing (the verb is appropriate for the entity), zone (the link appears after explaining what KIVA does). "Learn more" fails on all four. "GEO" alone fails on predicate. "Read about it" fails on noun.
+
+**Rule 3 — Never anchor on the first word of a sentence.** Lecture #73 is explicit on this. The first word sets the semantic path for the sentence. If the link breaks at the first word, the sentence's contextual vector starts on the linked page's topic instead of the current page's topic, and the discourse integrity collapses. The link goes mid-sentence, after the subject is established.
+
+**Rule 4 — The first internal link on a page anchors on the root.** The very first internal link in the body of any cluster or supplementary page should point to its parent root page, and the anchor should be the exact lemmatized title of that root. This is the "establish your contextual home" link — it tells the crawler which knowledge base this page belongs to before any other connection is made.
+
+**Rule 5 — Anchor variation across the page, never identical repeats.** If the same target is linked twice on one page (only the first passes PageRank, but subsequent links signal relevance and aid crawling), the anchors must vary: "AI citation tracking" the first time, "tracking how LLMs cite your brand" the second. Identical anchors repeated across a single page look like keyword stuffing to the crawler.
+
+**Rule 6 — Anchor must read naturally in the surrounding sentence.** Test by reading the sentence aloud with the anchor visible. If the sentence sounds forced — "Today we discussed AI visibility measurement methodology," where the anchor is grafted on — the sentence needs to be rewritten so the anchor emerges from the prose, not the other way around.
+
+**Rule 7 — Predicate-enhanced entity labels for high-priority anchors.** When the link is the *main* contextual bridge of a section (the bridge that defines why this section exists in the contextual vector), the anchor should carry a predicate that signals the bridge direction. "Compare GEO and AEO," "measure brand visibility in AI search," "optimize content for Google AI Overviews" — these anchors carry both the entity and the user's intent at the moment they encounter the link.
+
+**Automation implication:** an anchor text generator must check all seven rules. Rules 1, 3, 4, and 5 are deterministic and can be automated outright. Rules 2, 6, and 7 require either a CRS-scoring LLM call or a human review pass.
+
+---
+
+## Section 4 — Link Placement Rules
+
+Where the link sits inside the article matters as much as what the anchor says. The placement signal is part of the contextual structure layer of the four-layer model, and getting it wrong dilutes everything else.
+
+**Placement Rule 1 — Define, answer, then link.** The methodology is explicit (Lecture #73): the link goes *after* you have defined the concept being linked and answered the inquisitive question that the definition raised. In practice this means: introduce the entity → state its definition → make the claim or answer the implicit question → THEN link to the deeper page. Linking before the definition forces the reader to leave to understand the sentence; linking after rewards the reader who already understands by offering them depth.
+
+**Placement Rule 2 — Mid-paragraph, not at paragraph boundaries.** Links at the start of a paragraph break the discourse integration with the previous paragraph; links at the end pull the reader out before the paragraph's conclusion. Links land in the second or third sentence of a paragraph, after the topic has been established and before the closing argument.
+
+**Placement Rule 3 — One link per claim, not multiple links per sentence.** If a sentence has two linkable concepts, link the more important one and leave the other for a later section. Two links in one sentence creates a "directory" feel and splits PageRank weight in a way the crawler reads as low-confidence.
+
+**Placement Rule 4 — Anchor segments around the link create discourse integration.** Lecture #67. The paragraph containing the link should share repeating words with the paragraph that comes next, and with the target page's intro. This creates a smooth contextual flow rather than a jump. Example: a paragraph that ends with a link to "implicit citations" should be followed by a paragraph that opens with the word "implicit" or "citation" again — the anchor segment carries the reader and the crawler across the bridge.
+
+**Placement Rule 5 — The first internal link appears in the first 100–200 words.** This is the IR Zone rule for the "First Internal Link Anchor" zone. The first link establishes the page's place in the knowledge graph; pushing it down the page weakens that signal. The first link is to the root page of this content's cluster.
+
+**Placement Rule 6 — Ordered lists put the most important item first.** If a section is a list of options or factors, the first list item is the most semantically important — it's the candidate for featured snippets and AI Overview citations. If any items in the list are linked, the linked items should be the first 1–3 items, not buried at position 7.
+
+**Placement Rule 7 — Don't link from H1, H2, or H3 headings.** Headings carry contextual hierarchy weight. Anchoring a link inside a heading dilutes that weight by pulling the crawler off the current page before it has registered the heading's role. Links go in body text, not in headings.
+
+**Placement Rule 8 — Don't link from boilerplate.** Footer links, sidebar links, sitewide "related posts" widgets are not contextual bridges — they are navigation. The methodology treats body-text contextual links as carrying the topical signal; templated repeating links don't pass meaningful authority and can be ignored or even discounted by search engines.
+
+---
+
+## Section 5 — Link Density and Distribution
+
+Density and distribution rules govern how many links a page should have and where they should land within the structure of the page.
+
+The corridor is **2–4 links per 1,000 words** (quality criterion 14 of the 16-point scoring checklist). This is a hard floor and a soft ceiling. Below 2 links per 1,000 words on a body-content page, the page reads as isolated — disconnected from the network — and the crawler cannot understand which knowledge base it belongs to. Above 4 links per 1,000 words, the page reads as a hub or directory rather than a knowledge node, and the authority distributed to each linked page becomes too thin to matter.
+
+There are three exceptions to the corridor. Glossary or hub pages may have higher density (5–8 per 1,000 words) because their purpose IS to be a directory of the topic. Money pages may have lower density (1–2 per 1,000 words) because their purpose is conversion, not knowledge distribution. Very short pages (<400 words) should have 1–2 links maximum regardless of the ratio, because additional links overwhelm short content.
+
+Within the corridor, links should be distributed by function:
+
+- **40–50% of links** should be **main contextual bridges**: links to root pages and to the page's parent in the topical hierarchy. These carry the primary authority signal.
+- **30–40% of links** should be **sibling contextual bridges**: links to cluster pages at the same level under the same root, where there is a genuine attribute-level connection (not just "related topic").
+- **10–20% of links** should be **minor contextual bridges**: links to supplementary pages, glossary terms, or pages in adjacent sub-entities of the topical map.
+- **5–10% of links** may be **conversion bridges**: links to money pages (features, pricing, solutions). These should appear later in the article, after the educational value has been established.
+
+Distribution across the page should follow the contextual vector. The first internal link in the first 100–200 words goes to the root. Body links spread across the middle sections of the article — never clustered in one paragraph. Any conversion-bridge link goes in the final third of the article, after the content has earned the right to ask for the click.
+
+**Automation implication:** word count drives link count; link function dictates link target. An automated brief-generation system should output a link plan that specifies count by function before any specific URL is assigned.
+
+---
+
+## Section 6 — The Pre-Publish Link Audit
+
+Before a page is published or before an existing page passes a quality review, every link is checked against this audit. A link that fails any check is either fixed or removed; it is not published as-is.
+
+The audit runs in three passes.
+
+**Pass 1 — Anchor audit.** For each link on the page, verify: (a) the anchor matches or lemmatizes the target page's H1, (b) the anchor passes CRS=4 (noun present, predicate present, semantic pairing, correct zone), (c) the anchor is not "click here," "learn more," "this article," "read more," or any other generic phrase, (d) the anchor does not start the sentence, (e) the anchor does not appear identically twice on the same page. Any anchor failing 1–5 is rewritten before publish.
+
+**Pass 2 — Placement audit.** For each link: (a) the link appears in body text, not in H1/H2/H3, (b) the link appears after the linked concept has been defined and the inquisitive question answered, (c) the link sits mid-paragraph (sentence 2+ of its paragraph), (d) the sentence containing the link has only one link, (e) the first internal link on the page falls in the first 100–200 words and targets the relevant root page. Failures get the link moved or the surrounding text rewritten.
+
+**Pass 3 — Network audit.** Looking at the page as a whole: (a) total link count falls within the 2–4 per 1,000 words corridor (or the exception bands for hub/money/short pages), (b) the link function distribution roughly matches 40–50% main bridges / 30–40% sibling / 10–20% minor / 5–10% conversion, (c) the tier flow is respected — no Tier 4 → Tier 1 jumps, no Tier 1 page linking down to a Tier 4 supplementary, (d) factual consistency holds — claims on this page do not contradict claims on any linked page (numbers, definitions, glossary terms), (e) every link's target page exists, returns 200, and has not been canonicalized to a different URL.
+
+**Pass 4 (existing pages only) — Decay audit.** Run quarterly on published pages: (a) which links have a 0% click-through (potentially mis-placed or anchor-mismatched), (b) which target pages have been updated such that the source page now contradicts them (re-align facts), (c) which target pages have been deindexed, removed, or redirected (replace or remove links), (d) which pages have gained inbound links from new content and should now have updated reciprocal links where contextually justified.
+
+---
+
+## Section 7 — Rules for Automation
+
+This is the operational layer — the rules an automated system (LLM agent, script, n8n workflow, internal CMS module) must enforce before a link is added, suggested, or published. Every rule is binary: pass or fail. Failures block the link.
+
+The automation has three responsibilities: classify, propose, and validate.
+
+### 7.1 — Classification rules (run once per page; cached)
+
+Every page in the network must have a stored classification record with these fields:
+
+| Field | Source | Required |
+|---|---|---|
+| `tier` | Manual on publish; LLM-inferred on import | Yes (1/2/3/4) |
+| `central_entity` | Page's primary entity (AI visibility, GEO, AEO, etc.) | Yes |
+| `sub_entity` | Page's secondary entity if applicable | No |
+| `parent_root_url` | The Tier 2 root this page belongs under | Yes (Tiers 3, 4) |
+| `cluster_siblings` | Other Tier 3 pages under the same root | Auto-populated |
+| `canonical_query` | The one query this page owns | Yes |
+| `h1_lemmatized_anchors` | 3–5 valid anchor variants of the H1 | Yes |
+| `word_count` | Page body word count | Yes |
+| `link_quota_min` | Floor of allowed inbound link count | Auto: round(word_count / 1000 × 2) |
+| `link_quota_max` | Ceiling of allowed outbound link count | Auto: round(word_count / 1000 × 4) |
+| `topical_borders_match` | Page falls inside Wellows topical borders (boolean) | Yes |
+
+Pages missing any required field cannot be linked TO or FROM automatically. Manual review is required.
+
+### 7.2 — Proposal rules (run when a new link is being suggested)
+
+When the system suggests a link from page A to page B, all of the following must be true:
+
+1. **Tier compatibility.** The pair (A.tier → B.tier) must be in the allowed set: {(4→2), (4→3), (3→2), (3→3 siblings only), (3→1 conversion only), (2→1), (2→2 adjacent), (2→3 children only), (1→1 next-conversion-step), (1→2 sparingly)}. Any other pair is rejected.
+2. **Topical relevance threshold.** Cosine similarity between A's `canonical_query` embedding and B's `canonical_query` embedding must exceed 0.65. Below that, the bridge isn't strong enough.
+3. **Topical border match.** Both A and B must have `topical_borders_match = true`. A link to a page outside Wellows's stated borders (generic SEO, paid search, etc.) is rejected.
+4. **Anchor availability.** At least one entry from B's `h1_lemmatized_anchors` must fit naturally into a sentence on page A. If the LLM cannot construct a grammatical sentence using any valid anchor without rewriting more than 15 words of surrounding text, the link is rejected.
+5. **Quota check.** Adding this link must not push A's outbound link count above `A.link_quota_max`. If it would, propose removing the weakest existing link first; if the existing link is stronger by relevance score, reject the new proposal.
+6. **No duplicate.** Page A must not already link to page B (only the first link passes PageRank; redundant links are flagged for the author to vary anchor or remove).
+7. **Quality node rule.** If B is a quality node (Tier 2 root or a Tier 3 page with `quality_node = true`), the proposal is favored. If A is a quality node and B is supplementary (Tier 4), the proposal is downweighted — quality nodes should accept links more than they emit them.
+8. **Factual consistency check.** If A and B contain overlapping factual claims (numbers, definitions, named entities with attributes), those claims must match. The system flags any contradiction and blocks the link until resolution.
+
+A link that passes all eight rules enters the "proposed" state, with anchor text and placement target attached. It does not auto-publish; an author or reviewer accepts or rejects.
+
+### 7.3 — Validation rules (run before publish; runs every time the page is saved)
+
+The page-level pre-publish validation runs the four audit passes from Section 6, automated where possible:
+
+| Check | Automation status | Block on fail? |
+|---|---|---|
+| Anchor matches target H1 (lemmatized) | Fully automatable (string + lemmatization compare) | Yes |
+| Anchor is not in generic blocklist ("click here," etc.) | Fully automatable (regex blocklist) | Yes |
+| Anchor starts the sentence | Fully automatable (offset check in HTML) | Yes |
+| Anchor appears identically twice on the page | Fully automatable (string compare) | Yes — second occurrence flagged |
+| Anchor passes CRS=4 | Semi-automatable (LLM scoring call) | Soft block — flag for review |
+| Link is in body text, not heading | Fully automatable (DOM check: not inside h1–h6) | Yes |
+| Link is after definition of target concept | Not automatable — author judgment | Soft flag |
+| Sentence has only one link | Fully automatable (count `<a>` per sentence) | Yes |
+| First link is to parent root, in first 200 words | Fully automatable (DOM + classification lookup) | Yes |
+| Page is within 2–4 links per 1,000 words corridor | Fully automatable (count / word_count × 1000) | Yes |
+| Function distribution within ±10% of target mix | Semi-automatable (requires link classification per anchor) | Soft flag |
+| All target URLs return 200 (not 3xx, 4xx, 5xx) | Fully automatable (HEAD request) | Yes |
+| All target URLs are canonical (not canonicalized away) | Fully automatable (canonical tag check) | Yes |
+| No tier-flow violations | Fully automatable (classification lookup) | Yes |
+| Factual consistency: no contradicting numbers/definitions vs linked pages | Semi-automatable (LLM cross-check) | Soft block — flag for review |
+
+Hard blocks prevent publish. Soft flags require a human "acknowledged" click before publish proceeds.
+
+### 7.4 — Maintenance rules (run on a schedule)
+
+Quarterly, the automation runs a network-wide audit:
+
+1. **Orphan detection.** Any page with zero inbound internal links (excluding navigation/boilerplate) is flagged. Orphans get an inbound link plan generated and queued for an editor.
+2. **Over-linked target detection.** Any page receiving more than 50 inbound internal links is flagged for review — the links may be diluting rather than reinforcing.
+3. **Stale anchor detection.** Any anchor pointing to a page whose H1 has changed since the link was placed is flagged. The system proposes an updated anchor using the new H1's lemmatized forms.
+4. **Broken link sweep.** Every internal link is HEAD-requested. Any 3xx/4xx/5xx response is queued for fix.
+5. **Contradiction sweep.** For every pair of linked pages, the system compares factual claims (numbers, named entities, definitions) using an LLM pass and flags contradictions for editorial reconciliation.
+6. **Click-through review (if analytics available).** Links with <0.5% CTR over the prior quarter are flagged as potentially misplaced or poorly anchored. They are not auto-removed — placement may be correct even with low CTR — but they enter the editor's review queue.
+
+### 7.5 — Forbidden patterns (auto-rejected, always)
+
+The automation hard-rejects, with no override:
+
+- Generic anchors: "click here," "read more," "learn more," "here," "this," "this article," "this guide," "more info," "details," "see here."
+- Anchors that are URLs ("Read more at wellows.com/foo").
+- Anchors longer than 8 words (becomes a sentence, not an anchor).
+- Anchors shorter than 2 words unless the entity name is a single proper noun (e.g., "Wellows," "Perplexity").
+- Linking from inside heading tags (h1–h6).
+- Linking to a 3xx, 4xx, or 5xx URL.
+- Linking to a page whose `topical_borders_match` is false.
+- Linking from a Tier 4 supplementary page directly to a Tier 1 money page (must route through Tier 2 or 3).
+- Linking the same target URL twice in the same paragraph.
+- Linking on the first word of any sentence.
+- Linking from a money page to a blog post in the first 50% of the page's content.
+
+---
+
+## Section 8 — Implementation Checklist
+
+Before this SOP is deployed, the following infrastructure must be in place:
+
+1. **Page classification database.** Every URL in the Wellows network has the fields from Section 7.1 populated. This is the foundation; nothing else works without it.
+2. **Anchor variant store.** For every Tier 2 and Tier 3 page, the editorial team has authored 3–5 valid lemmatized anchor variants of the H1. These are stored against the URL and made available to the proposal system.
+3. **Embedding index of canonical queries.** All pages have their canonical query embedded; cosine similarity is queryable in real time. Used for proposal rule 2.
+4. **CRS-scoring LLM call.** A standardized prompt that scores any anchor against Noun + Predicate + Semantic pairing + Zone, returning a score 0–4. Used for proposal rule 4 and validation pass 1.
+5. **Authoring interface integration.** The CMS (WordPress, in Wellows's case) surfaces validation warnings inline as authors write. Hard blocks prevent publish; soft flags require acknowledgment.
+6. **Quarterly audit job.** A scheduled n8n or cron workflow runs Section 7.4 on the 1st of every quarter and emails the editor a queue of items requiring action.
+7. **Author training.** Every contributor reads this SOP and understands why each rule exists. The rules are not arbitrary; they map to the four contextual layers and to specific lectures in the methodology. Authors who understand the framework write fewer violations.
+
+---
+
+## Section 9 — Edge Cases and Judgment Calls
+
+A handful of situations don't fit cleanly into the rules and require human judgment. The automation flags these; humans decide.
+
+**Newly launched pages.** A page that just went live has no inbound links yet. The system should auto-suggest 3–7 inbound links from existing pages within the same cluster, ranked by topical relevance, and present them to an editor for one-click acceptance. This prevents orphan creation.
+
+**Renamed or restructured pages.** If a page's H1 changes substantively (not a minor tweak), every existing inbound link's anchor must be re-evaluated. The system flags all affected links and proposes new anchors based on the new H1.
+
+**Pages bridging core and outer sections.** Some pages legitimately span both — for example, a comparison page that is half-educational (outer) and half-conversion (core). These pages get a custom link function distribution: 30% main bridges, 30% sibling, 20% minor, 20% conversion. The editor manually sets the distribution override.
+
+**Time-bound content (news, AI Overview updates, etc.).** Topical news posts may date quickly. Limit their inbound links from evergreen pages — instead, link them outbound to the relevant evergreen cluster, so authority flows from the news page into the durable network rather than the reverse.
+
+**Competitor or external mentions.** When a Wellows page references a competitor (Profound, Peec, Otterly) or an external entity (OpenAI, Google), do not internal-link the competitor's name. Link instead to the Wellows page that explains *how Wellows handles that competitor's adjacent capability* — the bridge converts a competitor mention into a topical reinforcement of Wellows's own coverage.
+
+**Programmatic pages (location/persona/use-case variants).** If Wellows ever produces programmatic SEO at scale (e.g., "AI visibility for [industry]"), apply tier-3 rules per variant, with the variant root being the most general version. Avoid linking variants horizontally to each other — they cannibalize. Each variant links up to the root and out to relevant clusters.
+
+---
+
+## Appendix — Methodology Source Map
+
+Every rule in this SOP traces to specific lectures or sections of Koray Tugberk GUBUR's holistic semantic SEO framework:
+
+| SOP Section | Methodology source |
+|---|---|
+| Section 1 — Foundational principles | Four contextual layers (vector/hierarchy/structure/connections); quality criterion #14; authorship rule #10 |
+| Section 2 — Link hierarchy | Lecture #80 (quality nodes); core vs outer section (5 components of topical map); Lecture #84 (root pages) |
+| Section 3 — Anchor text rules | Lecture #74 (knowledge base consistency); authorship rule #10 (anchor matches title); CRS formula |
+| Section 4 — Placement rules | Lecture #73 (internal link placement); Lecture #67 (anchor segments); IR Zones |
+| Section 5 — Density and distribution | Quality criterion #14 (2–4 per 1,000 words, ≥95% relevance, ≥80% descriptive) |
+| Section 6 — Pre-publish audit | 16-point quality scoring checklist; contextual consolidation checklist |
+| Section 7 — Automation rules | Composite — applies the methodology to enforceable code rules |
+| Section 9 — Edge cases | Lecture #82, #83 (source context variation); decision rules (new page vs expand) |
+
+This SOP is a living document. As Koray's framework evolves and as Wellows's content network grows, the rules in Section 7 — especially thresholds, distribution percentages, and edge-case handling — should be revised quarterly against actual network performance.

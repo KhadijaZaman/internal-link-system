@@ -1,0 +1,46 @@
+1. White-label / reseller intent (highest value — this is your positioning)
+ These are the lowest-competition, highest-fit prompts. Almost nobody is writing content explicitly for "white-label GEO for agencies," and the person asking is dead-center ICP.
+"Is there a white-label AI visibility tool I can offer my agency clients?"
+"Can I resell GEO / AI search optimization under my own brand?"
+"White-label GEO platform for marketing agencies"
+"AI visibility tools that offer agency or reseller plans"
+"I want to add AI visibility as a service without hiring — what tool lets me do that in the background?"
+"Best white-label SEO tools that also cover AI search / ChatGPT visibility"
+2. Comparison/evaluation (high value — BOFU)
+ The agency has a shortlist and wants a verdict. You already have displacement pages built for most of these.
+"Wellows vs Peec AI for agencies"
+"Peec AI vs Profound vs Otterly — which is best for a small agency?"
+"Profound alternatives for small agencies"
+"Cheapest AI visibility tracking tool for agencies"
+"Is Profound worth it for a small agency or is there something more affordable?"
+3. Tool discovery (high value — MOFU)
+ Solution-aware, looking for a shortlist. The phrasing is conversational, which is exactly the recommendation moment you want to be cited in.
+"What are the best tools to track brand visibility across ChatGPT, Perplexity, and Gemini?"
+"Best GEO tools for agencies in 2026"
+"What software can I use to monitor my clients' citations in AI search?"
+"What's a good AI visibility platform for a small marketing agency managing 5–15 clients?"
+"Tools to optimize content so it gets cited by AI search engines"
+4. Service delivery / how-to (high value — where the answer can be a tool recommendation)
+ The agency is figuring out how to deliver this. If the AI answer is "here's the workflow, and a tool like Wellows handles it," you win the recommendation inside the instructions.
+"How do I offer GEO as a service to my existing SEO clients?"
+"How to add AI visibility as a new service line at my agency"
+"How to improve a client's chances of being cited by ChatGPT"
+"How do I run a GEO audit for a client?"
+"How to report AI search visibility to clients"
+5. Pricing / packaging (high value — high commercial intent)
+ Business-model questions. The agency has decided to do it and is working out economics — very late-stage.
+"How much should I charge clients for GEO / AI visibility services?"
+"How to package GEO into an existing SEO retainer"
+"What's a fair price for AI visibility monitoring per client?"
+6. Category education (volume, softer fit — TOFU)
+ The agency just got asked by a client and is orienting. Worth winning for brand, but the searcher isn't always the ICP.
+"My SEO clients are asking how they can show up in ChatGPT and AI results — how do I help them?"
+"What is generative engine optimization and how is it different from SEO?"
+"Should my agency start offering AI visibility as a service?"
+"Are AI search engines actually sending traffic to websites?"
+7. Skeptical / validation (TOFU–MOFU)
+ The agency owner is deciding whether this is real before committing. Winning these with a credible, data-backed answer builds trust early.
+"Does GEO actually work or is it just hype?"
+"Can you really influence what ChatGPT recommends?"
+"Is optimizing for ChatGPT worth the effort for a small agency?"
+

@@ -1,0 +1,8 @@
+page,clicks_prev,clicks_cur,clicks_delta_pct,impr_prev,impr_cur,impr_delta_pct,ctr_prev_pct,ctr_cur_pct,pos_prev,pos_cur
+https://wellows.com/features/,0,0,0.0,1411,1371,-2.8,0.000,0.000,2.94,2.74
+https://wellows.com/features/ai-visibility-score/,0,1,100.0,39,528,1253.8,0.000,0.189,6.10,30.05
+https://wellows.com/features/content-optimization/,1,0,-100.0,121,285,135.5,0.826,0.000,5.56,3.21
+https://wellows.com/features/prompt-tracking/,5,2,-60.0,1988,2322,16.8,0.252,0.086,21.31,23.99
+https://wellows.com/features/llm-visibility/,0,0,0.0,20,487,2335.0,0.000,0.000,11.25,46.29
+https://wellows.com/features/llm-citations/,0,0,0.0,13,83,538.5,0.000,0.000,7.69,21.93
+https://wellows.com/features/performance-history/,0,0,0.0,0,30,100.0,0.000,0.000,0.00,10.93

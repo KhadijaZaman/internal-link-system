@@ -1,0 +1,31 @@
+kind = "slides"
+previewPath = "/deck/"
+title = "Wellows Internal Linking — Overview"
+version = "1.0.0"
+id = "artifacts/deck"
+router = "path"
+
+[[integratedSkills]]
+name = "slides"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/deck/" ]
+localPort = 21225
+
+[services.development]
+run = "pnpm --filter @workspace/deck run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/deck", "run", "build" ]
+publicDir = "artifacts/deck/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21225"
+BASE_PATH = "/deck/"

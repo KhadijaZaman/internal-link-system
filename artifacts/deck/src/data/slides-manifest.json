@@ -1,0 +1,82 @@
+[
+  {
+    "id": "b1f6c0a2-7e41-4d2a-9f51-1a0c2e9d3a01",
+    "position": 1,
+    "filepath": "src/pages/slides/Title.tsx",
+    "title": "Wellows Internal Linking",
+    "description": "Title slide introducing the internal SEO operations dashboard.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "c2a7d1b3-8f52-4e3b-a062-2b1d3f0e4b02",
+    "position": 2,
+    "filepath": "src/pages/slides/Problem.tsx",
+    "title": "The problem",
+    "description": "Why hand-managed internal linking drifts on large content sites.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "d3b8e2c4-9063-4f4c-b173-3c2e4a1f5c03",
+    "position": 3,
+    "filepath": "src/pages/slides/Overview.tsx",
+    "title": "Overview",
+    "description": "What the dashboard does: ingest, crawl, suggest, audit, review.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "e4c9f3d5-a174-4a5d-c284-4d3f5b2a6d04",
+    "position": 4,
+    "filepath": "src/pages/slides/Architecture.tsx",
+    "title": "Architecture",
+    "description": "The typed pnpm monorepo stack and external data sources.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "f5d0a4e6-b285-4b6e-d395-5e4a6c3b7e05",
+    "position": 5,
+    "filepath": "src/pages/slides/Pipeline.tsx",
+    "title": "Data pipeline",
+    "description": "Four stages from crawl to ranked link suggestions.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "a6e1b5f7-c396-4c7f-e4a6-6f5b7d4c8f06",
+    "position": 6,
+    "filepath": "src/pages/slides/Engine.tsx",
+    "title": "Linking engine",
+    "description": "Semantic and structural passes gated by the tier system.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "b7f2c6a8-d4a7-4d8a-f5b7-7a6c8e5d9a07",
+    "position": 7,
+    "filepath": "src/pages/slides/Automation.tsx",
+    "title": "Automation",
+    "description": "The weekly scheduled cron cadence and on-demand briefs.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "c8a3d7b9-e5b8-4e9b-a6c8-8b7d9f6e0b08",
+    "position": 8,
+    "filepath": "src/pages/slides/HomepageDonor.tsx",
+    "title": "Homepage donor restriction",
+    "description": "Recent change capping homepage links to core money pages.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "d9b4e8c0-f6c9-4f0c-b7d9-9c8e0a7f1c09",
+    "position": 9,
+    "filepath": "src/pages/slides/Security.tsx",
+    "title": "Security model",
+    "description": "Single-admin auth, route protection, and spend controls.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "e0c5f9d1-a7d0-4a1d-c8e0-0d9f1b8a2d10",
+    "position": 10,
+    "filepath": "src/pages/slides/Closing.tsx",
+    "title": "In production",
+    "description": "Closing statement: deployed on a weekly automated cadence.",
+    "speakerNotes": ""
+  }
+]

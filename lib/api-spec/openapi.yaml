@@ -1,0 +1,3159 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Wellows internal linking system API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: auth
+    description: Admin authentication
+  - name: dashboard
+    description: Dashboard summary data
+  - name: graph
+    description: Link graph data
+  - name: inventory
+    description: Page inventory
+  - name: suggestions
+    description: Link suggestions inbox
+  - name: losers
+    description: Query loser tracker
+  - name: optimize
+    description: URL optimizer queue
+  - name: jobs
+    description: Background job manual triggers
+  - name: gsc
+    description: Google Search Console analytics
+  - name: ga4
+    description: Google Analytics 4 page engagement
+  - name: report
+    description: Combined per-page GSC + GA4 performance report
+  - name: gscChat
+    description: Prompt-based GSC analysis
+  - name: wp
+    description: WordPress crawler classifications and exclude list
+  - name: audits
+    description: Weekly audit reports (orphans, over-linked, broken links)
+  - name: linking
+    description: Semantic linking engine settings
+  - name: linkLookups
+    description: On-demand internal link suggestions for arbitrary URLs / topics
+  - name: content
+    description: Content Writer & Auditor (SemanticsX-style) — research, write, audit
+  - name: structural
+    description: Structural quick wins — orphan and dead-end internal-link fixes
+  - name: snapshot
+    description: Site authority, health, and central-entity demand snapshot
+  - name: kb
+    description: Knowledge base documents used to ground optimization briefs
+  - name: actions
+    description: Prioritized action queue — one ranked "do this next" list
+  - name: impact
+    description: Before/after search impact of completed work, from GSC snapshots
+  - name: digests
+    description: Weekly digest — what happened, what got done, what improved
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Admin login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+        "401":
+          description: Invalid password
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Admin logout
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /auth/me:
+    get:
+      operationId: getSession
+      tags: [auth]
+      summary: Current session
+      responses:
+        "200":
+          description: Session info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Dashboard KPIs and last-run timestamps
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /dashboard/urls/{type}:
+    get:
+      operationId: getDashboardUrls
+      tags: [dashboard]
+      summary: URLs behind a dashboard KPI card
+      parameters:
+        - in: path
+          name: type
+          required: true
+          schema:
+            type: string
+            enum: [pages, links, orphans, dead-ends, pending-suggestions, critical-losers]
+      responses:
+        "200":
+          description: List of URLs (capped)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardUrlList"
+  /link-graph:
+    get:
+      operationId: getLinkGraph
+      tags: [graph]
+      summary: Force-directed graph data
+      responses:
+        "200":
+          description: Graph payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkGraph"
+  /link-graph/focus:
+    get:
+      operationId: getLinkGraphFocus
+      tags: [graph]
+      summary: Focused subgraph for a single URL with scored neighbors and recommendations
+      parameters:
+        - in: query
+          name: url
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Focus payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkGraphFocus"
+        "404":
+          description: URL not found
+  /knowledge-graph:
+    get:
+      operationId: getKnowledgeGraph
+      tags: [graph]
+      summary: Topical knowledge graph — pages clustered by topic with link and semantic-similarity edges
+      responses:
+        "200":
+          description: Knowledge graph payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeGraph"
+  /inventory:
+    get:
+      operationId: getInventoryPage
+      tags: [inventory]
+      summary: Detail for a single inventory URL
+      parameters:
+        - in: query
+          name: url
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Page detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryPageDetail"
+        "404":
+          description: Not found
+  /suggestions:
+    get:
+      operationId: listSuggestions
+      tags: [suggestions]
+      summary: List link suggestions
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [pending_review, approved, rejected, inserted, all]
+      responses:
+        "200":
+          description: Suggestion list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LinkSuggestion"
+  /suggestions/{id}/action:
+    post:
+      operationId: actSuggestion
+      tags: [suggestions]
+      summary: Approve, reject, or mark inserted
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SuggestionActionInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkSuggestion"
+  /link-lookups:
+    get:
+      operationId: listLinkLookups
+      tags: [linkLookups]
+      summary: List recent on-demand link lookups
+      responses:
+        "200":
+          description: Lookup list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LinkLookup"
+    post:
+      operationId: createLinkLookups
+      tags: [linkLookups]
+      summary: Create one or more link-lookup jobs (URL, bulk URLs, or free text)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkLookupCreateInput"
+      responses:
+        "202":
+          description: Lookups created (results processed asynchronously)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ids]
+                properties:
+                  ids:
+                    type: array
+                    items: { type: integer }
+  /link-lookups/{id}:
+    get:
+      operationId: getLinkLookup
+      tags: [linkLookups]
+      summary: Get one link lookup with full results
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Lookup
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkLookup"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteLinkLookup
+      tags: [linkLookups]
+      summary: Delete a link lookup
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+  /losers:
+    get:
+      operationId: listLosers
+      tags: [losers]
+      summary: Query losers grouped by severity for the latest week
+      responses:
+        "200":
+          description: Loser groups
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoserWeek"
+  /losers/query-insights:
+    get:
+      operationId: getQueryInsights
+      tags: [losers]
+      summary: GSC performance + AI strategy summary for a single search query
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema: { type: string, minLength: 2, maxLength: 200 }
+      responses:
+        "200":
+          description: Query insights
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueryInsights"
+  /losers/{id}/send-to-optimizer:
+    post:
+      operationId: sendLoserToOptimizer
+      tags: [losers]
+      summary: Add loser's URL to the optimizer queue
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OptimizeQueueItem"
+  /optimize-queue:
+    get:
+      operationId: listOptimizeQueue
+      tags: [optimize]
+      summary: List optimizer queue items
+      responses:
+        "200":
+          description: Queue list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OptimizeQueueItem"
+    post:
+      operationId: addOptimizeQueueItem
+      tags: [optimize]
+      summary: Add a URL to the optimizer queue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OptimizeQueueInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OptimizeQueueItem"
+  /optimize-queue/{id}/run:
+    post:
+      operationId: runOptimizeItem
+      tags: [optimize]
+      summary: Run the optimize brief generation for a single queue item immediately (background)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "202":
+          description: Started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OptimizeQueueItem"
+  /optimize-queue/{id}/requeue:
+    post:
+      operationId: requeueOptimizeItem
+      tags: [optimize]
+      summary: Set status back to optimize
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Requeued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OptimizeQueueItem"
+  /tracked-submissions:
+    get:
+      operationId: listTrackedSubmissions
+      tags: [trackedSubmissions]
+      summary: List custom tracked submissions
+      responses:
+        "200":
+          description: Tracked submissions list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TrackedSubmission"
+    post:
+      operationId: createTrackedSubmissions
+      tags: [trackedSubmissions]
+      summary: Add one or more URLs to the custom tracking list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrackedSubmissionCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TrackedSubmission"
+  /tracked-submissions/{id}:
+    patch:
+      operationId: updateTrackedSubmission
+      tags: [trackedSubmissions]
+      summary: Update a tracked submission's status
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrackedSubmissionUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackedSubmission"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteTrackedSubmission
+      tags: [trackedSubmissions]
+      summary: Delete a tracked submission
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+  /jobs/{jobName}/run:
+    post:
+      operationId: runJob
+      tags: [jobs]
+      summary: Manually trigger a background job
+      parameters:
+        - in: path
+          name: jobName
+          required: true
+          schema:
+            type: string
+            enum: [crawl_link_map, gsc_inventory_and_losers, optimize_queued_urls, crawl_wordpress, reembed_wordpress, semantic_linking, audit_orphans, audit_over_linked, audit_broken_links, run_full_pipeline, recompute_action_queue, weekly_digest]
+      responses:
+        "202":
+          description: Job started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobRunResult"
+        "409":
+          description: Already running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobRunResult"
+  /wp/classifications:
+    get:
+      operationId: listWpClassifications
+      tags: [wp]
+      summary: List page classifications
+      responses:
+        "200":
+          description: Classifications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WpClassificationList"
+    patch:
+      operationId: updateWpClassification
+      tags: [wp]
+      summary: Edit a classification (marks manuallyEdited)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WpClassificationPatch"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+  /wp/exclude-list:
+    get:
+      operationId: listWpExcludeList
+      tags: [wp]
+      summary: List URL patterns excluded from link suggestions
+      responses:
+        "200":
+          description: Exclude list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WpExcludeList"
+    post:
+      operationId: addWpExclude
+      tags: [wp]
+      summary: Add a URL pattern to the exclude list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WpExcludeCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WpExcludeItem"
+        "409":
+          description: Duplicate pattern
+  /wp/exclude-list/{id}:
+    delete:
+      operationId: deleteWpExclude
+      tags: [wp]
+      summary: Remove a pattern from the exclude list
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+  /gsc/overview:
+    get:
+      operationId: getGscOverview
+      tags: [gsc]
+      summary: Headline metrics + timeseries with optional period compare
+      parameters:
+        - $ref: "#/components/parameters/StartDate"
+        - $ref: "#/components/parameters/EndDate"
+        - $ref: "#/components/parameters/Compare"
+        - $ref: "#/components/parameters/UrlFilter"
+      responses:
+        "200":
+          description: Overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GscOverview"
+  /gsc/queries:
+    get:
+      operationId: getGscQueries
+      tags: [gsc]
+      summary: Top queries with optional branded split
+      parameters:
+        - $ref: "#/components/parameters/StartDate"
+        - $ref: "#/components/parameters/EndDate"
+        - $ref: "#/components/parameters/UrlFilter"
+        - $ref: "#/components/parameters/RowLimit"
+      responses:
+        "200":
+          description: Queries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GscQueriesResponse"
+  /gsc/pages:
+    get:
+      operationId: getGscPages
+      tags: [gsc]
+      summary: Top pages with click/impression metrics
+      parameters:
+        - $ref: "#/components/parameters/StartDate"
+        - $ref: "#/components/parameters/EndDate"
+        - $ref: "#/components/parameters/UrlFilter"
+        - $ref: "#/components/parameters/RowLimit"
+      responses:
+        "200":
+          description: Pages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GscPagesResponse"
+  /ga4/pages:
+    get:
+      operationId: getGa4Pages
+      tags: [ga4]
+      summary: Page-wise GA4 engagement (engagement rate, sessions, avg time)
+      parameters:
+        - $ref: "#/components/parameters/StartDate"
+        - $ref: "#/components/parameters/EndDate"
+      responses:
+        "200":
+          description: GA4 page engagement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ga4PagesResponse"
+  /report/pages:
+    get:
+      operationId: getPagesReport
+      tags: [report]
+      summary: Combined per-page report — GSC position/impressions/clicks/queries + GA4 engagement
+      parameters:
+        - $ref: "#/components/parameters/StartDate"
+        - $ref: "#/components/parameters/EndDate"
+      responses:
+        "200":
+          description: Per-page combined GSC + GA4 report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageReportResponse"
+  /gsc/geo:
+    get:
+      operationId: getGscGeo
+      tags: [gsc]
+      summary: Country and device breakdown
+      parameters:
+        - $ref: "#/components/parameters/StartDate"
+        - $ref: "#/components/parameters/EndDate"
+        - $ref: "#/components/parameters/UrlFilter"
+      responses:
+        "200":
+          description: Geo + device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GscGeoResponse"
+  /gsc/indexing:
+    get:
+      operationId: getGscIndexing
+      tags: [gsc]
+      summary: Sitemap status and not-indexed pages
+      responses:
+        "200":
+          description: Indexing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GscIndexingResponse"
+  /gsc/inspect:
+    get:
+      operationId: inspectGscUrl
+      tags: [gsc]
+      summary: GSC URL Inspection result for a single URL
+      parameters:
+        - in: query
+          name: url
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Inspection result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GscInspectionResult"
+  /gsc/cwv:
+    get:
+      operationId: getGscCwv
+      tags: [gsc]
+      summary: Core Web Vitals (from CrUX API)
+      parameters:
+        - $ref: "#/components/parameters/UrlFilter"
+      responses:
+        "200":
+          description: CWV
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GscCwvResponse"
+  /gsc/links:
+    get:
+      operationId: getGscLinks
+      tags: [gsc]
+      summary: Top external linking domains and top internal target pages
+      responses:
+        "200":
+          description: Links
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GscLinksResponse"
+  /gsc/indexing/inspect-batch:
+    post:
+      operationId: inspectGscBatch
+      tags: [gsc]
+      summary: Inspect up to 10 URLs and bucket them by GSC coverage reason
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GscBatchInspectionRequest"
+      responses:
+        "200":
+          description: Aggregated inspection results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GscBatchInspectionResponse"
+  /gsc/url-drilldown:
+    get:
+      operationId: getGscUrlDrilldown
+      tags: [gsc]
+      summary: Per-URL query mix and trend
+      parameters:
+        - in: query
+          name: url
+          required: true
+          schema: { type: string }
+        - $ref: "#/components/parameters/StartDate"
+        - $ref: "#/components/parameters/EndDate"
+      responses:
+        "200":
+          description: Per-URL detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GscUrlDrilldown"
+  /gsc/chat:
+    post:
+      operationId: askGsc
+      tags: [gscChat]
+      summary: Ask a question about the current GSC slice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GscChatRequest"
+      responses:
+        "200":
+          description: Claude reply
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GscChatResponse"
+  /gsc/chat/stream:
+    post:
+      operationId: askGscStream
+      tags: [gscChat]
+      summary: Stream a Claude reply for the current GSC slice via Server-Sent Events
+      description: |
+        Returns a `text/event-stream` with the following events:
+        - `meta` — `{ contextSummary: string }` sent once at the start
+        - `delta` — `{ text: string }` sent for each Claude text chunk
+        - `done` — `{ ok: true }` sent on success
+        - `error` — `{ error: string }` sent on failure
+
+        The frontend consumes this with `fetch` + a `ReadableStream` reader rather than a generated hook.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GscChatRequest"
+      responses:
+        "200":
+          description: SSE stream of Claude reply chunks
+          content:
+            text/event-stream:
+              schema:
+                type: string
+  /audits/{type}:
+    get:
+      operationId: getAuditReport
+      tags: [audits]
+      summary: Latest audit report of the given type
+      parameters:
+        - in: path
+          name: type
+          required: true
+          schema:
+            type: string
+            enum: [orphans, over_linked, broken_links]
+      responses:
+        "200":
+          description: Report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditReport"
+  /pruning-suggestions:
+    get:
+      operationId: getPruningSuggestions
+      tags: [audits]
+      summary: Pages that rank in the top 3 over the available window but generate zero clicks — pruning candidates
+      responses:
+        "200":
+          description: Pruning report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PruningReport"
+  /linking-settings:
+    get:
+      operationId: getLinkingSettings
+      tags: [linking]
+      summary: Read semantic linking engine settings
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkingSettings"
+    put:
+      operationId: updateLinkingSettings
+      tags: [linking]
+      summary: Update semantic linking engine settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkingSettingsInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkingSettings"
+  /jobs/status:
+    get:
+      operationId: getJobStatus
+      tags: [jobs]
+      summary: Job last-run and currently-running status
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/JobStatus"
+  /content/research:
+    post:
+      operationId: contentResearch
+      tags: [content]
+      summary: Run semantic research for a keyword (outlines, n-grams, entities, NLP, skip-grams, grammar)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ContentResearchInput" }
+      responses:
+        "200":
+          description: Research result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ContentResearchResult" }
+  /content/write:
+    post:
+      operationId: contentWrite
+      tags: [content]
+      summary: Generate a full SEO article in Khadija voice (Quick or Express mode)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ContentWriteInput" }
+      responses:
+        "200":
+          description: Article generated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ContentWriteResult" }
+  /content/audit/entities:
+    post:
+      operationId: contentAuditEntities
+      tags: [content]
+      summary: Entity coverage audit for a draft vs expected entities for the keyword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ContentAuditTextInput" }
+      responses:
+        "200":
+          description: Entities audit
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ContentEntitiesAudit" }
+  /content/audit/nlp:
+    post:
+      operationId: contentAuditNlp
+      tags: [content]
+      summary: NLP / LSI keyword coverage audit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ContentAuditTextInput" }
+      responses:
+        "200":
+          description: NLP audit
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ContentNlpAudit" }
+  /content/audit/ngrams:
+    post:
+      operationId: contentAuditNgrams
+      tags: [content]
+      summary: Compare n-gram frequency between draft and competitors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ContentNgramsInput" }
+      responses:
+        "200":
+          description: N-grams audit
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ContentNgramsAudit" }
+  /alerts/daily:
+    get:
+      operationId: getDailyActivity
+      tags: [alerts]
+      summary: Daily activity feed — pages published and pages optimized, grouped by day on the client
+      parameters:
+        - in: query
+          name: days
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 90
+            default: 30
+      responses:
+        "200":
+          description: Activity items, newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyActivity"
+  /alerts/url-links:
+    get:
+      operationId: getUrlLinkBreakdown
+      tags: [alerts]
+      summary: Same-domain in-body internal links (outgoing) and internal backlinks (incoming) for a single URL
+      parameters:
+        - in: query
+          name: url
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Internal link breakdown for the URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UrlLinkBreakdown"
+  /actions:
+    get:
+      operationId: listActions
+      tags: [actions]
+      summary: Ranked action queue — what to do next, scored by search opportunity
+      parameters:
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum: [open, done, dismissed, all]
+            default: open
+      responses:
+        "200":
+          description: Action queue with counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionQueue"
+  /actions/{id}/status:
+    post:
+      operationId: setActionStatus
+      tags: [actions]
+      summary: Mark an action done or dismissed, or reopen it
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActionStatusInput"
+      responses:
+        "200":
+          description: Updated action
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionItem"
+        "404":
+          description: Action not found
+  /health-score:
+    get:
+      operationId: getHealthScore
+      tags: [snapshot]
+      summary: Live 0-100 site health score with component breakdown and trend
+      responses:
+        "200":
+          description: Health score, weighted components, and daily trend
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthScore"
+  /impact/wins:
+    get:
+      operationId: listImpactWins
+      tags: [impact]
+      summary: Before/after impact of every completed action, grouped per page
+      responses:
+        "200":
+          description: Impact summary and per-page results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImpactWins"
+  /impact/detail:
+    get:
+      operationId: getImpactDetail
+      tags: [impact]
+      summary: Weekly GSC series for one page (for the impact chart)
+      parameters:
+        - in: query
+          name: url
+          required: true
+          schema: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: Weekly clicks/impressions/position series
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImpactDetail"
+  /digests:
+    get:
+      operationId: listDigests
+      tags: [digests]
+      summary: Past weekly digests, newest first
+      responses:
+        "200":
+          description: Stored weekly digests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DigestList"
+  /structural/targets:
+    get:
+      operationId: getStructuralTargets
+      tags: [structural]
+      summary: List orphan and dead-end pages that need internal-link fixes
+      responses:
+        "200":
+          description: Structural targets grouped with counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StructuralTargets"
+  /structural/suggest:
+    post:
+      operationId: suggestStructuralLinks
+      tags: [structural]
+      summary: Generate internal-link suggestions for one orphan or dead-end URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StructuralSuggestInput"
+      responses:
+        "200":
+          description: Generation result (suggestions land in the link-suggestions inbox)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StructuralSuggestResult"
+  /snapshot:
+    get:
+      operationId: getAuthoritySnapshot
+      tags: [snapshot]
+      summary: Site authority, health, and central-entity demand snapshot
+      parameters:
+        - name: threshold
+          in: query
+          required: false
+          description: Cosine threshold (0-1) separating on-core from off-core query demand
+          schema:
+            type: number
+            minimum: 0
+            maximum: 1
+      responses:
+        "200":
+          description: Deterministic authority + central-entity snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthoritySnapshot"
+  /losers/weeks:
+    get:
+      operationId: getLoserWeeks
+      tags: [losers]
+      summary: Distinct weeks that have query-loser data, newest first
+      responses:
+        "200":
+          description: Available loser weeks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LoserWeekOption"
+  /losers/pages:
+    get:
+      operationId: getLoserPages
+      tags: [losers]
+      summary: Query losers rolled up by page for a given week
+      parameters:
+        - name: weekOf
+          in: query
+          required: false
+          description: Week to roll up (YYYY-MM-DD). Defaults to the latest week.
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Page-level loser rollup
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoserPagesResponse"
+  /watchlist:
+    get:
+      operationId: listWatchlist
+      tags: [losers]
+      summary: List operator watchlist queries
+      responses:
+        "200":
+          description: Watchlist
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WatchlistQuery"
+    post:
+      operationId: addWatchlistQuery
+      tags: [losers]
+      summary: Add a query to the watchlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WatchlistInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchlistQuery"
+  /watchlist/{id}:
+    delete:
+      operationId: deleteWatchlistQuery
+      tags: [losers]
+      summary: Remove a query from the watchlist
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+  /page-keywords:
+    get:
+      operationId: listPageKeywords
+      tags: [losers]
+      summary: List operator target keywords for a page
+      parameters:
+        - name: url
+          in: query
+          required: true
+          description: Page URL to list target keywords for
+          schema: { type: string }
+      responses:
+        "200":
+          description: Target keywords for the page
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PageTargetKeyword"
+    post:
+      operationId: addPageKeyword
+      tags: [losers]
+      summary: Add a target keyword to a page
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PageKeywordInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageTargetKeyword"
+  /page-keywords/{id}:
+    delete:
+      operationId: deletePageKeyword
+      tags: [losers]
+      summary: Remove a target keyword from a page
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+  /kb/documents:
+    get:
+      operationId: listKbDocuments
+      tags: [kb]
+      summary: List knowledge base documents used to ground briefs
+      responses:
+        "200":
+          description: Knowledge base documents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KbDocument"
+    post:
+      operationId: addKbDocument
+      tags: [kb]
+      summary: Upload a knowledge base document (chunked and embedded on upload)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KbDocumentInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KbDocument"
+  /kb/documents/{id}:
+    delete:
+      operationId: deleteKbDocument
+      tags: [kb]
+      summary: Remove a knowledge base document and its chunks
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+components:
+  parameters:
+    StartDate:
+      in: query
+      name: startDate
+      required: true
+      schema: { type: string, format: date }
+    EndDate:
+      in: query
+      name: endDate
+      required: true
+      schema: { type: string, format: date }
+    Compare:
+      in: query
+      name: compare
+      schema: { type: boolean }
+    UrlFilter:
+      in: query
+      name: url
+      schema: { type: string }
+    RowLimit:
+      in: query
+      name: limit
+      schema: { type: integer, minimum: 1, maximum: 5000 }
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status: { type: string }
+      required: [status]
+    LoginInput:
+      type: object
+      required: [password]
+      properties:
+        password: { type: string, minLength: 1 }
+    AuthSession:
+      type: object
+      required: [authenticated]
+      properties:
+        authenticated: { type: boolean }
+        username: { type: ["string", "null"] }
+    JobLastRun:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        lastRunAt: { type: ["string", "null"], format: date-time }
+        lastStatus: { type: ["string", "null"] }
+        lastDurationMs: { type: ["integer", "null"] }
+        lastError: { type: ["string", "null"] }
+    DashboardSummary:
+      type: object
+      required:
+        - totalPages
+        - totalLinks
+        - orphanCount
+        - deadEndCount
+        - pendingSuggestionsCount
+        - criticalLosersCount
+        - sectionCounts
+        - jobs
+      properties:
+        totalPages: { type: integer }
+        totalLinks: { type: integer }
+        orphanCount: { type: integer }
+        deadEndCount: { type: integer }
+        pendingSuggestionsCount: { type: integer }
+        criticalLosersCount: { type: integer }
+        sectionCounts:
+          type: object
+          required: [core, outer]
+          properties:
+            core: { type: integer }
+            outer: { type: integer }
+        jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/JobLastRun"
+    ActionItem:
+      type: object
+      required:
+        - id
+        - actionType
+        - targetUrl
+        - score
+        - impressionsAtStake
+        - clicksAtStake
+        - status
+        - createdAt
+      properties:
+        id: { type: integer }
+        actionType:
+          type: string
+          enum: [add_inbound_links, add_outbound_links, fix_losing_query, review_suggestions, optimize_content, improve_ctr, fix_cannibalization]
+        targetUrl: { type: string }
+        title: { type: ["string", "null"] }
+        description: { type: ["string", "null"] }
+        score: { type: number }
+        impressionsAtStake: { type: integer }
+        clicksAtStake: { type: integer }
+        source:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          enum: [open, done, dismissed]
+        resolution: { type: ["string", "null"], enum: [manual, auto, null] }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: ["string", "null"], format: date-time }
+        dismissedAt: { type: ["string", "null"], format: date-time }
+        lastSeenAt: { type: ["string", "null"], format: date-time }
+    ActionQueue:
+      type: object
+      required: [generatedAt, counts, items]
+      properties:
+        generatedAt: { type: string, format: date-time }
+        counts:
+          type: object
+          required: [open, done, dismissed]
+          properties:
+            open: { type: integer }
+            done: { type: integer }
+            dismissed: { type: integer }
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActionItem"
+    ActionStatusInput:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [open, done, dismissed]
+    HealthComponent:
+      type: object
+      required: [key, label, weight, penalty, deduction, raw, detail]
+      properties:
+        key:
+          type: string
+          enum: [orphans, dead_ends, losers, backlog, staleness]
+        label: { type: string }
+        weight: { type: number }
+        penalty: { type: number }
+        deduction: { type: number }
+        raw: { type: number }
+        detail: { type: string }
+    HealthTrendPoint:
+      type: object
+      required: [date, score]
+      properties:
+        date: { type: string }
+        score: { type: integer }
+    HealthScore:
+      type: object
+      required: [generatedAt, score, label, components, trend]
+      properties:
+        generatedAt: { type: string, format: date-time }
+        score: { type: integer }
+        label:
+          type: string
+          enum: [excellent, good, fair, needs_work, critical]
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/HealthComponent"
+        trend:
+          type: array
+          items:
+            $ref: "#/components/schemas/HealthTrendPoint"
+    ImpactMetrics:
+      type: object
+      required: [clicks, impressions]
+      properties:
+        clicks: { type: number }
+        impressions: { type: number }
+        position: { type: ["number", "null"] }
+    ImpactEvent:
+      type: object
+      required: [source, kind, completedAt]
+      properties:
+        source:
+          type: string
+          enum: [action, optimize, suggestion]
+        kind: { type: string }
+        label: { type: ["string", "null"] }
+        completedAt: { type: string, format: date-time }
+    ImpactWinItem:
+      type: object
+      required:
+        - path
+        - url
+        - events
+        - anchorCompletedAt
+        - completionWeek
+        - state
+        - weeksBefore
+        - weeksAfter
+      properties:
+        path: { type: string }
+        url: { type: string }
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImpactEvent"
+        anchorCompletedAt: { type: string, format: date-time }
+        completionWeek: { type: string }
+        state:
+          type: string
+          enum: [measuring, improved, flat, declined]
+        baseline:
+          oneOf:
+            - $ref: "#/components/schemas/ImpactMetrics"
+            - type: "null"
+        after:
+          oneOf:
+            - $ref: "#/components/schemas/ImpactMetrics"
+            - type: "null"
+        deltaClicks: { type: ["number", "null"] }
+        deltaImpressions: { type: ["number", "null"] }
+        deltaPosition: { type: ["number", "null"] }
+        weeksBefore: { type: integer }
+        weeksAfter: { type: integer }
+    ImpactWins:
+      type: object
+      required: [generatedAt, summary, items]
+      properties:
+        generatedAt: { type: string, format: date-time }
+        summary:
+          type: object
+          required: [measuring, improved, flat, declined]
+          properties:
+            measuring: { type: integer }
+            improved: { type: integer }
+            flat: { type: integer }
+            declined: { type: integer }
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImpactWinItem"
+    ImpactWeekPoint:
+      type: object
+      required: [weekStart, clicks, impressions]
+      properties:
+        weekStart: { type: string }
+        clicks: { type: number }
+        impressions: { type: number }
+        position: { type: ["number", "null"] }
+    ImpactDetail:
+      type: object
+      required: [path, weeks]
+      properties:
+        path: { type: string }
+        weeks:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImpactWeekPoint"
+    DigestActionRef:
+      type: object
+      required: [actionType, targetUrl, score]
+      properties:
+        actionType: { type: string }
+        targetUrl: { type: string }
+        title: { type: ["string", "null"] }
+        score: { type: number }
+        resolution: { type: ["string", "null"] }
+    DigestWinRef:
+      type: object
+      required: [path, url, state]
+      properties:
+        path: { type: string }
+        url: { type: string }
+        state: { type: string }
+        deltaClicks: { type: ["number", "null"] }
+        deltaImpressions: { type: ["number", "null"] }
+    DigestPayload:
+      type: object
+      required: [weekOf, generatedAt, health, newIssues, completed, wins, openActions]
+      properties:
+        weekOf: { type: string }
+        generatedAt: { type: string, format: date-time }
+        health:
+          type: object
+          required: []
+          properties:
+            current: { type: ["integer", "null"] }
+            previous: { type: ["integer", "null"] }
+            delta: { type: ["integer", "null"] }
+            label: { type: ["string", "null"] }
+        newIssues:
+          type: object
+          required: [total, byType, top]
+          properties:
+            total: { type: integer }
+            byType:
+              type: object
+              additionalProperties: { type: integer }
+            top:
+              type: array
+              items:
+                $ref: "#/components/schemas/DigestActionRef"
+        completed:
+          type: object
+          required: [total, auto, manual, top]
+          properties:
+            total: { type: integer }
+            auto: { type: integer }
+            manual: { type: integer }
+            top:
+              type: array
+              items:
+                $ref: "#/components/schemas/DigestActionRef"
+        wins:
+          type: object
+          required: [improved, measuring, flat, declined, top]
+          properties:
+            improved: { type: integer }
+            measuring: { type: integer }
+            flat: { type: integer }
+            declined: { type: integer }
+            top:
+              type: array
+              items:
+                $ref: "#/components/schemas/DigestWinRef"
+        openActions: { type: integer }
+    DigestItem:
+      type: object
+      required: [id, weekOf, createdAt, payload]
+      properties:
+        id: { type: integer }
+        weekOf: { type: string }
+        createdAt: { type: ["string", "null"], format: date-time }
+        payload:
+          $ref: "#/components/schemas/DigestPayload"
+    DigestList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DigestItem"
+    DashboardUrlItem:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string }
+        label: { type: ["string", "null"] }
+        sublabel: { type: ["string", "null"] }
+        count: { type: ["integer", "null"] }
+    DashboardUrlList:
+      type: object
+      required: [type, total, returned, items]
+      properties:
+        type: { type: string }
+        total: { type: integer }
+        returned: { type: integer }
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DashboardUrlItem"
+    LinkGraphNode:
+      type: object
+      required: [id, section, isOrphan, isDeadEnd, pagerank, inboundCount, outboundCount]
+      properties:
+        id: { type: string }
+        title: { type: ["string", "null"] }
+        section: { type: string }
+        isOrphan: { type: boolean }
+        isDeadEnd: { type: boolean }
+        pagerank: { type: number }
+        inboundCount: { type: integer }
+        outboundCount: { type: integer }
+        topQuery: { type: ["string", "null"] }
+        position: { type: ["number", "null"] }
+        impressions: { type: ["integer", "null"] }
+        clicks: { type: ["integer", "null"] }
+    LinkGraphEdge:
+      type: object
+      required: [source, target]
+      properties:
+        source: { type: string }
+        target: { type: string }
+        anchorText: { type: ["string", "null"] }
+    LinkGraph:
+      type: object
+      required: [generatedAt, nodes, edges]
+      properties:
+        generatedAt: { type: string, format: date-time }
+        nodes:
+          type: array
+          items: { $ref: "#/components/schemas/LinkGraphNode" }
+        edges:
+          type: array
+          items: { $ref: "#/components/schemas/LinkGraphEdge" }
+    KnowledgeGraphNode:
+      type: object
+      required: [id, section, clusterId, pagerank, inboundCount, outboundCount, hasEmbedding]
+      properties:
+        id: { type: string }
+        title: { type: ["string", "null"] }
+        section: { type: string }
+        clusterId: { type: integer }
+        pagerank: { type: number }
+        inboundCount: { type: integer }
+        outboundCount: { type: integer }
+        impressions: { type: ["integer", "null"] }
+        clicks: { type: ["integer", "null"] }
+        topQuery: { type: ["string", "null"] }
+        hasEmbedding: { type: boolean }
+    KnowledgeGraphEdge:
+      type: object
+      required: [source, target, kind]
+      properties:
+        source: { type: string }
+        target: { type: string }
+        kind: { type: string, enum: [link, semantic, both] }
+        similarity: { type: ["number", "null"] }
+    KnowledgeGraphCluster:
+      type: object
+      required: [id, label, size]
+      properties:
+        id: { type: integer }
+        label: { type: string }
+        size: { type: integer }
+    KnowledgeGraph:
+      type: object
+      required: [generatedAt, nodes, edges, clusters, embeddedPages, totalPosts]
+      properties:
+        generatedAt: { type: string, format: date-time }
+        nodes:
+          type: array
+          items: { $ref: "#/components/schemas/KnowledgeGraphNode" }
+        edges:
+          type: array
+          items: { $ref: "#/components/schemas/KnowledgeGraphEdge" }
+        clusters:
+          type: array
+          items: { $ref: "#/components/schemas/KnowledgeGraphCluster" }
+        embeddedPages: { type: integer }
+        totalPosts: { type: integer }
+    LinkGraphFocusSeed:
+      type: object
+      required:
+        - url
+        - section
+        - pagerank
+        - inboundCount
+        - outboundCount
+        - gscClicks
+        - gscImpressions
+        - hasEmbedding
+      properties:
+        url: { type: string }
+        title: { type: ["string", "null"] }
+        section: { type: string }
+        pagerank: { type: number }
+        inboundCount: { type: integer }
+        outboundCount: { type: integer }
+        gscClicks: { type: integer }
+        gscImpressions: { type: integer }
+        hasEmbedding: { type: boolean }
+    LinkGraphFocusNeighbor:
+      type: object
+      required:
+        - url
+        - direction
+        - anchorTexts
+        - similarity
+        - pagerank
+        - gscClicks
+        - gscImpressions
+        - relevanceScore
+        - prominenceScore
+        - popularityScore
+        - totalScore
+      properties:
+        url: { type: string }
+        title: { type: ["string", "null"] }
+        direction:
+          type: string
+          enum: [inbound, outbound, both, recommended]
+        anchorTexts:
+          type: array
+          items: { type: string }
+        similarity: { type: number }
+        pagerank: { type: number }
+        gscClicks: { type: integer }
+        gscImpressions: { type: integer }
+        relevanceScore: { type: number }
+        prominenceScore: { type: number }
+        popularityScore: { type: number }
+        totalScore: { type: number }
+    LinkGraphFocus:
+      type: object
+      required: [generatedAt, seed, neighbors]
+      properties:
+        generatedAt: { type: string, format: date-time }
+        seed: { $ref: "#/components/schemas/LinkGraphFocusSeed" }
+        neighbors:
+          type: array
+          items: { $ref: "#/components/schemas/LinkGraphFocusNeighbor" }
+    DailyActivityItem:
+      type: object
+      required: [kind, url, timestamp]
+      properties:
+        kind:
+          type: string
+          enum: [published, optimized]
+        url: { type: string }
+        title: { type: ["string", "null"] }
+        timestamp: { type: string, format: date-time }
+    DailyActivity:
+      type: object
+      required: [generatedAt, items]
+      properties:
+        generatedAt: { type: string, format: date-time }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/DailyActivityItem" }
+    UrlLinkRef:
+      type: object
+      required: [url, anchorTexts]
+      properties:
+        url: { type: string }
+        title: { type: ["string", "null"] }
+        anchorTexts:
+          type: array
+          items: { type: string }
+    UrlLinkBreakdown:
+      type: object
+      required: [url, outgoingCount, incomingCount, outgoing, incoming]
+      properties:
+        url: { type: string }
+        outgoingCount: { type: integer }
+        incomingCount: { type: integer }
+        outgoing:
+          type: array
+          items: { $ref: "#/components/schemas/UrlLinkRef" }
+        incoming:
+          type: array
+          items: { $ref: "#/components/schemas/UrlLinkRef" }
+    LinkRef:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string }
+        anchorText: { type: ["string", "null"] }
+    InventoryPageDetail:
+      type: object
+      required:
+        - url
+        - section
+        - inboundCount
+        - outboundCount
+        - pagerank
+        - isOrphan
+        - isDeadEnd
+        - inboundLinks
+        - outboundLinks
+      properties:
+        url: { type: string }
+        title: { type: ["string", "null"] }
+        h1: { type: ["string", "null"] }
+        section: { type: string }
+        topQuery: { type: ["string", "null"] }
+        position: { type: ["number", "null"] }
+        impressions: { type: ["integer", "null"] }
+        clicks: { type: ["integer", "null"] }
+        lastUpdated: { type: ["string", "null"], format: date-time }
+        inboundCount: { type: integer }
+        outboundCount: { type: integer }
+        pagerank: { type: number }
+        isOrphan: { type: boolean }
+        isDeadEnd: { type: boolean }
+        inboundLinks:
+          type: array
+          items: { $ref: "#/components/schemas/LinkRef" }
+        outboundLinks:
+          type: array
+          items: { $ref: "#/components/schemas/LinkRef" }
+    LinkSuggestion:
+      type: object
+      required:
+        - id
+        - donorUrl
+        - receiverUrl
+        - sectionLinkType
+        - priorityScore
+        - status
+        - suggestedAt
+      properties:
+        id: { type: integer }
+        donorUrl: { type: string }
+        receiverUrl: { type: string }
+        anchorText: { type: ["string", "null"] }
+        korayRationale: { type: ["string", "null"] }
+        sectionLinkType: { type: string }
+        insertionSentence: { type: ["string", "null"] }
+        priorityScore: { type: number }
+        status: { type: string }
+        suggestedAt: { type: string, format: date-time }
+        reviewedAt: { type: ["string", "null"], format: date-time }
+        engineVersion: { type: string }
+        tierPair: { type: ["string", "null"] }
+        similarityScore: { type: ["number", "null"] }
+        authorityScore: { type: ["number", "null"] }
+        anchorFitScore: { type: ["number", "null"] }
+        freshnessScore: { type: ["number", "null"] }
+        anchorVariants:
+          type: array
+          items: { type: string }
+        placementHint: { type: ["string", "null"] }
+    AuditReport:
+      type: object
+      required: [type, runAt, itemCount, items]
+      properties:
+        type: { type: string }
+        runAt: { type: ["string", "null"], format: date-time }
+        itemCount: { type: integer }
+        items:
+          type: array
+          # Items vary by audit type (orphans / over_linked / broken_links).
+          # Over-linked target items include `contentCount` (body inbound,
+          # the figure checked against the threshold) and `chromeCount`
+          # (nav + header + footer inbound, reported for context only).
+          items:
+            type: object
+            additionalProperties: true
+    PruningSuggestion:
+      type: object
+      required: [url, bestPosition, queriesInTop3, totalImpressions, totalClicks, daysObserved, topQueries]
+      properties:
+        url: { type: string }
+        title: { type: ["string", "null"] }
+        bestPosition: { type: number }
+        queriesInTop3: { type: integer }
+        totalImpressions: { type: integer }
+        totalClicks: { type: integer }
+        daysObserved: { type: integer }
+        topQueries:
+          type: array
+          items: { type: string }
+        # --- Intent-aware fields (added 2026-05) ---
+        # On-intent vs off-intent classification of every top-3 query the page
+        # ranks for, computed as cosine similarity between the query embedding
+        # and the page embedding. Pages whose top-3 rankings are mostly
+        # off-intent (e.g. a tools page accidentally ranking for a competitor
+        # brand name) are NOT pruning candidates — the off-intent queries are
+        # irrelevant noise.
+        onIntentQueries: { type: integer }
+        offIntentQueries: { type: integer }
+        # Sum of monthly search volume across on-intent top-3 queries. Lets
+        # the operator distinguish "0 clicks because no demand" from "0
+        # clicks despite real demand". Null when DataForSEO is unavailable.
+        onIntentVolume: { type: ["integer", "null"] }
+        # Plain-language verdict the UI renders directly.
+        intentVerdict:
+          type: string
+          enum: [on_intent_no_clicks, off_intent_only, mixed, unknown]
+        # Per-query detail for the operator's manual review.
+        queryDetails:
+          type: array
+          items: { $ref: "#/components/schemas/PruningQueryDetail" }
+    PruningQueryDetail:
+      type: object
+      required: [query, intent]
+      properties:
+        query: { type: string }
+        # Best (lowest) position the page reached for this query in the window.
+        bestPosition: { type: ["number", "null"] }
+        impressions: { type: integer }
+        clicks: { type: integer }
+        # Cosine similarity between query embedding and page embedding,
+        # 0..1. Null when an embedding is missing on either side.
+        similarity: { type: ["number", "null"] }
+        intent:
+          type: string
+          enum: [on, off, unknown]
+        # Monthly search volume from DataForSEO. Null when unavailable.
+        searchVolume: { type: ["integer", "null"] }
+    PruningReport:
+      type: object
+      required: [runAt, totalDays, itemCount, items]
+      properties:
+        runAt: { type: ["string", "null"], format: date-time }
+        windowStart: { type: ["string", "null"], format: date }
+        windowEnd: { type: ["string", "null"], format: date }
+        totalDays: { type: integer }
+        itemCount: { type: integer }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PruningSuggestion" }
+    LinkingSettings:
+      type: object
+      required:
+        - similarityThreshold
+        - densityMinPer1000
+        - densityMaxPer1000
+        - hubDensityMaxPer1000
+        - moneyDensityMaxPer1000
+        - shortPageMaxLinks
+      properties:
+        similarityThreshold: { type: number }
+        densityMinPer1000: { type: number }
+        densityMaxPer1000: { type: number }
+        hubDensityMaxPer1000: { type: number }
+        moneyDensityMaxPer1000: { type: number }
+        shortPageMaxLinks: { type: integer }
+        updatedAt: { type: ["string", "null"], format: date-time }
+    LinkingSettingsInput:
+      type: object
+      properties:
+        similarityThreshold: { type: number, minimum: 0, maximum: 1 }
+        densityMinPer1000: { type: number, minimum: 0, maximum: 20 }
+        densityMaxPer1000: { type: number, minimum: 0, maximum: 20 }
+        hubDensityMaxPer1000: { type: number, minimum: 0, maximum: 20 }
+        moneyDensityMaxPer1000: { type: number, minimum: 0, maximum: 20 }
+        shortPageMaxLinks: { type: integer, minimum: 0, maximum: 20 }
+    SuggestionActionInput:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [approve, reject, inserted]
+    QueryLoser:
+      type: object
+      required:
+        - id
+        - weekOf
+        - url
+        - query
+        - severity
+      properties:
+        id: { type: integer }
+        weekOf: { type: string, format: date }
+        url: { type: string }
+        query: { type: string }
+        prevPosition: { type: ["number", "null"] }
+        currPosition: { type: ["number", "null"] }
+        positionChange: { type: ["number", "null"] }
+        prevImpressions: { type: ["integer", "null"] }
+        currImpressions: { type: ["integer", "null"] }
+        impressionsChangePct: { type: ["number", "null"] }
+        severity: { type: string }
+    LoserWeek:
+      type: object
+      required: [weekOf, counts, items]
+      properties:
+        weekOf: { type: ["string", "null"], format: date }
+        counts:
+          type: object
+          required: [critical, high, medium, low]
+          properties:
+            critical: { type: integer }
+            high: { type: integer }
+            medium: { type: integer }
+            low: { type: integer }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/QueryLoser" }
+    QueryInsightsTotals:
+      type: object
+      required: [clicks, impressions, ctr, position]
+      properties:
+        clicks: { type: number }
+        impressions: { type: number }
+        ctr: { type: number }
+        position: { type: number }
+    QueryInsightsPage:
+      type: object
+      required: [url, clicks, impressions, ctr, position]
+      properties:
+        url: { type: string }
+        clicks: { type: number }
+        impressions: { type: number }
+        ctr: { type: number }
+        position: { type: number }
+    QueryInsightsLoser:
+      type: object
+      required: [id, url, severity]
+      properties:
+        id: { type: integer }
+        url: { type: string }
+        prevPosition: { type: ["number", "null"] }
+        currPosition: { type: ["number", "null"] }
+        impressionsChangePct: { type: ["number", "null"] }
+        severity: { type: string }
+    QueryInsightsAi:
+      type: object
+      required: [diagnosis, strategy, aeoGeo, sevenDayActions]
+      properties:
+        diagnosis: { type: string }
+        strategy:
+          type: array
+          items: { type: string }
+        aeoGeo:
+          type: array
+          items: { type: string }
+        sevenDayActions:
+          type: array
+          items: { type: string }
+    QueryInsights:
+      type: object
+      required: [query, windowStart, windowEnd, totals, topPages, recentLosers]
+      properties:
+        query: { type: string }
+        windowStart: { type: string, format: date }
+        windowEnd: { type: string, format: date }
+        totals: { $ref: "#/components/schemas/QueryInsightsTotals" }
+        previousTotals:
+          oneOf:
+            - { $ref: "#/components/schemas/QueryInsightsTotals" }
+            - { type: "null" }
+        topPages:
+          type: array
+          items: { $ref: "#/components/schemas/QueryInsightsPage" }
+        recentLosers:
+          type: array
+          items: { $ref: "#/components/schemas/QueryInsightsLoser" }
+        insight:
+          oneOf:
+            - { $ref: "#/components/schemas/QueryInsightsAi" }
+            - { type: "null" }
+    OptimizeQueueItem:
+      type: object
+      required: [id, url, status, priority, addedAt]
+      properties:
+        id: { type: integer }
+        url: { type: string }
+        status: { type: string }
+        priority: { type: string }
+        notes: { type: ["string", "null"] }
+        briefMarkdown: { type: ["string", "null"] }
+        addedAt: { type: string, format: date-time }
+        completedAt: { type: ["string", "null"], format: date-time }
+    OptimizeQueueInput:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string, minLength: 1 }
+        priority:
+          type: string
+          enum: [low, medium, high]
+        notes: { type: string }
+    TrackedSubmission:
+      type: object
+      required: [id, url, status, createdAt]
+      properties:
+        id: { type: integer }
+        url: { type: string }
+        label: { type: ["string", "null"] }
+        note: { type: ["string", "null"] }
+        status: { type: string }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: ["string", "null"], format: date-time }
+    TrackedSubmissionCreate:
+      type: object
+      required: [urls]
+      properties:
+        urls:
+          type: array
+          items: { type: string, minLength: 1 }
+          minItems: 1
+        note: { type: string }
+    TrackedSubmissionUpdate:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [tracking, done]
+    JobRunResult:
+      type: object
+      required: [jobName, started, message]
+      properties:
+        jobName: { type: string }
+        started: { type: boolean }
+        message: { type: string }
+    GscMetricsTotals:
+      type: object
+      required: [clicks, impressions, ctr, position]
+      properties:
+        clicks: { type: integer }
+        impressions: { type: integer }
+        ctr: { type: number }
+        position: { type: number }
+    GscDeltaPct:
+      type: object
+      required: [clicks, impressions, ctr, position]
+      properties:
+        clicks: { type: number }
+        impressions: { type: number }
+        ctr: { type: number }
+        position: { type: number }
+    GscTimeseriesPoint:
+      type: object
+      required: [date, clicks, impressions, ctr, position]
+      properties:
+        date: { type: string, format: date }
+        clicks: { type: integer }
+        impressions: { type: integer }
+        ctr: { type: number }
+        position: { type: number }
+    GscOverview:
+      type: object
+      required: [startDate, endDate, totals, timeseries]
+      properties:
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        totals: { $ref: "#/components/schemas/GscMetricsTotals" }
+        previousTotals:
+          oneOf:
+            - $ref: "#/components/schemas/GscMetricsTotals"
+            - type: "null"
+        deltaPct:
+          oneOf:
+            - $ref: "#/components/schemas/GscDeltaPct"
+            - type: "null"
+        timeseries:
+          type: array
+          items: { $ref: "#/components/schemas/GscTimeseriesPoint" }
+    GscQueryRow:
+      type: object
+      required: [query, clicks, impressions, ctr, position, isBranded]
+      properties:
+        query: { type: string }
+        clicks: { type: integer }
+        impressions: { type: integer }
+        ctr: { type: number }
+        position: { type: number }
+        isBranded: { type: boolean }
+    GscQueriesResponse:
+      type: object
+      required: [rows, brandedTotals, unbrandedTotals]
+      properties:
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/GscQueryRow" }
+        brandedTotals: { $ref: "#/components/schemas/GscMetricsTotals" }
+        unbrandedTotals: { $ref: "#/components/schemas/GscMetricsTotals" }
+    GscPageRow:
+      type: object
+      required: [url, clicks, impressions, ctr, position]
+      properties:
+        url: { type: string }
+        clicks: { type: integer }
+        impressions: { type: integer }
+        ctr: { type: number }
+        position: { type: number }
+    GscPagesResponse:
+      type: object
+      required: [rows]
+      properties:
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/GscPageRow" }
+    Ga4PageRow:
+      type: object
+      required: [path, engagementRate, sessions, engagedSessions, screenPageViews, avgEngagementTime]
+      properties:
+        path: { type: string }
+        engagementRate: { type: number }
+        sessions: { type: integer }
+        engagedSessions: { type: integer }
+        screenPageViews: { type: integer }
+        avgEngagementTime: { type: number }
+    Ga4Totals:
+      type: object
+      required: [sessions, engagedSessions, screenPageViews, engagementRate, avgEngagementTime]
+      properties:
+        sessions: { type: integer }
+        engagedSessions: { type: integer }
+        screenPageViews: { type: integer }
+        engagementRate: { type: number }
+        avgEngagementTime: { type: number }
+    Ga4PagesResponse:
+      type: object
+      required: [startDate, endDate, rows, totals]
+      properties:
+        startDate: { type: string }
+        endDate: { type: string }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/Ga4PageRow" }
+        totals: { $ref: "#/components/schemas/Ga4Totals" }
+    ReportQueryRow:
+      type: object
+      required: [query, position, impressions, clicks]
+      properties:
+        query: { type: string }
+        position: { type: number }
+        impressions: { type: integer }
+        clicks: { type: integer }
+    PageReportRow:
+      type: object
+      required: [path, title, position, impressions, clicks, ctr, sessions, engagementRate, queryCount, topQueries]
+      properties:
+        path: { type: string }
+        title: { type: string }
+        position: { type: number }
+        impressions: { type: integer }
+        clicks: { type: integer }
+        ctr: { type: number }
+        sessions: { type: integer }
+        engagementRate: { type: number }
+        queryCount: { type: integer }
+        topQueries:
+          type: array
+          items: { $ref: "#/components/schemas/ReportQueryRow" }
+    ReportTotals:
+      type: object
+      required: [impressions, clicks, sessions, position, engagementRate]
+      properties:
+        impressions: { type: integer }
+        clicks: { type: integer }
+        sessions: { type: integer }
+        position: { type: number }
+        engagementRate: { type: number }
+    PageReportResponse:
+      type: object
+      required: [startDate, endDate, ga4Notice, rows, totals]
+      properties:
+        startDate: { type: string }
+        endDate: { type: string }
+        ga4Notice: { type: string }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/PageReportRow" }
+        totals: { $ref: "#/components/schemas/ReportTotals" }
+    GscDimensionRow:
+      type: object
+      required: [key, clicks, impressions, ctr, position]
+      properties:
+        key: { type: string }
+        clicks: { type: integer }
+        impressions: { type: integer }
+        ctr: { type: number }
+        position: { type: number }
+    GscGeoResponse:
+      type: object
+      required: [countries, devices]
+      properties:
+        countries:
+          type: array
+          items: { $ref: "#/components/schemas/GscDimensionRow" }
+        devices:
+          type: array
+          items: { $ref: "#/components/schemas/GscDimensionRow" }
+    GscSitemap:
+      type: object
+      required: [path]
+      properties:
+        path: { type: string }
+        lastSubmitted: { type: ["string", "null"], format: date-time }
+        lastDownloaded: { type: ["string", "null"], format: date-time }
+        warnings: { type: ["integer", "null"] }
+        errors: { type: ["integer", "null"] }
+        isPending: { type: ["boolean", "null"] }
+        contents:
+          type: array
+          items:
+            type: object
+            required: [type, submitted, indexed]
+            properties:
+              type: { type: string }
+              submitted: { type: integer }
+              indexed: { type: integer }
+    GscIndexingResponse:
+      type: object
+      required: [sitemaps, lastChecked, notIndexedCandidates]
+      properties:
+        sitemaps:
+          type: array
+          items: { $ref: "#/components/schemas/GscSitemap" }
+        lastChecked: { type: string, format: date-time }
+        notice: { type: ["string", "null"] }
+        notIndexedCandidates:
+          type: array
+          description: URLs known to our crawl inventory that recorded 0 GSC impressions in the last 90 days. Candidates for URL Inspection.
+          items:
+            type: object
+            required: [url, reason]
+            properties:
+              url: { type: string }
+              reason: { type: string, description: "Heuristic reason — e.g. no-impressions-90d" }
+              lastSeenInGsc: { type: ["string", "null"], format: date }
+        candidatesWindowStart: { type: ["string", "null"], format: date }
+        candidatesWindowEnd: { type: ["string", "null"], format: date }
+        autoInspectedSample:
+          type: array
+          description: Server-side URL Inspection of the first few candidates (cached 24h) so true GSC reasons appear without user action.
+          items:
+            type: object
+            required: [url]
+            properties:
+              url: { type: string }
+              verdict: { type: ["string", "null"] }
+              coverageState: { type: ["string", "null"] }
+              indexingState: { type: ["string", "null"] }
+              robotsTxtState: { type: ["string", "null"] }
+        autoInspectedReasons:
+          type: array
+          items:
+            type: object
+            required: [reason, count]
+            properties:
+              reason: { type: string }
+              count: { type: integer }
+    GscInspectionResult:
+      type: object
+      required: [url, fetchedAt]
+      properties:
+        url: { type: string }
+        fetchedAt: { type: string, format: date-time }
+        verdict: { type: ["string", "null"] }
+        coverageState: { type: ["string", "null"] }
+        robotsTxtState: { type: ["string", "null"] }
+        indexingState: { type: ["string", "null"] }
+        lastCrawlTime: { type: ["string", "null"], format: date-time }
+        googleCanonical: { type: ["string", "null"] }
+        userCanonical: { type: ["string", "null"] }
+        pageFetchState: { type: ["string", "null"] }
+        mobileUsability: { type: ["string", "null"] }
+        raw: { type: ["object", "null"], additionalProperties: true }
+    GscCwvMetric:
+      type: object
+      required: [metric, p75, band, distribution]
+      properties:
+        metric: { type: string }
+        p75: { type: number }
+        band: { type: string, enum: [good, ni, poor, unknown] }
+        distribution:
+          type: array
+          items:
+            type: object
+            required: [label, density]
+            properties:
+              label: { type: string }
+              density: { type: number }
+    GscCwvFormFactor:
+      type: object
+      required: [formFactor, metrics]
+      properties:
+        formFactor: { type: string, enum: [PHONE, DESKTOP, ALL_FORM_FACTORS] }
+        metrics:
+          type: array
+          items: { $ref: "#/components/schemas/GscCwvMetric" }
+    GscCwvResponse:
+      type: object
+      required: [scope, fetchedAt]
+      properties:
+        scope: { type: string }
+        fetchedAt: { type: string, format: date-time }
+        formFactors:
+          type: array
+          items: { $ref: "#/components/schemas/GscCwvFormFactor" }
+        notice: { type: ["string", "null"] }
+    GscLinkRow:
+      type: object
+      required: [key, count]
+      properties:
+        key: { type: string }
+        count: { type: integer }
+    GscLinksResponse:
+      type: object
+      required: [topInternalTargets, topLinkingDomains, topExternalLinkingDomains]
+      properties:
+        topInternalTargets:
+          type: array
+          items: { $ref: "#/components/schemas/GscLinkRow" }
+        topLinkingDomains:
+          type: array
+          items: { $ref: "#/components/schemas/GscLinkRow" }
+        topExternalLinkingDomains:
+          type: array
+          description: External referring domains pulled from DataForSEO Backlinks API.
+          items:
+            type: object
+            required: [domain, backlinks]
+            properties:
+              domain: { type: string }
+              backlinks: { type: integer }
+              rank: { type: ["integer", "null"] }
+              firstSeen: { type: ["string", "null"] }
+              lastSeen: { type: ["string", "null"] }
+        externalNotice: { type: ["string", "null"] }
+        notice: { type: ["string", "null"] }
+    GscBatchInspectionRequest:
+      type: object
+      required: [urls]
+      properties:
+        urls:
+          type: array
+          maxItems: 10
+          items: { type: string }
+    GscBatchInspectionResponse:
+      type: object
+      required: [inspected, results, reasons]
+      properties:
+        inspected: { type: integer }
+        results:
+          type: array
+          items:
+            type: object
+            required: [url]
+            properties:
+              url: { type: string }
+              verdict: { type: ["string", "null"] }
+              coverageState: { type: ["string", "null"] }
+              indexingState: { type: ["string", "null"] }
+              robotsTxtState: { type: ["string", "null"] }
+              error: { type: ["string", "null"] }
+        reasons:
+          type: array
+          items:
+            type: object
+            required: [reason, count]
+            properties:
+              reason: { type: string }
+              count: { type: integer }
+    GscUrlDrilldown:
+      type: object
+      required: [url, queries, timeseries]
+      properties:
+        url: { type: string }
+        queries:
+          type: array
+          items: { $ref: "#/components/schemas/GscQueryRow" }
+        timeseries:
+          type: array
+          items: { $ref: "#/components/schemas/GscTimeseriesPoint" }
+    GscChatMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role: { type: string, enum: [user, assistant] }
+        content: { type: string }
+    GscChatRequest:
+      type: object
+      required: [startDate, endDate]
+      properties:
+        messages:
+          type: array
+          items: { $ref: "#/components/schemas/GscChatMessage" }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        url: { type: ["string", "null"] }
+        includeDefault: { type: boolean }
+    GscChatResponse:
+      type: object
+      required: [reply, contextSummary]
+      properties:
+        reply: { type: string }
+        contextSummary: { type: string }
+    WpClassification:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string }
+        tier: { type: ["integer", "null"] }
+        centralEntity: { type: ["string", "null"] }
+        subEntity: { type: ["string", "null"] }
+        parentRootUrl: { type: ["string", "null"] }
+        canonicalQuery: { type: ["string", "null"] }
+        anchorVariants:
+          type: array
+          items: { type: string }
+        linkQuotaMin: { type: ["integer", "null"] }
+        linkQuotaMax: { type: ["integer", "null"] }
+        topicalBordersMatch: { type: ["boolean", "null"] }
+        manuallyEdited: { type: ["boolean", "null"] }
+        classifiedAt: { type: ["string", "null"], format: date-time }
+        title: { type: ["string", "null"] }
+        wordCount: { type: ["integer", "null"] }
+    WpClassificationList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/WpClassification" }
+    WpClassificationPatch:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string }
+        tier: { type: ["integer", "null"], minimum: 1, maximum: 4 }
+        centralEntity: { type: ["string", "null"] }
+        subEntity: { type: ["string", "null"] }
+        parentRootUrl: { type: ["string", "null"] }
+        canonicalQuery: { type: ["string", "null"] }
+        anchorVariants:
+          type: array
+          items: { type: string }
+        topicalBordersMatch: { type: ["boolean", "null"] }
+    WpExcludeItem:
+      type: object
+      required: [id, pattern]
+      properties:
+        id: { type: integer }
+        pattern: { type: string }
+        note: { type: ["string", "null"] }
+        createdAt: { type: ["string", "null"], format: date-time }
+    WpExcludeList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/WpExcludeItem" }
+    WpExcludeCreate:
+      type: object
+      required: [pattern]
+      properties:
+        pattern: { type: string, minLength: 1 }
+        note: { type: ["string", "null"] }
+    OkResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok: { type: boolean }
+    LinkLookupInputItem:
+      type: object
+      required: [kind, value]
+      properties:
+        kind:
+          type: string
+          enum: [url, text]
+        value: { type: string, minLength: 1 }
+        label: { type: ["string", "null"] }
+    LinkLookupCreateInput:
+      type: object
+      required: [inputs]
+      properties:
+        inputs:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: { $ref: "#/components/schemas/LinkLookupInputItem" }
+    LinkLookupCandidate:
+      type: object
+      required: [url, similarity, gscClicks, gscImpressions, gscBoost, total]
+      properties:
+        url: { type: string }
+        title: { type: ["string", "null"] }
+        similarity: { type: number }
+        gscClicks: { type: integer }
+        gscImpressions: { type: integer }
+        gscBoost: { type: number }
+        total: { type: number }
+        anchorHint: { type: ["string", "null"] }
+        alreadyLinked:
+          type: boolean
+          description: True when this page is already linked in the relevant direction (existing in-body link), so it is not a net-new suggestion.
+    LinkLookupExistingLink:
+      type: object
+      required: [url]
+      description: An internal in-body link that already exists on the looked-up page (either direction).
+      properties:
+        url: { type: string }
+        title: { type: ["string", "null"] }
+        anchorText: { type: ["string", "null"] }
+    LinkLookup:
+      type: object
+      required: [id, kind, inputValue, status, createdAt, outboundResults, inboundResults]
+      properties:
+        id: { type: integer }
+        kind:
+          type: string
+          enum: [url, text]
+        label: { type: ["string", "null"] }
+        inputValue: { type: string }
+        resolvedUrl: { type: ["string", "null"] }
+        fetchedTitle: { type: ["string", "null"] }
+        fetchedH1: { type: ["string", "null"] }
+        fetchedExcerpt: { type: ["string", "null"] }
+        wordCount: { type: ["integer", "null"] }
+        fetcherUsed: { type: ["string", "null"] }
+        status:
+          type: string
+          enum: [pending, ready, failed]
+        error: { type: ["string", "null"] }
+        outboundResults:
+          type: array
+          items: { $ref: "#/components/schemas/LinkLookupCandidate" }
+        inboundResults:
+          type: array
+          items: { $ref: "#/components/schemas/LinkLookupCandidate" }
+        existingOutbound:
+          type: array
+          description: In-body internal links this page already points TO, with current anchor text.
+          items: { $ref: "#/components/schemas/LinkLookupExistingLink" }
+        existingInbound:
+          type: array
+          description: Internal pages that already link IN to this page via in-body links, with current anchor text.
+          items: { $ref: "#/components/schemas/LinkLookupExistingLink" }
+        durationMs: { type: ["number", "null"] }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: ["string", "null"], format: date-time }
+    JobStatus:
+      type: object
+      required: [name, running]
+      properties:
+        name: { type: string }
+        running: { type: boolean }
+        lastRunAt: { type: ["string", "null"], format: date-time }
+        lastStatus: { type: ["string", "null"] }
+        lastDurationMs: { type: ["integer", "null"] }
+        lastError: { type: ["string", "null"] }
+    ContentNgramHit:
+      type: object
+      required: [gram, count]
+      properties:
+        gram: { type: string }
+        count: { type: integer }
+    ContentOutlineNode:
+      type: object
+      required: [level, text]
+      properties:
+        level: { type: integer }
+        text: { type: string }
+    ContentCompetitorOutline:
+      type: object
+      required: [url, headings]
+      properties:
+        url: { type: string }
+        title: { type: ["string", "null"] }
+        headings:
+          type: array
+          items: { $ref: "#/components/schemas/ContentOutlineNode" }
+    ContentNgramBuckets:
+      type: object
+      required: [unigrams, bigrams, trigrams, fourgrams]
+      properties:
+        unigrams: { type: array, items: { $ref: "#/components/schemas/ContentNgramHit" } }
+        bigrams: { type: array, items: { $ref: "#/components/schemas/ContentNgramHit" } }
+        trigrams: { type: array, items: { $ref: "#/components/schemas/ContentNgramHit" } }
+        fourgrams: { type: array, items: { $ref: "#/components/schemas/ContentNgramHit" } }
+    ContentGrammar:
+      type: object
+      required: [properNouns, commonNouns, synonyms, antonyms, hyponyms, hypernyms, meronyms, holonyms]
+      properties:
+        properNouns: { type: array, items: { type: string } }
+        commonNouns: { type: array, items: { type: string } }
+        synonyms: { type: array, items: { type: string } }
+        antonyms: { type: array, items: { type: string } }
+        hyponyms: { type: array, items: { type: string } }
+        hypernyms: { type: array, items: { type: string } }
+        meronyms: { type: array, items: { type: string } }
+        holonyms: { type: array, items: { type: string } }
+    ContentResearchInput:
+      type: object
+      required: [keyword]
+      properties:
+        keyword: { type: string, minLength: 1 }
+        competitorUrls:
+          type: array
+          items: { type: string }
+    ContentResearchResult:
+      type: object
+      required: [keyword, competitorOutlines, ngrams, aiEntities, competitorEntities, nlpKeywords, skipGrams, grammar]
+      properties:
+        keyword: { type: string }
+        competitorOutlines:
+          type: array
+          items: { $ref: "#/components/schemas/ContentCompetitorOutline" }
+        ngrams: { $ref: "#/components/schemas/ContentNgramBuckets" }
+        aiEntities: { type: array, items: { type: string } }
+        competitorEntities: { type: array, items: { type: string } }
+        nlpKeywords: { type: array, items: { type: string } }
+        skipGrams: { type: array, items: { type: string } }
+        grammar: { $ref: "#/components/schemas/ContentGrammar" }
+    ContentWriteInput:
+      type: object
+      required: [keyword, mode]
+      properties:
+        keyword: { type: string, minLength: 1 }
+        mode: { type: string, enum: [quick, express] }
+        competitorUrls:
+          type: array
+          items: { type: string }
+        wordCount: { type: integer, minimum: 300, maximum: 6000 }
+        notes: { type: string }
+    ContentQualityScores:
+      type: object
+      required: [strategicAlignment, structure, originality, engagement, formatting, visualSupport]
+      properties:
+        strategicAlignment: { type: integer }
+        structure: { type: integer }
+        originality: { type: integer }
+        engagement: { type: integer }
+        formatting: { type: integer }
+        visualSupport: { type: integer }
+    ContentQualityGate:
+      type: object
+      required: [scores, total, verdict, violations, notes]
+      properties:
+        scores: { $ref: "#/components/schemas/ContentQualityScores" }
+        total: { type: integer }
+        verdict: { type: string }
+        violations: { type: array, items: { type: string } }
+        notes: { type: array, items: { type: string } }
+    ContentWriteResult:
+      type: object
+      required: [keyword, mode, article, qualityGate, wordCount]
+      properties:
+        keyword: { type: string }
+        mode: { type: string }
+        article: { type: string }
+        wordCount: { type: integer }
+        qualityGate: { $ref: "#/components/schemas/ContentQualityGate" }
+        research:
+          allOf:
+            - $ref: "#/components/schemas/ContentResearchResult"
+          nullable: true
+          description: Competitor research (entities, NLP, n-grams, outlines) extracted from the supplied competitor URLs. Present when competitor URLs are provided.
+    ContentAuditTextInput:
+      type: object
+      required: [keyword]
+      properties:
+        keyword: { type: string, minLength: 1 }
+        url: { type: string }
+        text: { type: string }
+    ContentEntitiesAudit:
+      type: object
+      required: [keyword, score, present, expected, missing]
+      properties:
+        keyword: { type: string }
+        score: { type: integer }
+        present: { type: array, items: { type: string } }
+        expected: { type: array, items: { type: string } }
+        missing: { type: array, items: { type: string } }
+    ContentNlpAudit:
+      type: object
+      required: [keyword, score, present, expected, missing]
+      properties:
+        keyword: { type: string }
+        score: { type: integer }
+        present: { type: array, items: { type: string } }
+        expected: { type: array, items: { type: string } }
+        missing: { type: array, items: { type: string } }
+    ContentNgramsInput:
+      type: object
+      required: [competitorUrls]
+      properties:
+        url: { type: string }
+        text: { type: string }
+        competitorUrls:
+          type: array
+          items: { type: string }
+          minItems: 1
+    ContentNgramsAudit:
+      type: object
+      required: [draft, competitor, gaps]
+      properties:
+        draft: { $ref: "#/components/schemas/ContentNgramBuckets" }
+        competitor: { $ref: "#/components/schemas/ContentNgramBuckets" }
+        gaps: { type: array, items: { type: string } }
+    StructuralTarget:
+      type: object
+      required:
+        - url
+        - isOrphan
+        - isDeadEnd
+        - inboundCount
+        - outboundCount
+        - internalPagerank
+        - hasEmbedding
+        - pendingSuggestions
+      properties:
+        url: { type: string }
+        title: { type: ["string", "null"] }
+        isOrphan: { type: boolean }
+        isDeadEnd: { type: boolean }
+        inboundCount: { type: integer }
+        outboundCount: { type: integer }
+        internalPagerank: { type: number }
+        hasEmbedding: { type: boolean }
+        pendingSuggestions: { type: integer }
+    StructuralTargets:
+      type: object
+      required: [orphanCount, deadEndCount, bothCount, items]
+      properties:
+        orphanCount: { type: integer }
+        deadEndCount: { type: integer }
+        bothCount: { type: integer }
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/StructuralTarget"
+    StructuralSuggestInput:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string, minLength: 1 }
+    StructuralSuggestResult:
+      type: object
+      required: [url, role, generated, skipped]
+      properties:
+        url: { type: string }
+        role:
+          type: string
+          enum: [orphan, dead_end, both, none]
+        generated: { type: integer }
+        skipped: { type: boolean }
+        reason: { type: ["string", "null"] }
+    AnchorPage:
+      type: object
+      required: [url, internalPagerank, inboundCount]
+      properties:
+        url: { type: string }
+        title: { type: ["string", "null"] }
+        internalPagerank: { type: number }
+        inboundCount: { type: integer }
+        tier: { type: ["integer", "null"] }
+    DemandQuery:
+      type: object
+      required: [query, impressions, similarity]
+      properties:
+        query: { type: string }
+        impressions: { type: integer }
+        similarity: { type: number }
+    SnapshotHealth:
+      type: object
+      required:
+        - totalPages
+        - pagesWithEmbedding
+        - pagesTracked
+        - orphanCount
+        - deadEndCount
+        - totalInternalLinks
+        - avgInternalPagerank
+      properties:
+        totalPages: { type: integer }
+        pagesWithEmbedding: { type: integer }
+        pagesTracked: { type: integer }
+        orphanCount: { type: integer }
+        deadEndCount: { type: integer }
+        totalInternalLinks: { type: integer }
+        avgInternalPagerank: { type: number }
+        lastCrawledAt: { type: ["string", "null"] }
+    SnapshotCentralEntity:
+      type: object
+      required: [anchorPageCount, anchorPages]
+      properties:
+        label: { type: ["string", "null"] }
+        anchorPageCount: { type: integer }
+        anchorPages:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnchorPage"
+    SnapshotDemandSplit:
+      type: object
+      required: [queryCount, impressions, impressionsPct]
+      properties:
+        queryCount: { type: integer }
+        impressions: { type: integer }
+        impressionsPct: { type: number }
+    SnapshotDemand:
+      type: object
+      required:
+        - queriesAnalyzed
+        - totalImpressions
+        - onCore
+        - offCore
+        - worstOffenders
+        - topOnCore
+      properties:
+        queriesAnalyzed: { type: integer }
+        totalImpressions: { type: integer }
+        onCore: { $ref: "#/components/schemas/SnapshotDemandSplit" }
+        offCore: { $ref: "#/components/schemas/SnapshotDemandSplit" }
+        worstOffenders:
+          type: array
+          items:
+            $ref: "#/components/schemas/DemandQuery"
+        topOnCore:
+          type: array
+          items:
+            $ref: "#/components/schemas/DemandQuery"
+    AuthoritySnapshot:
+      type: object
+      required: [generatedAt, threshold, health, centralEntity, demand]
+      properties:
+        generatedAt: { type: string }
+        threshold: { type: number }
+        health: { $ref: "#/components/schemas/SnapshotHealth" }
+        centralEntity: { $ref: "#/components/schemas/SnapshotCentralEntity" }
+        demand: { $ref: "#/components/schemas/SnapshotDemand" }
+    LoserWeekOption:
+      type: object
+      required: [weekOf, pageCount, queryCount]
+      properties:
+        weekOf: { type: string, format: date }
+        pageCount: { type: integer }
+        queryCount: { type: integer }
+    LoserPageQuery:
+      type: object
+      required: [id, query, severity, watchlisted]
+      properties:
+        id: { type: integer }
+        query: { type: string }
+        severity: { type: string }
+        prevPosition: { type: ["number", "null"] }
+        currPosition: { type: ["number", "null"] }
+        positionChange: { type: ["number", "null"] }
+        prevImpressions: { type: ["integer", "null"] }
+        currImpressions: { type: ["integer", "null"] }
+        impressionsChangePct: { type: ["number", "null"] }
+        watchlisted: { type: boolean }
+    LoserPage:
+      type: object
+      required:
+        - url
+        - queryCount
+        - counts
+        - impressionsLost
+        - worstPositionDrop
+        - watchlistMatch
+        - targetKeywordCount
+        - queries
+      properties:
+        url: { type: string }
+        queryCount: { type: integer }
+        counts:
+          type: object
+          required: [critical, high, medium, low]
+          properties:
+            critical: { type: integer }
+            high: { type: integer }
+            medium: { type: integer }
+            low: { type: integer }
+        impressionsLost: { type: integer }
+        worstPositionDrop: { type: ["number", "null"] }
+        watchlistMatch: { type: boolean }
+        targetKeywordCount: { type: integer }
+        queries:
+          type: array
+          items:
+            $ref: "#/components/schemas/LoserPageQuery"
+    LoserPagesResponse:
+      type: object
+      required: [weekOf, pages]
+      properties:
+        weekOf: { type: ["string", "null"], format: date }
+        pages:
+          type: array
+          items:
+            $ref: "#/components/schemas/LoserPage"
+    WatchlistQuery:
+      type: object
+      required: [id, query]
+      properties:
+        id: { type: integer }
+        query: { type: string }
+        addedAt: { type: ["string", "null"] }
+    WatchlistInput:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 200 }
+    PageTargetKeyword:
+      type: object
+      required: [id, url, keyword]
+      properties:
+        id: { type: integer }
+        url: { type: string }
+        keyword: { type: string }
+        addedAt: { type: ["string", "null"] }
+    PageKeywordInput:
+      type: object
+      required: [url, keyword]
+      properties:
+        url: { type: string, minLength: 1 }
+        keyword: { type: string, minLength: 1, maxLength: 200 }
+    KbDocument:
+      type: object
+      required: [id, title, charCount, chunkCount]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        charCount: { type: integer }
+        chunkCount: { type: integer }
+        createdAt: { type: ["string", "null"] }
+    KbDocumentInput:
+      type: object
+      required: [title, content]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 300 }
+        content: { type: string, minLength: 1, maxLength: 500000 }

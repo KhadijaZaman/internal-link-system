@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>SemanticsX Content Suite — Complete Methodology & Documentation</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f6fb;color:#1a1a2e;line-height:1.7;}
+  a{color:#6c3ce1;text-decoration:none;}
+
+  /* COVER */
+  .cover{background:linear-gradient(135deg,#4f2adb 0%,#9b27c7 50%,#e91e8c 100%);color:#fff;padding:80px 60px;min-height:340px;display:flex;flex-direction:column;justify-content:center;}
+  .cover h1{font-size:2.8rem;font-weight:800;margin-bottom:12px;letter-spacing:-1px;}
+  .cover .subtitle{font-size:1.25rem;opacity:.85;margin-bottom:24px;}
+  .cover .meta{display:flex;gap:32px;margin-top:20px;}
+  .cover .meta span{background:rgba(255,255,255,.15);border-radius:8px;padding:6px 16px;font-size:.9rem;}
+  .badge{display:inline-block;background:rgba(255,255,255,.2);border-radius:20px;padding:4px 14px;font-size:.85rem;margin-right:8px;margin-top:8px;}
+
+  /* NAV / TOC */
+  .toc{background:#fff;border-left:5px solid #6c3ce1;margin:40px 60px;padding:30px 40px;border-radius:12px;box-shadow:0 2px 20px rgba(108,60,225,.08);}
+  .toc h2{color:#6c3ce1;font-size:1.3rem;margin-bottom:18px;display:flex;align-items:center;gap:8px;}
+  .toc ol{list-style:decimal;padding-left:22px;}
+  .toc li{margin:8px 0;font-size:1rem;}
+  .toc a{color:#4f2adb;font-weight:500;}
+  .toc a:hover{text-decoration:underline;}
+  .toc-sub{list-style:disc;padding-left:22px;margin-top:6px;}
+  .toc-sub li{font-size:.92rem;margin:4px 0;}
+
+  /* SECTION WRAPPER */
+  .section{margin:40px 60px;background:#fff;border-radius:16px;box-shadow:0 2px 24px rgba(108,60,225,.07);overflow:hidden;}
+  .section-header{padding:32px 40px;background:linear-gradient(90deg,#6c3ce1,#c026d3);color:#fff;display:flex;align-items:center;gap:20px;}
+  .section-header .icon{width:56px;height:56px;background:rgba(255,255,255,.2);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.8rem;flex-shrink:0;}
+  .section-header h2{font-size:1.7rem;font-weight:700;margin-bottom:4px;}
+  .section-header p{opacity:.85;font-size:.95rem;}
+  .section-header .url-badge{display:inline-block;background:rgba(255,255,255,.2);border-radius:6px;padding:2px 10px;font-size:.8rem;font-family:monospace;margin-top:6px;}
+  .section-body{padding:36px 40px;}
+
+  h3{color:#4f2adb;font-size:1.15rem;margin:28px 0 12px;font-weight:700;display:flex;align-items:center;gap:8px;}
+  h3::before{content:'';display:inline-block;width:4px;height:18px;background:#6c3ce1;border-radius:2px;}
+  h4{color:#1a1a2e;font-size:1rem;margin:18px 0 8px;font-weight:600;}
+  p{margin:10px 0;font-size:.97rem;color:#333;}
+  ul,ol{padding-left:22px;margin:10px 0;}
+  li{margin:5px 0;font-size:.95rem;}
+
+  /* TABLES */
+  .table-wrap{overflow-x:auto;margin:16px 0;}
+  table{width:100%;border-collapse:collapse;font-size:.92rem;}
+  thead tr{background:linear-gradient(90deg,#6c3ce1,#c026d3);color:#fff;}
+  th{padding:12px 16px;text-align:left;font-weight:600;}
+  td{padding:11px 16px;border-bottom:1px solid #ede9f8;}
+  tr:nth-child(even){background:#f7f5ff;}
+  tr:hover{background:#eee9ff;}
+
+  /* TAGS / PILLS */
+  .tag-group{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;}
+  .tag{display:inline-block;background:#ede9ff;color:#4f2adb;border-radius:20px;padding:4px 14px;font-size:.85rem;font-weight:500;border:1px solid #d4caff;}
+  .tag.green{background:#e6f9f0;color:#15803d;border-color:#a7f3d0;}
+  .tag.orange{background:#fff7e6;color:#d97706;border-color:#fcd34d;}
+  .tag.red{background:#fff1f0;color:#dc2626;border-color:#fca5a5;}
+  .tag.teal{background:#e6fafb;color:#0e7490;border-color:#a5f3fc;}
+  .tag.pink{background:#fff0f8;color:#be185d;border-color:#f9a8d4;}
+
+  /* CALLOUT BOXES */
+  .callout{border-radius:10px;padding:16px 20px;margin:16px 0;display:flex;gap:12px;align-items:flex-start;}
+  .callout.info{background:#eff6ff;border-left:4px solid #3b82f6;}
+  .callout.warn{background:#fffbeb;border-left:4px solid #f59e0b;}
+  .callout.tip{background:#f0fdf4;border-left:4px solid #22c55e;}
+  .callout.critical{background:#fef2f2;border-left:4px solid #ef4444;}
+  .callout .icon{font-size:1.3rem;flex-shrink:0;}
+  .callout .text{font-size:.93rem;color:#374151;}
+  .callout strong{display:block;margin-bottom:4px;font-weight:700;}
+
+  /* SCORE CARDS */
+  .score-row{display:flex;gap:16px;margin:16px 0;flex-wrap:wrap;}
+  .score-card{flex:1;min-width:120px;background:#f7f5ff;border-radius:12px;padding:16px;text-align:center;border:2px solid #ede9ff;}
+  .score-card .num{font-size:2rem;font-weight:800;color:#6c3ce1;}
+  .score-card .num.green{color:#16a34a;}
+  .score-card .num.orange{color:#d97706;}
+  .score-card .num.red{color:#dc2626;}
+  .score-card .label{font-size:.8rem;color:#6b7280;margin-top:4px;}
+
+  /* STEP FLOW (horizontal steps) */
+  .steps-flow{display:flex;flex-wrap:wrap;gap:0;margin:20px 0;align-items:stretch;}
+  .step-box{flex:1;min-width:100px;background:#f7f5ff;border:1px solid #e2d9ff;padding:10px 8px;text-align:center;font-size:.78rem;font-weight:600;color:#4f2adb;position:relative;}
+  .step-box.done{background:#e6f9f0;border-color:#a7f3d0;color:#15803d;}
+  .step-box.active{background:linear-gradient(135deg,#6c3ce1,#c026d3);color:#fff;border-color:#6c3ce1;}
+  .step-box .step-num{display:block;font-size:.65rem;opacity:.7;margin-bottom:3px;}
+  .step-arrow{display:flex;align-items:center;color:#9ca3af;font-size:.9rem;padding:0 2px;}
+
+  /* PIPELINE DIAGRAM */
+  .pipeline{background:#0f172a;border-radius:16px;padding:32px;margin:24px 0;color:#fff;}
+  .pipeline h3{color:#a78bfa;border:none;margin-top:0;}
+  .pipeline h3::before{background:#a78bfa;}
+  .pipe-row{display:flex;align-items:center;gap:0;flex-wrap:wrap;margin:12px 0;}
+  .pipe-node{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 16px;font-size:.85rem;color:#e2e8f0;text-align:center;min-width:130px;}
+  .pipe-node.tool{background:linear-gradient(135deg,#4f2adb22,#c026d322);border-color:#6c3ce1;color:#c4b5fd;}
+  .pipe-node.output{background:linear-gradient(135deg,#05966922,#10b98122);border-color:#10b981;color:#6ee7b7;}
+  .pipe-node.input{background:linear-gradient(135deg,#d9770622,#f59e0b22);border-color:#f59e0b;color:#fcd34d;}
+  .pipe-arrow{color:#475569;font-size:1.4rem;padding:0 6px;flex-shrink:0;}
+  .pipe-label{font-size:.7rem;color:#64748b;margin-top:4px;}
+
+  /* GRAMMAR TABLE SPECIAL */
+  .grammar-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin:16px 0;}
+  .grammar-card{background:#f7f5ff;border-radius:12px;padding:16px;border:1px solid #e2d9ff;}
+  .grammar-card h5{color:#4f2adb;font-size:.9rem;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;}
+  .grammar-card .items{display:flex;flex-wrap:wrap;gap:6px;}
+  .grammar-card .item{background:#fff;border:1px solid #d4caff;border-radius:16px;padding:3px 10px;font-size:.82rem;color:#374151;}
+
+  /* DIVIDER */
+  .divider{height:2px;background:linear-gradient(90deg,#6c3ce1,#e91e8c,transparent);margin:0 40px 0;}
+
+  /* METHODOLOGY FLOW (vertical) */
+  .method-flow{margin:24px 0;}
+  .method-step{display:flex;gap:0;margin-bottom:0;}
+  .method-left{display:flex;flex-direction:column;align-items:center;width:56px;flex-shrink:0;}
+  .method-circle{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#6c3ce1,#c026d3);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.9rem;flex-shrink:0;}
+  .method-line{width:2px;flex:1;background:linear-gradient(to bottom,#c026d3,#e91e8c);min-height:32px;}
+  .method-content{padding:6px 0 24px 16px;flex:1;}
+  .method-content h4{color:#4f2adb;font-weight:700;font-size:1rem;margin-bottom:4px;}
+  .method-content p{font-size:.9rem;color:#555;}
+
+  /* FOOTER */
+  .footer{background:#1a1a2e;color:#8892a4;text-align:center;padding:32px;font-size:.88rem;margin-top:60px;}
+  .footer strong{color:#a78bfa;}
+
+  /* NLP CAT CARDS */
+  .nlp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin:16px 0;}
+  .nlp-card{border-radius:12px;padding:16px;border:2px solid;}
+  .nlp-card.primary{background:#f0f4ff;border-color:#6c3ce1;}
+  .nlp-card.secondary{background:#f0fff8;border-color:#10b981;}
+  .nlp-card.lsi{background:#fff8f0;border-color:#f59e0b;}
+  .nlp-card.tech{background:#fff0f8;border-color:#e91e8c;}
+  .nlp-card h5{font-size:.85rem;font-weight:700;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;}
+  .nlp-card.primary h5{color:#4f2adb;}
+  .nlp-card.secondary h5{color:#059669;}
+  .nlp-card.lsi h5{color:#d97706;}
+  .nlp-card.tech h5{color:#be185d;}
+
+  @media print{.section{box-shadow:none;border:1px solid #ddd;}.cover{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+</style>
+</head>
+<body>
+
+
+<!-- COVER PAGE -->
+<div class="cover">
+  <div style="font-size:.9rem;opacity:.7;margin-bottom:16px;">SEMANTICSX PLATFORM DOCUMENTATION</div>
+  <h1>Content Creation Suite</h1>
+  <div class="subtitle">Complete Methodology, Workflow Logic &amp; Sample Outputs</div>
+  <div style="margin-top:8px;">
+    <span class="badge">✍️ Content Writer</span>
+    <span class="badge">📋 Outline Creator</span>
+    <span class="badge">🔍 Entities Extractor</span>
+    <span class="badge">⚡ Entities Generator</span>
+    <span class="badge">#️⃣ N-Grams Extractor</span>
+    <span class="badge">🧠 NLP Extractor</span>
+  </div>
+  <div class="meta" style="margin-top:32px;">
+    <span>📅 Date: April 22, 2026</span>
+    <span>🔑 Sample Keyword: AI SEO</span>
+    <span>📄 6 Tools Documented</span>
+    <span>🚀 Express Mode: 13 Steps</span>
+  </div>
+</div>
+
+<!-- TABLE OF CONTENTS -->
+<div class="toc">
+  <h2>📑 Table of Contents</h2>
+  <ol>
+    <li><a href="#overview">Platform Overview &amp; Core Philosophy</a></li>
+    <li><a href="#pipeline">Visual Pipeline Map — How All Tools Connect</a></li>
+    <li><a href="#tool1">Content Writer — 13-Step Express Mode</a>
+      <ul class="toc-sub">
+        <li>Quick Mode vs Express Mode</li>
+        <li>All 13 Steps Documented</li>
+        <li>Sample Output for "AI SEO"</li>
+      </ul>
+    </li>
+    <li><a href="#tool2">Outline Creator</a></li>
+    <li><a href="#tool3">Entities Extractor</a></li>
+    <li><a href="#tool4">Entities Generator</a></li>
+    <li><a href="#tool5">N-Grams Extractor</a></li>
+    <li><a href="#tool6">NLP Extractor</a></li>
+    <li><a href="#methodology">Unified Methodology &amp; Use Case Logic</a></li>
+    <li><a href="#glossary">Glossary of Key Terms</a></li>
+  </ol>
+</div>
+
+<!-- SECTION 1: OVERVIEW -->
+<div id="overview" class="section">
+  <div class="section-header" style="background:linear-gradient(90deg,#1a1a2e,#2d1b69);">
+    <div class="icon">🌐</div>
+    <div>
+      <h2>Platform Overview &amp; Core Philosophy</h2>
+      <p>What SemanticsX is and why semantic completeness drives rankings</p>
+    </div>
+  </div>
+  <div class="section-body">
+    <p>SemanticsX is an AI-powered semantic SEO platform. Its Content Creation suite is built on a single foundational principle: <strong>content ranks when it achieves topical and semantic completeness</strong> — covering the full universe of entities, phrases, concepts, and linguistic relationships that Google's NLP systems associate with a topic.</p>
+
+    <div class="callout info">
+      <div class="icon">💡</div>
+      <div class="text"><strong>Core Logic</strong> Google uses Natural Language Processing (via BERT, MUM, and generative AI) to understand content semantically — not just by keyword matching, but by evaluating which named entities, concepts, and phrase patterns a document covers. SemanticsX reverse-engineers this by extracting those signals from top-ranking competitors and using AI to generate them from scratch.</div>
+    </div>
+
+    <h3>The Six Tools at a Glance</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tool</th><th>Input</th><th>Output</th><th>Primary Use</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Content Writer</strong></td><td>Keyword + optional URLs</td><td>Full SEO article</td><td>End-to-end article production</td></tr>
+          <tr><td><strong>Outline Creator</strong></td><td>Competitor URLs</td><td>Extracted H2/H3 outline</td><td>Structure research from SERP</td></tr>
+          <tr><td><strong>Entities Extractor</strong></td><td>URL or text</td><td>Entity audit + gaps + score</td><td>Content auditing &amp; gap analysis</td></tr>
+          <tr><td><strong>Entities Generator</strong></td><td>Keywords (list)</td><td>Categorized entity list</td><td>Pre-writing entity briefing</td></tr>
+          <tr><td><strong>N-Grams Extractor</strong></td><td>URL or text</td><td>1–4 gram frequency tables</td><td>Phrase-level competitive analysis</td></tr>
+          <tr><td><strong>NLP Extractor</strong></td><td>URL or text</td><td>NLP keyword audit + score + tips</td><td>NLP coverage scoring</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout tip">
+      <div class="icon">🎯</div>
+      <div class="text"><strong>Sample Keyword Used Throughout</strong> All examples in this document use <strong>"AI SEO"</strong> as the target keyword — a competitive topic that demonstrates the full semantic depth these tools can generate.</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- SECTION 2: PIPELINE MAP -->
+<div id="pipeline" class="section">
+  <div class="section-header" style="background:linear-gradient(90deg,#0f172a,#1e3a5f);">
+    <div class="icon">🗺️</div>
+    <div>
+      <h2>Visual Pipeline Map</h2>
+      <p>How all six tools connect into a unified semantic content workflow</p>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <div class="pipeline">
+      <h3 style="margin-bottom:20px;">🔄 Full Semantic Content Pipeline</h3>
+
+      <!-- Row 1: Inputs -->
+      <p style="color:#64748b;font-size:.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">INPUTS</p>
+      <div class="pipe-row">
+        <div class="pipe-node input">🔑<br/>Target Keyword<br/><span class="pipe-label">"AI SEO"</span></div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node input">🌐<br/>Competitor URLs<br/><span class="pipe-label">SERP Top 10</span></div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node input">📝<br/>Existing Content<br/><span class="pipe-label">Your draft or live page</span></div>
+      </div>
+
+      <div style="height:20px;border-left:2px dashed #334155;margin-left:65px;"></div>
+
+      <!-- Row 2: Research Tools -->
+      <p style="color:#64748b;font-size:.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">STEP 1 — RESEARCH LAYER</p>
+      <div class="pipe-row">
+        <div class="pipe-node tool">📋<br/><strong>Outline Creator</strong><br/><span class="pipe-label">Extracts H2/H3 from competitor URLs → article skeleton</span></div>
+        <div class="pipe-arrow">+</div>
+        <div class="pipe-node tool">⚡<br/><strong>Entities Generator</strong><br/><span class="pipe-label">Keyword → entity universe (people, orgs, concepts, products)</span></div>
+        <div class="pipe-arrow">+</div>
+        <div class="pipe-node tool">#️⃣<br/><strong>N-Grams Extractor</strong><br/><span class="pipe-label">Competitor content → dominant 1–4 gram phrases</span></div>
+      </div>
+
+      <div style="height:20px;border-left:2px dashed #334155;margin-left:65px;"></div>
+
+      <!-- Row 3: Content Writer -->
+      <p style="color:#64748b;font-size:.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">STEP 2 — CREATION LAYER (13-Step Express Mode)</p>
+      <div class="pipe-row" style="flex-wrap:wrap;gap:4px;">
+        <div class="pipe-node active" style="background:linear-gradient(135deg,#4f2adb,#c026d3);border-color:#6c3ce1;color:#fff;min-width:80px;font-size:.75rem;">1. Competitor Research</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node active" style="background:linear-gradient(135deg,#4f2adb,#c026d3);border-color:#6c3ce1;color:#fff;min-width:80px;font-size:.75rem;">2. Outline</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node active" style="background:linear-gradient(135deg,#4f2adb,#c026d3);border-color:#6c3ce1;color:#fff;min-width:80px;font-size:.75rem;">3. Word Count</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node active" style="background:linear-gradient(135deg,#4f2adb,#c026d3);border-color:#6c3ce1;color:#fff;min-width:80px;font-size:.75rem;">4. Competitor Content</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node active" style="background:linear-gradient(135deg,#4f2adb,#c026d3);border-color:#6c3ce1;color:#fff;min-width:80px;font-size:.75rem;">5. Entities</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node active" style="background:linear-gradient(135deg,#4f2adb,#c026d3);border-color:#6c3ce1;color:#fff;min-width:80px;font-size:.75rem;">6. N-Grams</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node active" style="background:linear-gradient(135deg,#4f2adb,#c026d3);border-color:#6c3ce1;color:#fff;min-width:80px;font-size:.75rem;">7. NLP Keywords</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node active" style="background:linear-gradient(135deg,#4f2adb,#c026d3);border-color:#6c3ce1;color:#fff;min-width:80px;font-size:.75rem;">8. Skip-Grams</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node active" style="background:linear-gradient(135deg,#4f2adb,#c026d3);border-color:#6c3ce1;color:#fff;min-width:80px;font-size:.75rem;">9. Auto-Suggest</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node active" style="background:linear-gradient(135deg,#4f2adb,#c026d3);border-color:#6c3ce1;color:#fff;min-width:80px;font-size:.75rem;">10. Grammar</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node active" style="background:linear-gradient(135deg,#4f2adb,#c026d3);border-color:#6c3ce1;color:#fff;min-width:80px;font-size:.75rem;">11. SEO Rules</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node active" style="background:linear-gradient(135deg,#4f2adb,#c026d3);border-color:#6c3ce1;color:#fff;min-width:80px;font-size:.75rem;">12. AI Instructions</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node active" style="background:linear-gradient(135deg,#4f2adb,#c026d3);border-color:#6c3ce1;color:#fff;min-width:80px;font-size:.75rem;">13. Master Prompt → Write</div>
+      </div>
+
+      <div style="height:20px;border-left:2px dashed #334155;margin-left:65px;"></div>
+
+      <!-- Row 4: Draft -->
+      <p style="color:#64748b;font-size:.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">STEP 3 — DRAFT OUTPUT</p>
+      <div class="pipe-row">
+        <div class="pipe-node output">📄<br/><strong>AI-Generated Article</strong><br/><span class="pipe-label">2,900–3,335 words · 25–28 headings · Content Score 0→100</span></div>
+      </div>
+
+      <div style="height:20px;border-left:2px dashed #334155;margin-left:65px;"></div>
+
+      <!-- Row 5: Audit Tools -->
+      <p style="color:#64748b;font-size:.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">STEP 4 — AUDIT &amp; OPTIMIZE LAYER</p>
+      <div class="pipe-row">
+        <div class="pipe-node tool">🔍<br/><strong>Entities Extractor</strong><br/><span class="pipe-label">Score draft · find entity gaps · suggest missing entities</span></div>
+        <div class="pipe-arrow">+</div>
+        <div class="pipe-node tool">🧠<br/><strong>NLP Extractor</strong><br/><span class="pipe-label">Score NLP coverage · find keyword gaps · SEO tips</span></div>
+        <div class="pipe-arrow">+</div>
+        <div class="pipe-node tool">#️⃣<br/><strong>N-Grams Compare</strong><br/><span class="pipe-label">Compare draft vs competitor phrase frequency</span></div>
+      </div>
+
+      <div style="height:20px;border-left:2px dashed #334155;margin-left:65px;"></div>
+
+      <!-- Final output -->
+      <p style="color:#64748b;font-size:.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">FINAL OUTPUT</p>
+      <div class="pipe-row">
+        <div class="pipe-node output">🏆<br/><strong>Semantically Complete Article</strong><br/><span class="pipe-label">Maximum topical authority · ready to publish</span></div>
+      </div>
+    </div>
+
+    <div class="callout warn">
+      <div class="icon">⚠️</div>
+      <div class="text"><strong>Key Insight:</strong> The standalone tools (Outline Creator, Entities Generator, N-Grams Extractor, NLP Extractor, Entities Extractor) are embedded inside Content Writer's Express Mode. You can use them independently at any stage, or let Content Writer orchestrate them all automatically in sequence.</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- SECTION 3: CONTENT WRITER -->
+<div id="tool1" class="section">
+  <div class="section-header">
+    <div class="icon">✍️</div>
+    <div>
+      <h2>Tool 1: Content Writer</h2>
+      <p>Create SEO-optimized content with AI assistance — the master orchestration hub</p>
+      <span class="url-badge">/content/content-writer</span>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <h3>What It Does</h3>
+    <p>The Content Writer is the <strong>central hub</strong> of the entire SemanticsX Content Suite. It guides you through a structured workflow that gathers semantic signals from competitors and AI, compiles them into a master prompt, and generates a fully optimized article. Every other tool in the suite feeds into the Content Writer's pipeline.</p>
+
+    <h3>Two Modes</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Mode</th><th>Steps</th><th>Description</th><th>Best For</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>⚡ Quick Mode</strong></td>
+            <td>4 steps</td>
+            <td>Competitor Research → Outline → Word Count → AI Write</td>
+            <td>Fast turnaround, less competitive keywords</td>
+          </tr>
+          <tr>
+            <td><strong>🚀 Express Mode</strong></td>
+            <td>13 steps</td>
+            <td>Full semantic pipeline: entities, n-grams, NLP, grammar, SEO rules, master prompt</td>
+            <td>Competitive keywords requiring maximum topical depth</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout info">
+      <div class="icon">🤖</div>
+      <div class="text"><strong>AI Model Support:</strong> Uses Gemini (server-based fallback) when no API key is configured. Supports OpenAI, OpenRouter, and Claude API for premium output quality — configurable in Settings.</div>
+    </div>
+
+    <h3>Express Mode — All 13 Steps</h3>
+
+    <div class="method-flow">
+
+      <div class="method-step">
+        <div class="method-left"><div class="method-circle">1</div><div class="method-line"></div></div>
+        <div class="method-content">
+          <h4>Competitor Research</h4>
+          <p>Enter the <strong>Main Keyword</strong> (e.g., "AI SEO") and optionally add competitor URLs manually or use <em>Find Competitors via SERP</em> — which searches Google with Country &amp; Language selector and optional geo-location for hyper-local results. This anchors the entire article to real SERP competition.</p>
+        </div>
+      </div>
+
+      <div class="method-step">
+        <div class="method-left"><div class="method-circle">2</div><div class="method-line"></div></div>
+        <div class="method-content">
+          <h4>Outline Creation</h4>
+          <p>Two options: <strong>Extract Outlines from Competitors</strong> (pulls H2/H3/H4 heading structure from competitor URLs) or <strong>Create Your Article Outline manually</strong> using the heading type selector (H1–H4). Defines the structural skeleton of the article.</p>
+        </div>
+      </div>
+
+      <div class="method-step">
+        <div class="method-left"><div class="method-circle">3</div><div class="method-line"></div></div>
+        <div class="method-content">
+          <h4>Word Count per Heading</h4>
+          <p>Assign a target word count to each heading. Preset buttons: <strong>150 / 200 / 300 / 500</strong> words per heading (apply globally). Displays Total Article Length Target. These targets are enforced in the AI master prompt.</p>
+          <div class="tag-group"><span class="tag">150 words</span><span class="tag">200 words</span><span class="tag">300 words</span><span class="tag">500 words</span></div>
+        </div>
+      </div>
+
+      <div class="method-step">
+        <div class="method-left"><div class="method-circle">4</div><div class="method-line"></div></div>
+        <div class="method-content">
+          <h4>Competitor Content Analysis <em>(Optional)</em></h4>
+          <p>Paste or auto-extract raw article text from competitor URLs. The AI uses this text to mirror the writing style, tone, and structure of top-ranking content — ensuring search-intent alignment. The content area shows word count.</p>
+        </div>
+      </div>
+
+      <div class="method-step">
+        <div class="method-left"><div class="method-circle">5</div><div class="method-line"></div></div>
+        <div class="method-content">
+          <h4>Entities</h4>
+          <p>Two parallel sources of named entities:</p>
+          <ul>
+            <li><strong>Extract from Competitors</strong> — pulls entities recognized from competitor content</li>
+            <li><strong>Generate AI Entities</strong> — AI generates up to 30 semantically relevant named entities</li>
+          </ul>
+          <p><strong>Sample AI-Generated Entities for "AI SEO" (30 entities):</strong></p>
+          <div class="tag-group">
+            <span class="tag">Search Engine Optimization</span><span class="tag">Generative Engine Optimization</span><span class="tag">Google Search Generative Experience</span><span class="tag">Large Language Models</span><span class="tag">Natural Language Processing</span><span class="tag">Google Search Console</span><span class="tag">Semrush</span><span class="tag">Ahrefs</span><span class="tag">Surfer SEO</span><span class="tag">MarketMuse</span><span class="tag">Perplexity AI</span><span class="tag">OpenAI</span><span class="tag">ChatGPT</span><span class="tag">Claude</span><span class="tag">Google Gemini</span><span class="tag">Content Automation</span><span class="tag">AI Content Detection</span><span class="tag">Semantic Search</span><span class="tag">Featured Snippets</span><span class="tag">RankBrain</span><span class="tag">Helpful Content Update</span><span class="tag">Programmatic SEO</span><span class="tag">Prompt Engineering</span><span class="tag">Keyword Clustering</span><span class="tag">Predictive Analytics</span><span class="tag">Technical SEO</span><span class="tag">Silicon Valley</span><span class="tag">Search Engine Journal</span>
+          </div>
+          <div class="callout tip" style="margin-top:12px;"><div class="icon">💡</div><div class="text">Clicking an entity excludes it from the master prompt. "Ignore All" deselects everything. Competitor entities (from Step 1 URLs) and AI entities appear in separate panels side by side.</div></div>
+        </div>
+      </div>
+
+      <div class="method-step">
+        <div class="method-left"><div class="method-circle">6</div><div class="method-line"></div></div>
+        <div class="method-content">
+          <h4>N-Grams</h4>
+          <p>Four types of n-grams with dedicated action buttons:</p>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Type</th><th>How Generated</th><th>Default State</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Competitor N-Grams</strong></td><td>Frequency-analyzed phrases from competitor content</td><td>Unchecked by default</td></tr>
+              <tr><td><strong>AI Picked N-Grams</strong></td><td>AI selects highest-value from competitor n-grams</td><td>Checked by default</td></tr>
+              <tr><td><strong>AI Generated N-Grams</strong></td><td>Fresh AI-created n-grams for the keyword</td><td>All included</td></tr>
+              <tr><td><strong>Unique N-Grams</strong></td><td>Rare, niche phrases to differentiate content</td><td>Optional generation</td></tr>
+            </tbody>
+          </table></div>
+          <p><strong>Sample AI-Generated N-Grams for "AI SEO" (25):</strong></p>
+          <div class="tag-group">
+            <span class="tag teal">AI SEO strategy</span><span class="tag teal">using AI for SEO</span><span class="tag teal">AI SEO tools</span><span class="tag teal">AI generated content</span><span class="tag teal">SEO automation tools</span><span class="tag teal">AI in search engines</span><span class="tag teal">ranking with AI</span><span class="tag teal">AI content optimization</span><span class="tag teal">future of SEO</span><span class="tag teal">AI SEO best practices</span><span class="tag teal">automating keyword research</span><span class="tag teal">AI for search rankings</span><span class="tag teal">impact of AI SEO</span><span class="tag teal">AI powered SEO</span><span class="tag teal">optimizing for AI search</span><span class="tag teal">AI content strategy</span><span class="tag teal">search engine evolution</span><span class="tag teal">AI SEO techniques</span><span class="tag teal">improving search visibility</span><span class="tag teal">AI driven content</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="method-step">
+        <div class="method-left"><div class="method-circle">7</div><div class="method-line"></div></div>
+        <div class="method-content">
+          <h4>NLP Keywords (LSI Terms)</h4>
+          <p>Generates semantic Latent Semantic Indexing keywords. All are included in the prompt by default — click any to exclude.</p>
+          <p><strong>Sample NLP Keywords for "AI SEO" (20):</strong></p>
+          <div class="tag-group">
+            <span class="tag green">AI-driven SEO</span><span class="tag green">search engine optimization automation</span><span class="tag green">machine learning for SEO</span><span class="tag green">predictive search analytics</span><span class="tag green">generative AI content optimization</span><span class="tag green">search intent analysis</span><span class="tag green">automated keyword research</span><span class="tag green">NLP-based content strategy</span><span class="tag green">AI-powered ranking factors</span><span class="tag green">technical SEO automation</span><span class="tag green">semantic search optimization</span><span class="tag green">AI content generation tools</span><span class="tag green">search algorithm updates</span><span class="tag green">automated link building</span><span class="tag green">conversational search</span><span class="tag green">AI SEO software</span><span class="tag green">content cluster strategy</span><span class="tag green">search query intent</span><span class="tag green">data-driven SEO insights</span><span class="tag green">AI-enhanced meta tags</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="method-step">
+        <div class="method-left"><div class="method-circle">8</div><div class="method-line"></div></div>
+        <div class="method-content">
+          <h4>Auto-Suggest Keywords (Skip-Gram Dominant Words)</h4>
+          <p>Generates skip-gram word pairs that define the conceptual space of the topic. These are single-word and two-word phrases that frequently co-occur in proximity within top-ranking content.</p>
+          <p><strong>Sample Skip-Gram Dominant Words for "AI SEO" (25):</strong></p>
+          <div class="tag-group">
+            <span class="tag orange">search intent</span><span class="tag orange">content optimization</span><span class="tag orange">automated keyword</span><span class="tag orange">search engine</span><span class="tag orange">generative ai</span><span class="tag orange">ranking factors</span><span class="tag orange">natural language</span><span class="tag orange">user experience</span><span class="tag orange">semantic search</span><span class="tag orange">predictive analytics</span><span class="tag orange">content strategy</span><span class="tag orange">algorithmic updates</span><span class="tag orange">query processing</span><span class="tag orange">organic traffic</span><span class="tag orange">machine learning</span><span class="tag orange">structured data</span><span class="tag orange">technical seo</span><span class="tag orange">content quality</span><span class="tag orange">automated outreach</span><span class="tag orange">voice search</span><span class="tag orange">metadata generation</span><span class="tag orange">ranking algorithm</span><span class="tag orange">search visibility</span><span class="tag orange">intent analysis</span><span class="tag orange">content clusters</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="method-step">
+        <div class="method-left"><div class="method-circle">9</div><div class="method-line"></div></div>
+        <div class="method-content">
+          <h4>Auto-Suggest Keywords via Google Autocomplete</h4>
+          <p>Fetches real Google Autocomplete suggestions by appending A–Z letters and 0–9 digits to the keyword. Pulls actual search query variations that users type into Google — a direct signal of search intent and related topics.</p>
+        </div>
+      </div>
+
+      <div class="method-step">
+        <div class="method-left"><div class="method-circle">10</div><div class="method-line"></div></div>
+        <div class="method-content">
+          <h4>Grammar Generator</h4>
+          <p>Generates semantic word-relationship categories for the keyword using linguistic ontology. Each category teaches the AI how the topic word relates to other concepts in the language.</p>
+          <div class="grammar-grid">
+            <div class="grammar-card">
+              <h5>🏷️ Proper Nouns</h5>
+              <div class="items"><span class="item">SurferSEO</span><span class="item">Semrush</span><span class="item">Ahrefs</span><span class="item">Clearscope</span><span class="item">MarketMuse</span></div>
+            </div>
+            <div class="grammar-card">
+              <h5>📦 Common Nouns</h5>
+              <div class="items"><span class="item">algorithm</span><span class="item">optimization</span><span class="item">content</span><span class="item">ranking</span><span class="item">automation</span></div>
+            </div>
+            <div class="grammar-card">
+              <h5>🔁 Synonyms</h5>
+              <div class="items"><span class="item">algorithmic search engine optimization</span><span class="item">automated SEO</span><span class="item">AI-driven search optimization</span></div>
+            </div>
+            <div class="grammar-card">
+              <h5>↔️ Antonyms</h5>
+              <div class="items"><span class="item">manual SEO</span><span class="item">traditional SEO</span><span class="item">organic SEO</span></div>
+            </div>
+            <div class="grammar-card">
+              <h5>⬇️ Hyponyms (sub-types)</h5>
+              <div class="items"><span class="item">AI-generated content optimization</span><span class="item">AI-powered keyword research</span><span class="item">automated technical SEO audit</span><span class="item">predictive search intent analysis</span></div>
+            </div>
+            <div class="grammar-card">
+              <h5>⬆️ Hypernyms (parent concepts)</h5>
+              <div class="items"><span class="item">Search Engine Optimization</span><span class="item">Digital Marketing</span><span class="item">Artificial Intelligence</span></div>
+            </div>
+            <div class="grammar-card">
+              <h5>🔩 Meronyms (components of)</h5>
+              <div class="items"><span class="item">natural language processing</span><span class="item">machine learning model</span><span class="item">data analytics</span><span class="item">predictive algorithm</span></div>
+            </div>
+            <div class="grammar-card">
+              <h5>🏗️ Holonyms (part of)</h5>
+              <div class="items"><span class="item">Search Engine Marketing</span><span class="item">Inbound Marketing</span><span class="item">Growth Hacking</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="method-step">
+        <div class="method-left"><div class="method-circle">11</div><div class="method-line"></div></div>
+        <div class="method-content">
+          <h4>SEO Rules (Koray Guidelines)</h4>
+          <p>A checklist of <strong>20 writing rules</strong> based on Koray Tuğberk Gübür's semantic SEO methodology. Check any rules to enforce them in the AI prompt:</p>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Rule</th><th>Instruction</th></tr></thead>
+            <tbody>
+              <tr><td>🚀 Answer First</td><td>Don't distance the question from the answer. Answer immediately, then elaborate.</td></tr>
+              <tr><td>🚫 No Analogies</td><td>Don't use analogies that compare one thing to another.</td></tr>
+              <tr><td>⚠️ Avoid Coreference Errors</td><td>Use clear pronoun references. Avoid ambiguous "he", "she", "it".</td></tr>
+              <tr><td>🚀 No Extra Sentences</td><td>Combine sentences when possible to reduce token usage.</td></tr>
+              <tr><td>✨ If Statements Second</td><td>Put "if" conditions in the second part of the sentence.</td></tr>
+              <tr><td>✨ Match Heading Structure</td><td>Supporting text should match the heading structure (How to → To do).</td></tr>
+              <tr><td>📌 Examples After Plurals</td><td>Give specific examples after mentioning a plural noun.</td></tr>
+              <tr><td>🚀 Understand Verb Context</td><td>Use "increase" for metrics, "improve" for skills/health, "develop" for gradual growth.</td></tr>
+              <tr><td>🔍 Be Specific</td><td>Experts are specific. Say "6 severe symptoms" not just "symptoms".</td></tr>
+              <tr><td>⚡ Use Numeric Values</td><td>Say "5 main reasons" not "many reasons". Be specific with numbers.</td></tr>
+              <tr><td>🚀 Cut the Fluff</td><td>Delete contextless words like "Also", "According to", "should know".</td></tr>
+              <tr><td>⚡ Be Certain</td><td>State facts definitively. Use "Sun rises every day" not "Sun will rise tomorrow".</td></tr>
+              <tr><td>📌 Consistent List Structure</td><td>Use same part of speech at start of each list item.</td></tr>
+              <tr><td>🎯 Prioritize Context</td><td>Match the interrogative term (where=place, when=time, how=method).</td></tr>
+              <tr><td>🔧 Multiple Measurement Units</td><td>Include diverse measurement units (pounds + kg, oz + liters).</td></tr>
+              <tr><td>✅ Yes/No First</td><td>Boolean questions should start with Yes or No.</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="method-step">
+        <div class="method-left"><div class="method-circle">12</div><div class="method-line"></div></div>
+        <div class="method-content">
+          <h4>AI Instructions</h4>
+          <p>Three pre-checked style guidelines injected directly into the master prompt:</p>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Instruction</th><th>Effect</th></tr></thead>
+            <tbody>
+              <tr><td>✅ <strong>Concise Writing Style</strong></td><td>Remove unnecessary words. Use active voice. Make every word count.</td></tr>
+              <tr><td>✅ <strong>Natural Human Language</strong></td><td>Write plainly with short sentences. Avoid AI clichés. Be direct and conversational.</td></tr>
+              <tr><td>✅ <strong>Avoid AI Writing Patterns</strong></td><td>Skip robotic transitions, banned words, and overused AI phrases.</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="method-step">
+        <div class="method-left"><div class="method-circle">13</div><div class="method-line"></div></div>
+        <div class="method-content">
+          <h4>Master Prompt</h4>
+          <p>The auto-assembled complete prompt combining all previous steps. Fully editable before generation. Sample statistics for "AI SEO": <strong>7,288 characters · ~1,822 tokens</strong>. The prompt structure includes:</p>
+          <ul>
+            <li><code># CONTENT WRITING ASSIGNMENT</code></li>
+            <li><code>## PRIMARY KEYWORD: "AI SEO"</code></li>
+            <li><code># ARTICLE STRUCTURE (outline + word counts)</code></li>
+            <li><code>## ENTITIES (all 30 AI-generated entities)</code></li>
+            <li><code>## KEY PHRASES / N-GRAMS (AI-generated + unique + competitor)</code></li>
+            <li><code>## NLP KEYWORDS (all 20 LSI terms)</code></li>
+            <li><code>## GRAMMAR ELEMENTS (all 8 categories)</code></li>
+            <li><code>## SEO RULES (selected Koray guidelines)</code></li>
+            <li><code>## AI INSTRUCTIONS (writing style rules)</code></li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+
+    <h3>Content Editor — Final Step</h3>
+    <div class="score-row">
+      <div class="score-card"><div class="num green">2,900–3,335</div><div class="label">Target Word Count</div></div>
+      <div class="score-card"><div class="num">25–28</div><div class="label">Target Headings</div></div>
+      <div class="score-card"><div class="num orange">57–68</div><div class="label">Target Paragraphs</div></div>
+      <div class="score-card"><div class="num">16–19</div><div class="label">Target Images</div></div>
+      <div class="score-card"><div class="num" style="color:#6c3ce1;">0→100</div><div class="label">Content Score</div></div>
+      <div class="score-card"><div class="num green">70</div><div class="label">Avg Competitor Score</div></div>
+      <div class="score-card"><div class="num orange">79</div><div class="label">Top Competitor Score</div></div>
+    </div>
+
+    <p>The editor includes a full text toolbar (Bold, Italic, Underline, Strikethrough, Alignment, Lists, Links, Images, Undo/Redo), three right-panel tabs (GUIDELINES, OUTLINE, BRIEF), and an Extracted Data sidebar showing all entities and n-grams for reference while writing.</p>
+  </div>
+</div>
+
+
+<!-- SECTION 4: OUTLINE CREATOR -->
+<div id="tool2" class="section">
+  <div class="section-header" style="background:linear-gradient(90deg,#1e3a5f,#0e7490);">
+    <div class="icon">📋</div>
+    <div>
+      <h2>Tool 2: Outline Creator</h2>
+      <p>Extract and combine article outlines from multiple competitor sources</p>
+      <span class="url-badge">/content/outline-creator</span>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <h3>What It Does</h3>
+    <p>The Outline Creator crawls one or more competitor URLs and extracts their complete heading hierarchy (H1–H4). It visually renders each article's structure and offers an AI-powered "Combine with AI" function that merges multiple competitor outlines into a single optimized structure.</p>
+
+    <h3>Visual Workflow</h3>
+    <div class="pipeline" style="padding:24px;">
+      <div class="pipe-row">
+        <div class="pipe-node input">🌐<br/>Competitor URL(s)<br/><span class="pipe-label">Add 1 or more URLs</span></div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node tool">🔍<br/>Server-Side Extraction<br/><span class="pipe-label">HTML parser pulls heading tags</span></div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node output">📋<br/>Heading Hierarchy<br/><span class="pipe-label">H1/H2/H3/H4 visual tree</span></div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node output">🤖<br/>Combine with AI<br/><span class="pipe-label">Merged optimal outline</span></div>
+      </div>
+    </div>
+
+    <h3>Interface Elements</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Element</th><th>Function</th></tr></thead>
+      <tbody>
+        <tr><td>Source URLs field</td><td>Enter competitor article URLs (one per field)</td></tr>
+        <tr><td>+ Add URL</td><td>Add additional competitor URLs for multi-source extraction</td></tr>
+        <tr><td>Extract button</td><td>Triggers server-side crawl and heading extraction</td></tr>
+        <tr><td>Extracted Outlines panel</td><td>Shows each article's title, URL, heading count, and full hierarchy</td></tr>
+        <tr><td>Combine with AI</td><td>AI merges all extracted outlines into one optimized structure</td></tr>
+        <tr><td>Copy / Open / Delete icons</td><td>Per-article management of extracted outlines</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Sample Output — "Search Engine Optimization" Wikipedia Article</h3>
+    <div class="callout info"><div class="icon">🔗</div><div class="text"><strong>Source URL:</strong> https://en.wikipedia.org/wiki/Search_engine_optimization<br/><strong>Result:</strong> 16 headings extracted</div></div>
+
+    <div class="table-wrap"><table>
+      <thead><tr><th>Level</th><th>Heading Text</th></tr></thead>
+      <tbody>
+        <tr><td><span class="tag" style="font-size:.75rem;">H2</span></td><td>Contents</td></tr>
+        <tr><td><span class="tag" style="font-size:.75rem;">H2</span></td><td>History</td></tr>
+        <tr><td><span class="tag orange" style="font-size:.75rem;">H3</span></td><td>Getting indexed</td></tr>
+        <tr><td><span class="tag orange" style="font-size:.75rem;">H3</span></td><td>Preventing crawling</td></tr>
+        <tr><td><span class="tag orange" style="font-size:.75rem;">H3</span></td><td>Increasing prominence</td></tr>
+        <tr><td><span class="tag orange" style="font-size:.75rem;">H3</span></td><td>White hat versus black hat techniques</td></tr>
+        <tr><td><span class="tag" style="font-size:.75rem;">H2</span></td><td>As marketing strategy</td></tr>
+        <tr><td><span class="tag" style="font-size:.75rem;">H2</span></td><td>International markets and SEO</td></tr>
+        <tr><td><span class="tag orange" style="font-size:.75rem;">H3</span></td><td>Multilingual SEO</td></tr>
+        <tr><td><span class="tag" style="font-size:.75rem;">H2</span></td><td>Legal precedents</td></tr>
+        <tr><td><span class="tag" style="font-size:.75rem;">H2</span></td><td>See also</td></tr>
+        <tr><td><span class="tag" style="font-size:.75rem;">H2</span></td><td>References</td></tr>
+        <tr><td><span class="tag" style="font-size:.75rem;">H2</span></td><td>External links</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>How It Works (Logic)</h3>
+    <p>The tool uses server-side proxies to fetch the HTML of each target URL and parses all heading tags (H1–H4). The heading text and nesting level are preserved and displayed as an interactive, collapsible tree. Note: websites with aggressive bot-blocking (Cloudflare, aggressive CSP) may block extraction and return a "All proxies failed" error.</p>
+
+    <h3>Use Case</h3>
+    <div class="callout tip"><div class="icon">🎯</div><div class="text">Use before writing to understand how top-ranking pages structure their content. Feed multiple competitor outlines into "Combine with AI" to generate a superior outline that covers the best angles from all sources. The result feeds directly into Content Writer Step 2.</div></div>
+  </div>
+</div>
+
+<!-- DIVIDER -->
+<div class="divider"></div>
+
+<!-- SECTION 5: ENTITIES EXTRACTOR -->
+<div id="tool3" class="section">
+  <div class="section-header" style="background:linear-gradient(90deg,#7c2d12,#c2410c);">
+    <div class="icon">🔍</div>
+    <div>
+      <h2>Tool 3: Entities Extractor</h2>
+      <p>Extract, score, and analyze semantic entities from existing content</p>
+      <span class="url-badge">/content/entities-extractor</span>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <h3>What It Does</h3>
+    <p>The Entities Extractor analyzes an article (via URL or pasted text), identifies all semantic entities present, scores the content's entity coverage against a benchmark, flags critical topic gaps, and suggests missing entities with priority levels. It's the primary <strong>content auditing tool</strong> in the suite.</p>
+
+    <h3>Input Modes</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Mode</th><th>How to Use</th><th>Best For</th></tr></thead>
+      <tbody>
+        <tr><td><strong>🌐 URL Mode</strong></td><td>Enter a competitor or your own article URL</td><td>Auditing live pages</td></tr>
+        <tr><td><strong>📝 Text Mode</strong></td><td>Paste article content directly into the textarea</td><td>Auditing drafts before publishing</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Output Structure</h3>
+    <div class="pipeline" style="padding:24px;">
+      <div class="pipe-row" style="flex-wrap:wrap;gap:12px;">
+        <div class="pipe-node output" style="flex:none;width:auto;">📊 Content Score (0–100)</div>
+        <div class="pipe-node output" style="flex:none;width:auto;">🚨 Critical Gaps</div>
+        <div class="pipe-node output" style="flex:none;width:auto;">✅ Found Entities (tab)</div>
+        <div class="pipe-node output" style="flex:none;width:auto;">➕ Suggested Entities (tab)</div>
+      </div>
+    </div>
+
+    <h3>Sample Output — "AI SEO" Content (Text Mode)</h3>
+
+    <div class="score-row">
+      <div class="score-card"><div class="num" style="color:#d97706;">70</div><div class="label">Content Score / 100</div></div>
+      <div class="score-card"><div class="num green">23</div><div class="label">Entities Found</div></div>
+      <div class="score-card"><div class="num red">14</div><div class="label">Entities to Add</div></div>
+    </div>
+
+    <div class="callout critical"><div class="icon">🚨</div><div class="text"><strong>Critical Gaps Identified:</strong>
+      <ul style="margin-top:8px;">
+        <li>Lack of mention of E-E-A-T principles in the context of AI content</li>
+        <li>Missing discussion on the impact of AI on zero-click search metrics</li>
+      </ul>
+    </div></div>
+
+    <h4>✅ Found Entities (23) — Categorized</h4>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Category</th><th>Entities Found</th></tr></thead>
+      <tbody>
+        <tr><td>🏢 <strong>Organizations</strong></td><td>ChatGPT · Claude · Google · Semrush · Ahrefs · Surfer SEO · MarketMuse · Perplexity AI</td></tr>
+        <tr><td>💡 <strong>Concepts</strong></td><td>AI SEO · search engine optimization · keyword research · content generation · technical SEO · semantic search · user intent · Generative Engine Optimization</td></tr>
+        <tr><td>💻 <strong>Technologies</strong></td><td>artificial intelligence · machine learning · natural language processing · large language models · Search Generative Experience · RankBrain</td></tr>
+      </tbody>
+    </table></div>
+
+    <h4>➕ Suggested Entities to Add (14) — with Priority</h4>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Category</th><th>Entity</th><th>Priority</th></tr></thead>
+      <tbody>
+        <tr><td>👤 People</td><td>Danny Sullivan</td><td><span class="tag orange">medium</span></td></tr>
+        <tr><td>👤 People</td><td>John Mueller</td><td><span class="tag orange">medium</span></td></tr>
+        <tr><td>🏢 Organizations</td><td>OpenAI</td><td><span class="tag red">high</span></td></tr>
+        <tr><td>🏢 Organizations</td><td>Anthropic</td><td><span class="tag red">high</span></td></tr>
+        <tr><td>🏢 Organizations</td><td>Microsoft Bing</td><td><span class="tag red">high</span></td></tr>
+        <tr><td>📦 Products/Services</td><td>Google Search Console</td><td><span class="tag red">high</span></td></tr>
+        <tr><td>📦 Products/Services</td><td>Gemini API</td><td><span class="tag orange">medium</span></td></tr>
+        <tr><td>💡 Concepts</td><td>E-E-A-T</td><td><span class="tag red">high</span></td></tr>
+        <tr><td>💡 Concepts</td><td>Prompt Engineering</td><td><span class="tag red">high</span></td></tr>
+        <tr><td>💡 Concepts</td><td>Hallucination</td><td><span class="tag orange">medium</span></td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Logic</h3>
+    <p>The tool uses NLP entity recognition to classify nouns into semantic categories. It then compares the detected entity set against a trained model of what a topically authoritative article on that subject should contain. The Content Score reflects the percentage of expected entities covered, and the gap analysis reveals which entities are missing relative to that model.</p>
+
+    <h3>Use Case</h3>
+    <div class="callout tip"><div class="icon">🎯</div><div class="text">Run your draft through the Entities Extractor before publishing to verify entity coverage. Use the "Suggested" tab to add missing high-priority entities. Also useful for competitor analysis — extract entities from top-ranking pages to understand what entities Google associates with the topic.</div></div>
+  </div>
+</div>
+
+
+<!-- SECTION 6: ENTITIES GENERATOR -->
+<div id="tool4" class="section">
+  <div class="section-header" style="background:linear-gradient(90deg,#4a044e,#9333ea);">
+    <div class="icon">⚡</div>
+    <div>
+      <h2>Tool 4: Entities Generator</h2>
+      <p>Generate SEO entities for your keywords using AI — before writing</p>
+      <span class="url-badge">/content/entities-generator</span>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <h3>What It Does</h3>
+    <p>The Entities Generator takes one or more keywords as input and uses AI to generate a comprehensive list of semantically related entities that should appear in content targeting those keywords. Unlike the Extractor (which reads existing content), the Generator <strong>creates entity lists from scratch</strong> — perfect for use before writing begins.</p>
+
+    <h3>Key Differentiator vs. Entities Extractor</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th></th><th>Entities Extractor</th><th>Entities Generator</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Input</strong></td><td>Existing content (URL or text)</td><td>Keyword(s) — no content needed</td></tr>
+        <tr><td><strong>Function</strong></td><td>Audits what IS in content</td><td>Generates what SHOULD be in content</td></tr>
+        <tr><td><strong>Use stage</strong></td><td>Post-draft audit</td><td>Pre-writing planning</td></tr>
+        <tr><td><strong>Output</strong></td><td>Score + gaps + suggestions</td><td>Full entity universe per keyword</td></tr>
+        <tr><td><strong>Bulk support</strong></td><td>One piece at a time</td><td>Multiple keywords in one batch</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Interface Elements</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Element</th><th>Function</th></tr></thead>
+      <tbody>
+        <tr><td>Keywords textarea</td><td>Enter keywords separated by commas or newlines</td></tr>
+        <tr><td>Upload button</td><td>Upload a .txt file with keywords (one per line) for bulk processing</td></tr>
+        <tr><td>Clear button</td><td>Resets the keyword input</td></tr>
+        <tr><td>Generate Entities button</td><td>Triggers AI entity generation for all entered keywords</td></tr>
+        <tr><td>Results accordion</td><td>Each keyword expands to show its entity list with count badge</td></tr>
+        <tr><td>Export CSV</td><td>Downloads all results as a spreadsheet</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Sample Output — Keyword: "AI SEO" (15 entities generated)</h3>
+
+    <h4>All Entities</h4>
+    <div class="tag-group">
+      <span class="tag">Search Engine Optimization</span><span class="tag">Artificial Intelligence</span><span class="tag">Large Language Models</span><span class="tag">Google Search Generative Experience</span><span class="tag">Natural Language Processing</span><span class="tag">Content Optimization</span><span class="tag">Search Intent</span><span class="tag">Semantic Search</span><span class="tag">Machine Learning</span><span class="tag">Programmatic SEO</span><span class="tag">E-E-A-T</span><span class="tag">RankBrain</span><span class="tag">BERT</span><span class="tag">Search Engine Results Page</span><span class="tag">AI Content Detection</span>
+    </div>
+
+    <div class="grammar-grid" style="margin-top:16px;">
+      <div class="grammar-card">
+        <h5>👤 People</h5>
+        <div class="items"><span class="item">Danny Sullivan</span><span class="item">John Mueller</span></div>
+      </div>
+      <div class="grammar-card">
+        <h5>🏢 Organizations</h5>
+        <div class="items"><span class="item">Google</span><span class="item">OpenAI</span><span class="item">Microsoft</span><span class="item">Semrush</span><span class="item">Ahrefs</span></div>
+      </div>
+      <div class="grammar-card">
+        <h5>💡 Concepts</h5>
+        <div class="items"><span class="item">Search Engine Optimization</span><span class="item">Semantic Search</span><span class="item">Search Intent</span><span class="item">Content Quality</span><span class="item">Predictive Analytics</span></div>
+      </div>
+      <div class="grammar-card">
+        <h5>📦 Products</h5>
+        <div class="items"><span class="item">ChatGPT</span><span class="item">Gemini</span><span class="item">Surfer SEO</span><span class="item">Clearscope</span><span class="item">Claude</span></div>
+      </div>
+    </div>
+
+    <h3>Logic</h3>
+    <p>The AI model uses each keyword as a topical anchor and generates a comprehensive entity map using knowledge graph relationships. It understands which tools, people, organizations, and concepts form the semantic neighborhood of any given topic — essentially simulating what Google's Knowledge Graph associates with the keyword.</p>
+
+    <h3>Use Case</h3>
+    <div class="callout tip"><div class="icon">🎯</div><div class="text"><strong>Bulk keyword briefing:</strong> Input your entire target keyword list and download one CSV with entity briefings for each. Hand these to content writers or feed them into the Content Writer's Entities step to ensure every article covers the right named entities from the start.</div></div>
+  </div>
+</div>
+
+<!-- DIVIDER -->
+<div class="divider"></div>
+
+<!-- SECTION 7: N-GRAMS EXTRACTOR -->
+<div id="tool5" class="section">
+  <div class="section-header" style="background:linear-gradient(90deg,#064e3b,#059669);">
+    <div class="icon">#️⃣</div>
+    <div>
+      <h2>Tool 5: N-Grams Extractor</h2>
+      <p>Extract, analyze, and optimize n-grams for semantic SEO at the phrase level</p>
+      <span class="url-badge">/content/ngrams-extractor</span>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <h3>What It Does</h3>
+    <p>The N-Grams Extractor analyzes text or a URL and extracts all 1-gram, 2-gram, 3-gram, and 4-gram phrase frequencies. Each n-gram is displayed with its frequency count — showing which phrases are statistically dominant in the content. A <strong>Unique N-Grams</strong> feature generates rare, niche phrases to differentiate your content from competitors.</p>
+
+    <h3>Understanding N-Gram Types</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>N-Gram Type</th><th>Example (from "AI SEO")</th><th>SEO Signal</th></tr></thead>
+      <tbody>
+        <tr><td><strong>1-Gram (Unigram)</strong></td><td>ai · seo · search · content · optimization</td><td>Core topic vocabulary — individual word frequency</td></tr>
+        <tr><td><strong>2-Gram (Bigram)</strong></td><td>engine optimization · machine learning · natural language · ai seo</td><td>Two-word phrases — topic associations</td></tr>
+        <tr><td><strong>3-Gram (Trigram)</strong></td><td>search engine optimization · large language models · natural language processing</td><td>Three-word phrases — strong topic signals, often match search queries</td></tr>
+        <tr><td><strong>4-Gram</strong></td><td>large language models like · natural language processing and · ai seo is the</td><td>Long phrases — highly specific, often match long-tail queries exactly</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Input Modes</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Mode</th><th>Input</th><th>Best For</th></tr></thead>
+      <tbody>
+        <tr><td><strong>🔗 URL Mode</strong></td><td>Live competitor URL</td><td>Analyzing what competitors' pages actually contain</td></tr>
+        <tr><td><strong>📝 Text Mode</strong></td><td>Paste article text</td><td>Analyzing your draft before publishing</td></tr>
+        <tr><td><strong>↔️ Compare Articles</strong></td><td>Two URLs or texts</td><td>Side-by-side phrase frequency gap analysis</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Sample Output — "AI SEO" Content (Text Mode)</h3>
+
+    <h4>1-GRAM — 70 found</h4>
+    <div class="tag-group">
+      <span class="tag">and <strong>×7</strong></span><span class="tag">ai <strong>×4</strong></span><span class="tag">seo <strong>×4</strong></span><span class="tag">to <strong>×4</strong></span><span class="tag">search <strong>×4</strong></span><span class="tag">like <strong>×3</strong></span><span class="tag">is <strong>×2</strong></span><span class="tag">engine <strong>×2</strong></span><span class="tag">optimization <strong>×2</strong></span><span class="tag">language <strong>×2</strong></span><span class="tag">content <strong>×2</strong></span><span class="tag">generative <strong>×2</strong></span><span class="tag">artificial ×1</span><span class="tag">intelligence ×1</span><span class="tag">machine ×1</span><span class="tag">learning ×1</span><span class="tag">natural ×1</span><span class="tag">processing ×1</span><span class="tag">large ×1</span><span class="tag">models ×1</span><span class="tag">chatgpt ×1</span><span class="tag">claude ×1</span><span class="tag">google ×1</span><span class="tag">gemini ×1</span>
+    </div>
+
+    <h4>2-GRAM — 94 found (key phrases)</h4>
+    <div class="tag-group">
+      <span class="tag teal">engine optimization ×2</span><span class="tag teal">ai seo ×1</span><span class="tag teal">artificial intelligence ×1</span><span class="tag teal">search engine ×1</span><span class="tag teal">machine learning ×1</span><span class="tag teal">natural language ×1</span><span class="tag teal">language processing ×1</span><span class="tag teal">large language ×1</span><span class="tag teal">language models ×1</span><span class="tag teal">google gemini ×1</span><span class="tag teal">chatgpt claude ×1</span><span class="tag teal">claude and ×1</span><span class="tag teal">and google ×1</span>
+    </div>
+
+    <h4>3-GRAM — 94 found (key phrases)</h4>
+    <div class="tag-group">
+      <span class="tag green">ai seo is</span><span class="tag green">seo is the</span><span class="tag green">the application of</span><span class="tag green">search engine optimization</span><span class="tag green">natural language processing</span><span class="tag green">large language models</span><span class="tag green">models like chatgpt</span><span class="tag green">like chatgpt claude</span><span class="tag green">chatgpt claude and</span><span class="tag green">claude and google</span><span class="tag green">and google gemini</span><span class="tag green">gemini to automate</span><span class="tag green">to automate keyword</span>
+    </div>
+
+    <h4>4-GRAM — 93 found (key phrases)</h4>
+    <div class="tag-group">
+      <span class="tag orange">ai seo is the</span><span class="tag orange">seo is the application</span><span class="tag orange">is the application of</span><span class="tag orange">the application of artificial</span><span class="tag orange">application of artificial intelligence</span><span class="tag orange">large language models like</span><span class="tag orange">language models like chatgpt</span><span class="tag orange">models like chatgpt claude</span><span class="tag orange">like chatgpt claude and</span><span class="tag orange">chatgpt claude and google</span><span class="tag orange">claude and google gemini</span><span class="tag orange">to automate keyword research</span>
+    </div>
+
+    <h3>Unique N-Grams Feature</h3>
+    <div class="callout info"><div class="icon">⭐</div><div class="text"><strong>Generate Unique N-Grams</strong> — Generates original, niche phrases that are uncommon in competitor content but topically relevant. This gives your article distinctive phrase patterns that stand out to search engines and help rank for long-tail query variants that competitors haven't covered.</div></div>
+
+    <h3>Logic</h3>
+    <p>The tool tokenizes text and counts every co-occurring word sequence from length 1 to 4. Higher frequency counts signal that a phrase is a dominant topic marker in the content. Comparing your article's n-gram profile against competitor profiles reveals which phrases you're under-representing — those are the gaps to fill.</p>
+
+    <h3>Use Case</h3>
+    <div class="callout tip"><div class="icon">🎯</div><div class="text"><strong>Three primary use cases:</strong> (1) Competitive gap analysis — compare your article vs top competitors to find missing phrases. (2) Prompt enrichment — inject high-frequency competitor n-grams into your Content Writer N-Grams step. (3) Uniqueness audit — generate Unique N-Grams to find angles no competitor has covered.</div></div>
+  </div>
+</div>
+
+
+<!-- SECTION 8: NLP EXTRACTOR -->
+<div id="tool6" class="section">
+  <div class="section-header" style="background:linear-gradient(90deg,#1e1b4b,#4338ca);">
+    <div class="icon">🧠</div>
+    <div>
+      <h2>Tool 6: NLP Extractor</h2>
+      <p>Extract SEO-optimizing NLP keywords from content and score coverage</p>
+      <span class="url-badge">/content/nlp-extractor</span>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <h3>What It Does</h3>
+    <p>The NLP Extractor analyzes content and extracts keywords categorized by their semantic role: Primary Keywords, Secondary Keywords, LSI (Latent Semantic Indexing) terms, and Technical Terms. It then assigns a Content Score, identifies critical coverage gaps, and provides actionable SEO tips — making it the primary <strong>NLP keyword auditing tool</strong> in the suite.</p>
+
+    <h3>Key Differentiator vs. Entities Extractor</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th></th><th>Entities Extractor</th><th>NLP Extractor</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Focus</strong></td><td>Named entities (people, orgs, products, concepts)</td><td>NLP keyword roles (primary, secondary, LSI, technical)</td></tr>
+        <tr><td><strong>Output</strong></td><td>Entity taxonomy with categories</td><td>Keyword hierarchy + SEO tips + optimization advice</td></tr>
+        <tr><td><strong>Unique feature</strong></td><td>Priority levels for missing entities</td><td>SEO Optimization Tips panel</td></tr>
+        <tr><td><strong>Together they cover</strong><br/>(complementary)</td><td>Who/What is in the content</td><td>How keyword roles are distributed</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Input Modes</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Mode</th><th>Input</th><th>Best For</th></tr></thead>
+      <tbody>
+        <tr><td><strong>🌐 URL Mode</strong></td><td>Live URL to analyze</td><td>Competitor NLP analysis or auditing live pages</td></tr>
+        <tr><td><strong>📝 Text Mode</strong></td><td>Paste article text</td><td>Auditing drafts before publishing</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Output Structure</h3>
+    <div class="pipeline" style="padding:24px;">
+      <div class="pipe-row" style="flex-wrap:wrap;gap:12px;">
+        <div class="pipe-node output">🏷️ Topic Label<br/><span class="pipe-label">AI-inferred article topic name</span></div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node output">📊 Content Score<br/><span class="pipe-label">0–100 NLP coverage</span></div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node output">🚨 Critical Gaps<br/><span class="pipe-label">Major missing areas</span></div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node output">💡 SEO Tips<br/><span class="pipe-label">Actionable improvements</span></div>
+      </div>
+    </div>
+
+    <h3>Sample Output — "AI SEO" Content (Text Mode)</h3>
+
+    <div class="callout info"><div class="icon">🏷️</div><div class="text"><strong>AI-Inferred Topic:</strong> "AI SEO and Generative Engine Optimization" — the tool automatically names the article's topic based on NLP analysis of the content.</div></div>
+
+    <div class="score-row">
+      <div class="score-card"><div class="num orange">65</div><div class="label">Content Score / 100</div></div>
+      <div class="score-card"><div class="num green">25</div><div class="label">Found in Content</div></div>
+      <div class="score-card"><div class="num orange">17</div><div class="label">Suggested to Add</div></div>
+      <div class="score-card"><div class="num red">2</div><div class="label">Critical Gaps</div></div>
+      <div class="score-card"><div class="num" style="color:#6c3ce1;">3</div><div class="label">SEO Tips</div></div>
+    </div>
+
+    <div class="callout critical"><div class="icon">🚨</div><div class="text"><strong>Critical Content Gaps:</strong>
+      <ol style="margin-top:8px;">
+        <li>Lack of actionable 'how-to' guidance for implementing AI SEO</li>
+        <li>Missing discussion on E-E-A-T and content quality in the age of AI</li>
+      </ol>
+    </div></div>
+
+    <div class="callout warn"><div class="icon">💡</div><div class="text"><strong>SEO Optimization Tips:</strong>
+      <ol style="margin-top:8px;">
+        <li>Include specific headers to improve readability and structure for AI crawlers</li>
+        <li>Add a section explaining the practical benefits of AI tools versus manual SEO</li>
+        <li>Address the ethical considerations or quality concerns of AI-generated content</li>
+      </ol>
+    </div></div>
+
+    <h4>NLP Keywords Found in Content — Categorized</h4>
+    <div class="nlp-grid">
+      <div class="nlp-card primary">
+        <h5>🎯 Primary Keywords (3)</h5>
+        <div class="tag-group">
+          <span class="tag">AI SEO ×2</span>
+          <span class="tag">search engine optimization ×1</span>
+          <span class="tag">artificial intelligence ×1</span>
+        </div>
+      </div>
+      <div class="nlp-card secondary">
+        <h5>🔗 Secondary Keywords (10)</h5>
+        <div class="tag-group">
+          <span class="tag green">keyword research</span><span class="tag green">content generation</span><span class="tag green">technical SEO</span><span class="tag green">machine learning</span><span class="tag green">natural language processing</span><span class="tag green">semantic search</span><span class="tag green">user intent</span><span class="tag green">SERP data</span><span class="tag green">Generative Engine Optimization</span><span class="tag green">GEO</span>
+        </div>
+      </div>
+      <div class="nlp-card lsi">
+        <h5>🌐 LSI Keywords (10)</h5>
+        <div class="tag-group">
+          <span class="tag orange">ChatGPT</span><span class="tag orange">Claude</span><span class="tag orange">Google Gemini</span><span class="tag orange">Semrush</span><span class="tag orange">Ahrefs</span><span class="tag orange">Surfer SEO</span><span class="tag orange">MarketMuse</span><span class="tag orange">Perplexity AI</span><span class="tag orange">RankBrain</span><span class="tag orange">SGE</span>
+        </div>
+      </div>
+      <div class="nlp-card tech">
+        <h5>⚙️ Technical Terms (1)</h5>
+        <div class="tag-group">
+          <span class="tag pink">large language models</span>
+        </div>
+      </div>
+    </div>
+
+    <h3>Logic</h3>
+    <p>The NLP Extractor uses topic modeling and keyword extraction algorithms to classify detected keywords by their semantic weight and role within the content. It compares the detected keyword landscape against a trained expectation model for the identified topic. The Content Score reflects how completely the content covers the expected NLP keyword universe. The "Suggested to Add" list represents keywords that topically authoritative articles on the subject consistently contain.</p>
+
+    <h3>Use Case</h3>
+    <div class="callout tip"><div class="icon">🎯</div><div class="text"><strong>Three key use cases:</strong> (1) Pre-publish optimization — run your draft to find missing NLP keywords. (2) Content refresh — audit existing articles to identify terms to add for re-ranking. (3) Competitive intelligence — extract NLP keywords from top-ranking competitor pages to understand the full keyword universe you need to cover.</div></div>
+  </div>
+</div>
+
+<!-- DIVIDER -->
+<div class="divider"></div>
+
+<!-- SECTION 9: UNIFIED METHODOLOGY -->
+<div id="methodology" class="section">
+  <div class="section-header" style="background:linear-gradient(90deg,#0f172a,#1e293b);">
+    <div class="icon">🔄</div>
+    <div>
+      <h2>Unified Methodology &amp; Use Case Logic</h2>
+      <p>How to apply these tools strategically for maximum SEO impact</p>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <h3>The Semantic Completeness Framework</h3>
+    <p>SemanticsX's entire suite is built on one core insight: <strong>Google evaluates content semantically</strong>, not just by keyword density. An article ranks when it covers the complete "semantic universe" of a topic — including the right named entities, n-gram phrases, NLP keywords, and linguistic relationships that Google associates with the subject.</p>
+
+    <div class="pipeline">
+      <h3>Three-Layer Semantic Model</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:16px;">
+        <div class="pipe-node" style="padding:20px;">
+          <div style="font-size:1.5rem;margin-bottom:8px;">🏷️</div>
+          <strong>Layer 1: Entities</strong>
+          <p style="font-size:.8rem;color:#94a3b8;margin-top:6px;">Named people, organizations, products, concepts — the "nouns" Google's Knowledge Graph recognizes</p>
+          <p style="font-size:.75rem;color:#6c3ce1;margin-top:8px;">Tools: Entities Generator → Entities Extractor</p>
+        </div>
+        <div class="pipe-node" style="padding:20px;">
+          <div style="font-size:1.5rem;margin-bottom:8px;">#️⃣</div>
+          <strong>Layer 2: Phrases</strong>
+          <p style="font-size:.8rem;color:#94a3b8;margin-top:6px;">Multi-word phrases (n-grams) that signal topical expertise and match query patterns</p>
+          <p style="font-size:.75rem;color:#10b981;margin-top:8px;">Tools: N-Grams Extractor → Content Writer Step 6</p>
+        </div>
+        <div class="pipe-node" style="padding:20px;">
+          <div style="font-size:1.5rem;margin-bottom:8px;">🧠</div>
+          <strong>Layer 3: NLP Roles</strong>
+          <p style="font-size:.8rem;color:#94a3b8;margin-top:6px;">Keyword hierarchy (primary, secondary, LSI) that signals how topics relate semantically</p>
+          <p style="font-size:.75rem;color:#f59e0b;margin-top:8px;">Tools: NLP Extractor → Content Writer Step 7</p>
+        </div>
+      </div>
+    </div>
+
+    <h3>Recommended Workflow by Use Case</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Scenario</th><th>Recommended Tool Sequence</th><th>Expected Outcome</th></tr></thead>
+      <tbody>
+        <tr><td><strong>New article from scratch</strong></td><td>Entities Generator → Outline Creator → Content Writer (Express)</td><td>Semantically complete article built on competitor structure</td></tr>
+        <tr><td><strong>Audit existing article</strong></td><td>Entities Extractor + NLP Extractor</td><td>Entity gaps + NLP gaps + content score</td></tr>
+        <tr><td><strong>Competitive analysis</strong></td><td>Outline Creator + N-Grams Extractor (URL mode on competitors)</td><td>Understand competitor structure and phrase strategy</td></tr>
+        <tr><td><strong>Fast content</strong></td><td>Content Writer (Quick Mode)</td><td>4-step article: research → outline → word count → write</td></tr>
+        <tr><td><strong>Bulk keyword briefing</strong></td><td>Entities Generator (multiple keywords)</td><td>CSV of entity briefings for content team</td></tr>
+        <tr><td><strong>Content refresh / re-rank</strong></td><td>NLP Extractor → Entities Extractor → add missing terms</td><td>Improved topical coverage on existing page</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>How the Master Prompt Combines Everything</h3>
+    <p>The Content Writer's Master Prompt (Step 13) is the culmination of the entire pipeline. Here's exactly what it contains and why each element matters:</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Section in Master Prompt</th><th>Source Step</th><th>Why It Matters</th></tr></thead>
+      <tbody>
+        <tr><td>Primary Keyword</td><td>Step 1</td><td>Anchors the article to the target topic</td></tr>
+        <tr><td>Article Structure (outline + word counts)</td><td>Steps 2–3</td><td>Ensures correct heading hierarchy and depth per section</td></tr>
+        <tr><td>Competitor content style signals</td><td>Step 4</td><td>Aligns writing tone and style with search intent</td></tr>
+        <tr><td>Entities list (30 named entities)</td><td>Step 5</td><td>Tells AI which named concepts MUST appear in the article</td></tr>
+        <tr><td>AI-generated n-grams (25 phrases)</td><td>Step 6</td><td>Ensures key multi-word phrases appear naturally in text</td></tr>
+        <tr><td>NLP / LSI keywords (20 terms)</td><td>Step 7</td><td>Covers the semantic keyword role hierarchy</td></tr>
+        <tr><td>Skip-gram dominant words (25)</td><td>Step 8</td><td>Ensures topic-defining conceptual pairs appear</td></tr>
+        <tr><td>Grammar elements (8 categories)</td><td>Step 10</td><td>Provides linguistic context — synonyms, hypernyms, etc.</td></tr>
+        <tr><td>SEO rules (Koray guidelines)</td><td>Step 11</td><td>Enforces semantic writing structure standards</td></tr>
+        <tr><td>AI writing instructions</td><td>Step 12</td><td>Prevents AI clichés and enforces natural human language</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- SECTION 10: GLOSSARY -->
+<div id="glossary" class="section">
+  <div class="section-header" style="background:linear-gradient(90deg,#1f2937,#374151);">
+    <div class="icon">📖</div>
+    <div>
+      <h2>Glossary of Key Terms</h2>
+      <p>Definitions for all technical concepts used throughout SemanticsX</p>
+    </div>
+  </div>
+  <div class="section-body">
+    <div class="table-wrap"><table>
+      <thead><tr><th>Term</th><th>Definition in SemanticsX Context</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Entities</strong></td><td>Named people, organizations, concepts, products, and technologies that Google's Knowledge Graph associates with a topic. Including the right entities signals topical authority to search engines.</td></tr>
+        <tr><td><strong>N-Grams</strong></td><td>Contiguous word sequences of length 1 (unigram), 2 (bigram), 3 (trigram), or 4 (4-gram). Frequency analysis of n-grams reveals which phrases are dominant topic signals in content.</td></tr>
+        <tr><td><strong>NLP Keywords</strong></td><td>Semantically categorized keywords identified through Natural Language Processing — organized into primary, secondary, LSI, and technical tiers based on their role and weight in the content.</td></tr>
+        <tr><td><strong>LSI Terms</strong></td><td>Latent Semantic Indexing keywords — related terms that co-occur with a primary keyword in topically relevant content. They help search engines understand the topic's semantic context.</td></tr>
+        <tr><td><strong>Skip-Gram Words</strong></td><td>Word pairs extracted from text that frequently appear in proximity (not necessarily adjacent). They identify dominant conceptual associations within a topic.</td></tr>
+        <tr><td><strong>Grammar Elements</strong></td><td>Semantic word relationships — synonyms, antonyms, hypernyms (broader concepts), hyponyms (narrower concepts), meronyms (parts of), holonyms (wholes containing) — that define a topic's linguistic context.</td></tr>
+        <tr><td><strong>Content Score</strong></td><td>A 0–100 metric representing how completely a piece of content covers the expected semantic signals (entities or NLP keywords) for its topic, benchmarked against top-ranking content.</td></tr>
+        <tr><td><strong>Master Prompt</strong></td><td>The compiled AI instruction built from all 13 steps of Express Mode. Sent to the LLM to generate the final article. Editable before generation.</td></tr>
+        <tr><td><strong>Koray Guidelines</strong></td><td>SEO writing rules based on Koray Tuğberk Gübür's topical authority methodology — a framework for writing content that precisely answers query intent without fluff or ambiguity.</td></tr>
+        <tr><td><strong>Express Mode</strong></td><td>The full 13-step semantic optimization workflow in Content Writer. Designed for maximum SEO impact on competitive keywords.</td></tr>
+        <tr><td><strong>Quick Mode</strong></td><td>Streamlined 4-step workflow in Content Writer for faster article production with less semantic depth.</td></tr>
+        <tr><td><strong>Topical Authority</strong></td><td>The degree to which a website or page is recognized by search engines as an authoritative source on a specific topic, based on the depth and completeness of its semantic coverage.</td></tr>
+        <tr><td><strong>E-E-A-T</strong></td><td>Experience, Expertise, Authoritativeness, Trustworthiness — Google's quality rater guidelines for evaluating content quality, particularly important for AI-generated content.</td></tr>
+        <tr><td><strong>GEO</strong></td><td>Generative Engine Optimization — optimizing content for AI-powered search engines like Perplexity AI and Google's Search Generative Experience (SGE).</td></tr>
+        <tr><td><strong>Unique N-Grams</strong></td><td>Rare, niche phrases generated by AI that are uncommon in competitor content but topically relevant — used to differentiate content and rank for underserved long-tail query variants.</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <p><strong>SemanticsX Content Creation Suite — Complete Methodology Documentation</strong></p>
+  <p style="margin-top:8px;">Generated: April 22, 2026 · Sample Keyword: "AI SEO" · 6 Tools Documented · 13-Step Express Mode</p>
+  <p style="margin-top:8px;font-size:.8rem;">semanticsx.com/content</p>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,475 @@
+# GSC Semantic Opportunity Analysis — Master Prompt (v2)
+
+Use this prompt to analyze a 12-month Google Search Console dataset as an expert SEO strategist working inside a holistic semantic SEO framework (Koray Tugberk GUBUR's methodology: canonical queries, topical maps, frame semantics, macro/micro context, contextual structure).
+
+The goal is not to summarize clicks and impressions. The goal is to use the GSC data as **evidence to diagnose where the topical map is breaking** — coverage gaps, canonical mismatches, macro-context dilution, predicate misalignment, cannibalization — and prescribe content actions that repair the map. Recommendations that win isolated rankings but damage the map are wrong answers.
+
+---
+
+## Step 0 — Source context (load first, every run)
+
+Before any analysis, anchor on:
+
+- **Brand / website being analyzed** (name, domain, monetization model)
+- **Central entity** (the single entity every piece of content connects to)
+- **Sub-entities** that anchor major sections of the topical map
+- **Central search intent** (the unifying intent across the network, expressed via predicates like *know, compare, buy, do*)
+- **Topical borders — WILL cover** (explicit list of topics in scope)
+- **Topical borders — WILL NOT cover** (explicit list of topics out of scope)
+- **Primary audience personas** (in priority order)
+- **Commercial/landing pages** the analysis must protect from dilution
+- **Impression evidence threshold** (e.g., minimum 50 impressions over 12 months for a single query to be actionable in isolation; 200+ combined for a cluster)
+
+If any of the above is not provided in the dataset or accompanying context, ask for it before producing recommendations. Generic SEO opportunity output without source context produces map damage, not map repair.
+
+---
+
+## Step 1 — Clean and segment the data
+
+Ignore noise and weak signals. A query with 3 impressions and zero clicks is not an opportunity.
+
+Apply the impression evidence threshold from Step 0. Then segment queries by length:
+
+| Bucket | Regex | Typical intent signal |
+|---|---|---|
+| 1 word | `^[^\s]+$` | Broad, ambiguous, demands all-context coverage |
+| 2–4 words | `^([^\s]+\s){1,3}[^\s]+$` | Category, commercial, navigational, or broad informational |
+| 5–8 words | `^([^\s]+\s){4,7}[^\s]+$` | Specific informational or commercial investigation |
+| 9–12 words | `^([^\s]+\s){8,11}[^\s]+$` | Long-tail, problem-aware, comparison, AI-prompt-style |
+| 13–20 words | `^([^\s]+\s){12,19}[^\s]+$` | Conversational, prompt-style, niche |
+| 20+ words | `^([^\s]+\s){20,}[^\s]+$` | Highly specific AI-prompt-style queries |
+
+Length is a **weak intent signal on its own**. Use it only to refine the predicate classification in Step 2.
+
+---
+
+## Step 2 — Predicate classification (frame semantics)
+
+For every query above the evidence threshold, extract:
+
+- **Central entity** — the noun/subject of the query
+- **Dominant predicate(s)** — the verb or implied verb
+- **Predicate class** — one of:
+
+| Class | Markers | Content type implied |
+|---|---|---|
+| KNOW | what, why, how, when, define, explain, mean, is, are | Guide / definitional / explainer |
+| COMPARE | vs, versus, compare, alternative, best, top, difference, review | Comparison / alternatives / "best of" |
+| DO | build, create, make, fix, install, configure, run, set up, use | Tutorial / how-to / template / checklist |
+| BUY | buy, price, pricing, cost, demo, signup, vendor, tool, software | Product / service / pricing / landing |
+| VISIT | near me, location, [city/region] | Local / location page |
+
+**Intent classification = predicate class FIRST, length bucket SECOND.** A 3-word query and a 12-word query with the same predicate class belong to the same intent family. A 3-word query and another 3-word query with different predicate classes do not.
+
+For ambiguous single-word queries, flag the dominant / common / minor interpretations explicitly. Do not assume.
+
+---
+
+## Step 2.5 — Canonical query alignment check (mandatory, before any optimization)
+
+This is the most important step. Skipping it produces recommendations that damage the topical map.
+
+For every query above the evidence threshold that has a ranking page in the dataset, evaluate:
+
+1. **Infer the canonical query of the currently ranking page** from its URL, title, and H1 (if available). The canonical query is the single search query the page is built to own.
+2. **Determine whether the GSC query maps to that canonical**, or whether the page is ranking by accident for a query it shouldn't own.
+3. Classify each query into one of three alignment states:
+
+| State | Definition | Implication |
+|---|---|---|
+| **Aligned** | Query matches the page's canonical, or is a clear represented variation of it | Optimize in place — striking-distance and CTR plays are valid here |
+| **Adjacent** | Query is a represented variation but covers an attribute the page underdeveloped | Add supplementary content / FAQ section on existing page — do not retitle |
+| **Misaligned** | Query has a different canonical from the page that's ranking | **Do NOT optimize the current page for this query.** Doing so dilutes the page's macro context. Build the correct page, or assign the query to a more semantically appropriate existing page |
+
+Every downstream optimization recommendation must reference one of these three states. A query without an alignment classification cannot enter the action plan.
+
+---
+
+## Step 3 — Opportunity bucket assignment (mutually exclusive, ordered)
+
+Apply these buckets in order. **First match wins** — a query gets exactly one bucket. This eliminates the contradictions that come from running multiple bucket rules in parallel.
+
+```
+1. Cannibalization Risk
+   IF 2+ URLs from the domain rank for the same query with 100+ impressions each
+   over the 12-month window.
+   → Resolve FIRST. Cannibalization suppresses both pages and contaminates
+     historical data.
+
+2. Misaligned Canonical
+   IF Step 2.5 flagged the query as Misaligned.
+   → Resolve BEFORE any in-place optimization. Recommend new page or
+     reassignment.
+
+3. Low CTR / Snippet Opportunity
+   IF position 1–10 AND CTR is meaningfully below the expected CTR for that
+   position (use position-CTR benchmarks; flag CTRs >40% below benchmark).
+   → Title, meta, snippet angle, or schema work. Do NOT change the page's
+     macro context.
+
+4. Striking Distance
+   IF position 4–15 AND alignment = Aligned AND meaningful impressions.
+   → On-page optimization, attribute expansion, internal linking.
+
+5. High Impression / Low Ranking
+   IF position 16+ AND impressions ≥ evidence threshold AND alignment ≠
+   Misaligned.
+   → Diagnose attribute gaps; decide expand-existing vs new-page based on
+     alignment state.
+
+6. Long-Tail Intent Opportunity
+   IF query length ≥ 5 words AND has a specific predicate AND
+   meaningful impressions AND belongs to a cluster of 5+ related queries.
+   → Cluster-level action: supplementary content on existing page (if
+     canonical matches) or new supporting page (if cluster has its own
+     canonical).
+
+7. New Content Gap
+   IF no existing page clearly matches the query's canonical AND the query
+   has a cluster of related queries with combined impressions above the
+   cluster threshold.
+   → New page in the topical map.
+
+8. Deprioritize
+   IF query is isolated AND not in core section AND commercial value low.
+   → State the deprioritization explicitly with rationale.
+```
+
+---
+
+## Step 4 — Cluster grouping (predicate + entity, not keyword similarity)
+
+Group queries into clusters using this algorithm:
+
+```
+For each query:
+  1. Extract central entity (the noun/subject).
+  2. Extract dominant predicate and predicate class (from Step 2).
+
+Group queries together IF AND ONLY IF:
+  - Same central entity (or close synonym/lemma)
+  - AND same predicate class
+
+DO NOT group queries with the same entity but different predicate classes.
+("What is X" and "buy X" go in SEPARATE clusters — they need different
+page types.)
+
+For each resulting cluster, identify:
+  - Canonical query (the most representative phrasing of the cluster's intent)
+  - Represented queries (variations of the canonical)
+  - Dominant predicate
+  - Predicate class → implied content type
+  - Query-length distribution across the 6 buckets
+  - Total impressions, total clicks, average CTR, average position range
+  - Existing page candidate (if any) — and that page's alignment state
+  - Required action type: update existing / expand existing / consolidate /
+    new page / supplementary section / deprioritize
+```
+
+---
+
+## Step 5 — Cannibalization detection (run before any other optimization)
+
+For every query in the dataset:
+
+```
+1. Count the number of unique URLs from the domain ranking for that query
+   with ≥100 impressions over 12 months.
+
+2. IF count = 1: not cannibalized. Skip.
+
+3. IF count ≥ 2:
+     a. Identify the page with the highest impression share — call this the
+        primary page.
+     b. For every other ranking page on that query, classify:
+        - Same canonical as primary → CONSOLIDATE (merge content, 301 redirect
+          secondary to primary)
+        - Different canonical, but adjacent (genuine query overlap) →
+          DEPROMOTE secondary (remove the query's keywords from secondary
+          page; remove internal anchor texts using these terms that point to
+          secondary)
+        - Different canonical, legitimately different intent → SEPARATE
+          (the GSC overlap is noise; each page should own its own canonical;
+          ensure on-page macro context is distinct enough)
+
+4. Cannibalization fixes go in their OWN priority bucket and are resolved
+   BEFORE striking-distance optimization on the same pages.
+```
+
+---
+
+## Step 6 — Opportunity scoring (semantic-weighted)
+
+Score each query (or each cluster, for cluster-level actions) from 1–100:
+
+```
+Opportunity Score =
+   Impressions Potential        × 0.20
+ + Ranking Proximity             × 0.20
+ + CTR Gap                       × 0.10
+ + Predicate-Page Alignment      × 0.15
+ + Topical Coverage Value        × 0.15
+ + Business / Commercial Value   × 0.20
+```
+
+### Component scoring rules
+
+**Impressions Potential (0–100):**
+Scale logarithmically across the dataset's impression distribution; do not just sort raw impressions.
+
+**Ranking Proximity (0–100):**
+
+| Position | Score |
+|---|---|
+| 1–3 | 60 (unless CTR is weak — then 90, as the snippet fix has compounding upside) |
+| 4–10 | 100 |
+| 11–15 | 90 |
+| 16–20 | 75 |
+| 21–30 | 60 |
+| 31–50 | 40 |
+| 50+ | 20 |
+
+**CTR Gap (0–100):**
+Compare actual CTR to expected CTR for the position. Score 100 if actual is 40%+ below benchmark; 0 if at or above benchmark.
+
+**Predicate-Page Alignment (0–100):**
+- Aligned (Step 2.5) = 100
+- Adjacent = 60
+- Misaligned = 20 (low score reflects: optimizing this page for this query is the wrong move, not that the query is low value)
+
+**Topical Coverage Value (0–100):**
+- Query/cluster strengthens the central entity in the core section → 100
+- Query/cluster is in the outer section, builds historical data → 60
+- Query/cluster is on the topical border → 40
+- Query/cluster is outside topical borders → 0 (and flag for "do not pursue")
+
+**Business / Commercial Value (0–100):**
+- BUY / DO predicates on core entity → 100
+- COMPARE predicates that influence purchase → 80
+- KNOW predicates with high intent-to-purchase chain → 60
+- Top-of-funnel KNOW predicates with no clear conversion chain → 30
+- Brand-only or vanity queries → 10
+
+---
+
+## Step 7 — Action logic (canonical-aware)
+
+Recommended action per query/cluster, conditioned on alignment state:
+
+```
+IF bucket = Cannibalization Risk:
+  Action = Consolidate, depromote, or separate (see Step 5)
+
+IF bucket = Misaligned Canonical:
+  IF cluster has 5+ related queries with combined impressions ≥ cluster threshold:
+    Action = Create new page targeting this canonical
+  ELSE:
+    Action = Reassign query to an existing page whose canonical matches,
+             or add as supplementary FAQ if a host page exists.
+
+IF bucket = Low CTR / Snippet Opportunity:
+  Action = Rewrite title and/or meta. Add schema if intent supports it
+           (FAQ, HowTo, Product). Do NOT change the page's macro context.
+
+IF bucket = Striking Distance AND alignment = Aligned:
+  Action = Update existing page:
+           - Audit attribute coverage (Step 8)
+           - Add missing H2/H3 sections for uncovered attributes
+           - Tighten internal linking from quality nodes
+           - Improve first-100-words macro context phrasing
+
+IF bucket = High Impression / Low Ranking:
+  IF alignment = Aligned: Action = Expand existing page (attribute gaps + internal links)
+  IF alignment = Adjacent: Action = Add supplementary section / FAQ on existing page
+  IF alignment = Misaligned: Action = Create or reassign to better-matched page
+
+IF bucket = Long-Tail Intent Opportunity:
+  IF cluster shares canonical with an existing page:
+    Action = Add as supplementary content / FAQ section on that page
+  ELIF cluster has its own canonical AND ≥5 queries AND meets cluster impression threshold:
+    Action = Create new supporting page in outer section of topical map
+  ELSE:
+    Action = Deprioritize
+
+IF bucket = New Content Gap:
+  Action = Create new page. Specify whether it lives in core section
+           (drives monetization) or outer section (historical data).
+
+IF bucket = Deprioritize:
+  State explicitly. Include rationale.
+```
+
+---
+
+## Step 8 — Attribute coverage diagnostic (run on every Aligned/Adjacent recommendation)
+
+For each existing page receiving an update recommendation:
+
+```
+1. List the attributes of the central entity that the page CURRENTLY covers
+   (inferred from H2s/H3s if available; otherwise from page title + meta).
+
+2. List the attributes IMPLIED by the cluster's queries that the page does
+   NOT currently cover.
+
+3. Output, per page:
+   "Attribute coverage gap on [page]:
+    Missing attributes — [attr 1], [attr 2], [attr 3].
+    These are demanded by queries: [query A], [query B], [query C] with
+    combined [X] impressions and current avg position [Y]."
+```
+
+This converts vague "expand the page" recommendations into specific H2 section additions.
+
+---
+
+## Step 9 — Topical border filter (final pass)
+
+After all scoring and action assignment, filter every recommendation through the brand's topical borders (from Step 0):
+
+```
+For each recommended action:
+
+IF the query/cluster falls within "WILL cover" borders:
+  Pass through.
+
+IF the query/cluster falls within "WILL NOT cover" borders:
+  Deprioritize regardless of impression volume.
+  Output as: "Out of topical borders — do not pursue. [Brief rationale.]"
+
+IF the query/cluster sits on the border (ambiguous):
+  Flag for human review with the question:
+  "Does pursuing this strengthen [central entity], or dilute it?"
+```
+
+This is not optional. A high-impression query outside the topical borders is map damage, not opportunity.
+
+---
+
+## Step 10 — Self-challenge (with explicit evidence requirements)
+
+For each top-5 recommendation in the final plan, state explicitly:
+
+1. **Evidence:** what in the GSC data supports this action? (Specific query/queries, impressions, position, CTR, cluster size.)
+2. **Falsification:** what would have to be true for this action to be wrong?
+3. **Alternative:** what other defensible action could be taken from the same data, and why was it not chosen?
+
+Also challenge the overall plan:
+
+- Am I recommending new content when an existing page update would be better?
+- Am I over-indexing on high-impression queries with weak commercial alignment?
+- Are some clusters being split that should be consolidated?
+- Are some clusters being consolidated that should be split (different predicates)?
+- Have I respected the canonical alignment rules in every recommendation?
+- Have I checked every action against topical borders?
+- Are any recommendations based on queries below the evidence threshold (Step 0)?
+
+---
+
+## Step 11 — Output structure
+
+Produce two outputs in this order:
+
+### Output A — Topical Map Repair Plan (strategic, semantic)
+
+This is the lead output. The team optimizes against this.
+
+| Priority | Map Issue | Affected Cluster / Page | Action | What This Repairs |
+|---|---|---|---|---|
+| P1 | Cannibalization | [cluster + URLs] | Consolidate / depromote / separate | Stops historical data damage |
+| P1 | Canonical mismatch | [cluster + page] | Build new page / reassign | Page-query alignment |
+| P2 | Attribute coverage gap | [page] | Add H2 sections for [attributes] | Topical coverage of central entity |
+| P2 | Macro context dilution | [page] | Move [section] to new page | Frees page to own its canonical |
+| P3 | Low CTR misalignment | [page] | Title/meta/schema rewrite | Captures earned impressions |
+| P3 | Outer section gap | [cluster] | New supporting page | Historical data + topical breadth |
+| P4 | Deprioritize | [cluster] | Do not pursue | Protects topical borders |
+
+### Output B — Execution-Level Tables (tactical)
+
+**B1. Executive Summary**
+- Biggest map repair opportunity
+- Fastest win (lowest effort, highest score)
+- Highest business-impact opportunity
+- Biggest content gap
+- Main risk / weakest assumption in this analysis
+- Impression evidence threshold used
+
+**B2. Query Segmentation Overview**
+
+| Length bucket | Typical intent | Query count | Total impr | Total clicks | Avg CTR | Avg position | Recommended use |
+|---|---|---|---|---|---|---|---|
+
+**B3. Predicate Distribution Overview**
+
+| Predicate class | Query count | Total impr | Avg position | Implied content types | Current coverage state |
+|---|---|---|---|---|---|
+
+**B4. Top Opportunity Clusters**
+
+| Cluster | Canonical query | Predicate class | Main queries | Current page | Alignment state | Impressions | Clicks | Avg position | Bucket | Recommended action | Content type | Opportunity score |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+
+**B5. Striking-Distance Opportunities**
+
+| Query | Page | Alignment | Impressions | Clicks | CTR | Avg position | Why it matters | Recommended optimization |
+|---|---|---|---|---|---|---|---|---|
+
+**B6. High-Impression / Low-Ranking Opportunities**
+
+| Query | Page | Alignment | Impressions | Avg position | Likely issue | Update existing / new page | Recommended content angle |
+|---|---|---|---|---|---|---|---|
+
+**B7. Low-CTR Opportunities**
+
+| Query | Page | Position | CTR | Expected CTR | Likely CTR issue | Suggested title/meta angle | Schema suggestion |
+|---|---|---|---|---|---|---|---|
+
+**B8. Cannibalization Fixes**
+
+| Query | Primary page | Secondary page(s) | Diagnosis | Action | Internal link cleanup |
+|---|---|---|---|---|---|
+
+**B9. New Content Opportunities**
+
+| New page idea | Canonical query | Predicate class | Supporting queries | Search intent | Recommended content type | Why a new page (not an update) | Section of topical map (core/outer) | Internal pages to link from | Priority |
+|---|---|---|---|---|---|---|---|---|---|
+
+**B10. Existing Page Update Plan**
+
+| Page | Cluster owned | Attribute coverage gaps | What to add (H2/H3 sections) | What to improve (title/meta/schema) | Internal links to add | Suggested schema | Priority |
+|---|---|---|---|---|---|---|---|
+
+**B11. What Top-Ranking Pages Are Likely Doing Better**
+
+For each major cluster: hypothesis-level analysis of what competitors likely cover better — intent match, attribute depth, predicate consistency, internal linking, freshness, schema, E-E-A-T signals. Present as hypotheses unless SERP data is provided.
+
+**B12. Out-of-Borders / Deprioritized**
+
+| Query/cluster | Impressions | Reason for deprioritization | Border crossed |
+|---|---|---|---|
+
+**B13. 30-Day Execution Order**
+
+| Week | Action | Page(s) | Bucket | Opportunity score | Effort |
+|---|---|---|---|---|---|
+
+Execution sequence:
+- **Week 1:** Cannibalization fixes + low-CTR snippet rewrites (highest score-per-effort)
+- **Week 2:** Striking-distance attribute expansion on aligned pages
+- **Week 3:** Misaligned canonical resolution (new pages or reassignment)
+- **Week 4:** New core-section pages for content gaps with clusters above threshold
+
+---
+
+## Operating principles
+
+- Length is a weak signal. Predicate class is a strong signal. Use both.
+- Canonical alignment is checked before any optimization recommendation.
+- Recommendations that win isolated rankings but damage the topical map are wrong answers.
+- Cluster grouping is by entity + predicate class, not keyword similarity.
+- Cannibalization fixes precede striking-distance optimization on the same pages.
+- Every recommendation must respect the brand's topical borders.
+- Every recommendation must clear the impression evidence threshold (alone or via cluster).
+- Hypotheses about competitor pages are flagged as hypotheses unless SERP data is provided.
+- Output A (topical map repair) leads. Output B (execution tables) follows.
+- The plan is execution-focused, evidence-bound, and semantically aligned. No generic SEO advice.

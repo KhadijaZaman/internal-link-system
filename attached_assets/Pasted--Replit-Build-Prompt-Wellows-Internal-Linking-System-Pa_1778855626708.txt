@@ -1,0 +1,514 @@
+# Replit Build Prompt — Wellows Internal Linking System
+
+> Paste everything below this line into Replit Agent (or a fresh Replit AI chat). It's a single self-contained spec — Replit Agent will scaffold the project, install dependencies, set up the database, and stub the four background jobs + dashboard.
+
+---
+
+## Project: `wellows-internal-linking`
+
+Build me a Python web application that replaces a 4-workflow n8n automation with a single hosted Replit app. The system does internal linking analysis and SEO optimization for **Wellows.com**, an AI visibility SaaS.
+
+### Stack requirements
+
+- **Language:** Python 3.11+
+- **Web framework:** FastAPI (with `uvicorn`)
+- **Database:** Replit's built-in PostgreSQL (use the `DATABASE_URL` env var Replit provides). Use `SQLAlchemy` + `Alembic` for migrations.
+- **Background jobs:** APScheduler running inside the FastAPI process (not Celery — keep it simple, one process).
+- **HTML templating:** Jinja2 (for the dashboard) + a small amount of vanilla JS with D3.js loaded from CDN
+- **HTTP client:** `httpx` (async)
+- **External APIs:** Google Search Console API (`google-auth` + `google-api-python-client`), Anthropic API (`anthropic` Python SDK), DataForSEO (direct HTTP via `httpx`)
+- **Deployment:** Replit Deployment (Reserved VM, $7/mo tier is fine — needed because schedulers must run continuously)
+
+### Secrets the user will add to Replit Secrets
+
+| Secret name | What it is |
+|---|---|
+| `DATABASE_URL` | Auto-provided by Replit Postgres |
+| `GSC_CLIENT_ID` | Google Cloud OAuth Client ID |
+| `GSC_CLIENT_SECRET` | Google Cloud OAuth Client Secret |
+| `GSC_REFRESH_TOKEN` | OAuth refresh token (see setup instructions in `README.md`) |
+| `GSC_PROPERTY` | e.g. `sc-domain:wellows.com` |
+| `ANTHROPIC_API_KEY` | From console.anthropic.com |
+| `DATAFORSEO_LOGIN` | DataForSEO username |
+| `DATAFORSEO_PASSWORD` | DataForSEO password |
+| `SITE_DOMAIN` | `wellows.com` |
+| `SITEMAP_URL` | `https://wellows.com/sitemap.xml` |
+| `ADMIN_PASSWORD` | Single-user basic auth for the dashboard |
+
+---
+
+## Database schema
+
+Create these tables via SQLAlchemy models + Alembic migration:
+
+```sql
+inventory (
+  url TEXT PRIMARY KEY,
+  title TEXT,
+  h1 TEXT,
+  section TEXT,           -- 'core' or 'outer'
+  top_query TEXT,
+  position FLOAT,
+  impressions INT,
+  clicks INT,
+  last_updated TIMESTAMPTZ DEFAULT now()
+)
+
+link_graph (
+  id SERIAL PRIMARY KEY,
+  source_url TEXT NOT NULL,
+  target_url TEXT NOT NULL,
+  anchor_text TEXT,
+  surrounding_text TEXT,
+  crawled_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(source_url, target_url, anchor_text)
+)
+CREATE INDEX ON link_graph (source_url);
+CREATE INDEX ON link_graph (target_url);
+
+link_stats (
+  url TEXT PRIMARY KEY,
+  inbound_count INT DEFAULT 0,
+  outbound_count INT DEFAULT 0,
+  internal_pagerank FLOAT DEFAULT 0,
+  is_orphan BOOLEAN DEFAULT false,
+  is_dead_end BOOLEAN DEFAULT false,
+  updated_at TIMESTAMPTZ DEFAULT now()
+)
+
+link_suggestions (
+  id SERIAL PRIMARY KEY,
+  donor_url TEXT NOT NULL,
+  receiver_url TEXT NOT NULL,
+  anchor_text TEXT,
+  koray_rationale TEXT,
+  section_link_type TEXT,    -- 'outer_to_core', 'core_to_core', etc.
+  insertion_sentence TEXT,
+  priority_score FLOAT,
+  status TEXT DEFAULT 'pending_review',  -- 'pending_review', 'approved', 'rejected', 'inserted'
+  suggested_at TIMESTAMPTZ DEFAULT now(),
+  reviewed_at TIMESTAMPTZ,
+  UNIQUE(donor_url, receiver_url, anchor_text)
+)
+
+gsc_snapshots (
+  id SERIAL PRIMARY KEY,
+  snapshot_date DATE NOT NULL,
+  url TEXT NOT NULL,
+  query TEXT NOT NULL,
+  position FLOAT,
+  impressions INT,
+  clicks INT,
+  ctr FLOAT
+)
+CREATE INDEX ON gsc_snapshots (snapshot_date, url);
+CREATE INDEX ON gsc_snapshots (url, query);
+
+query_losers (
+  id SERIAL PRIMARY KEY,
+  week_of DATE NOT NULL,
+  url TEXT NOT NULL,
+  query TEXT NOT NULL,
+  prev_position FLOAT,
+  curr_position FLOAT,
+  position_change FLOAT,
+  prev_impressions INT,
+  curr_impressions INT,
+  impressions_change_pct FLOAT,
+  severity TEXT  -- 'Critical', 'High', 'Medium', 'Low'
+)
+
+optimize_queue (
+  id SERIAL PRIMARY KEY,
+  url TEXT NOT NULL,
+  status TEXT DEFAULT 'optimize',  -- 'optimize', 'done', 'skipped_no_gsc'
+  priority TEXT DEFAULT 'medium',
+  notes TEXT,
+  brief_markdown TEXT,
+  added_at TIMESTAMPTZ DEFAULT now(),
+  completed_at TIMESTAMPTZ
+)
+
+crawl_progress (
+  id INT PRIMARY KEY DEFAULT 1,
+  last_offset INT DEFAULT 0,
+  last_run_at TIMESTAMPTZ
+)
+```
+
+---
+
+## The four background jobs (run via APScheduler)
+
+All jobs run inside the FastAPI process. Use APScheduler's `AsyncIOScheduler` with cron triggers.
+
+### Job 1 — `crawl_link_map` (Sunday 02:00 UTC)
+
+Replaces n8n "WF2 — Link Map Builder". Chunked crawler.
+
+**Logic:**
+
+1. Fetch `SITEMAP_URL`. Parse all `<loc>` entries using `xml.etree.ElementTree` (handle both regular and sitemap-index formats — if it's an index, fetch each sub-sitemap).
+2. Read `crawl_progress.last_offset` from DB. Slice URLs `[offset : offset + 200]`.
+3. For each URL in the chunk (async, with `asyncio.Semaphore(5)` and 1-second polite delay):
+   - GET the page with `httpx` (15s timeout, follow redirects, custom User-Agent: `WellowsLinkMapBot/1.0`)
+   - Skip if status != 200 or content-type isn't HTML
+   - Use `selectolax` (faster than BeautifulSoup) to parse:
+     - `<title>` → save
+     - `<h1>` first one → save
+     - All `<a href>` where href resolves to the same domain
+     - For each link: source_url, target_url (normalize relative paths, strip fragments, drop self-links), anchor text (max 150 chars), surrounding 80 chars of text
+4. Upsert into `link_graph` (on conflict do nothing — keeps history clean)
+5. After chunk completes:
+   - Update `crawl_progress.last_offset += 200` (reset to 0 when reaching end of sitemap)
+   - **Recompute `link_stats` for ALL urls** (this is fast, do it in a single SQL query):
+     - `inbound_count = COUNT(*) FROM link_graph WHERE target_url = url`
+     - `outbound_count = COUNT(*) FROM link_graph WHERE source_url = url`
+     - `is_orphan = inbound_count == 0`
+     - `is_dead_end = outbound_count == 0`
+     - `internal_pagerank`: run 10 iterations of standard PageRank in Python (damping 0.85). For a 500-5000 page graph this takes < 1 second using a dict-based adjacency list.
+6. Write to a snapshot JSON file in `/tmp/link_graph_export.json` for the dashboard to read
+
+**Error handling:** Wrap each URL fetch in try/except. Log failures to a `crawl_errors` table or just stdout. Never let one bad page kill the whole job.
+
+### Job 2 — `gsc_inventory_and_losers` (Monday 03:00 UTC)
+
+Replaces n8n "WF3".
+
+**Logic:**
+
+1. Authenticate to GSC using stored refresh token. Build the Search Console service client.
+2. Pull last 7 days (`startDate = today - 7d`, `endDate = today - 1d`) with `dimensions=["page", "query"]`, `rowLimit=25000`.
+3. Pull prior 7 days (`startDate = today - 14d`, `endDate = today - 8d`) same dimensions.
+4. Save current week to `gsc_snapshots` (append, date-stamped).
+5. Join the two weeks on `(url, query)` in Python (or in SQL with a CTE).
+6. Compute losers per row:
+   - `position_change = curr_position - prev_position`
+   - `impressions_change_pct = (curr_imp - prev_imp) / prev_imp * 100`
+   - Severity classification:
+     - `Critical`: prev_position ≤ 3 AND curr_position > 3
+     - `High`: (prev_position ≤ 10 AND curr_position > 10) OR position_change ≥ 3
+     - `Medium`: impressions_change_pct ≤ -30 AND prev_position ≤ 20
+     - `Low`: position_change ≥ 1.5 OR impressions_change_pct ≤ -15
+     - Else: skip (not a loser)
+7. Insert losers into `query_losers` with `week_of = today`.
+8. Rebuild `inventory` table: for each unique url, pick the row with the highest impressions, store as that url's `top_query` + stats. Set `section` using the Wellows Core-pattern regex (see below).
+
+**Wellows Core-section URL patterns** (use these regexes to classify `section`):
+```python
+CORE_PATTERNS = [
+    r'/pricing', r'/features', r'/product', r'/solutions',
+    r'/geo\b', r'/aeo\b', r'/ai-visibility', r'/ai-citations',
+    r'/chatgpt-', r'/perplexity-', r'/ai-overviews', r'/gemini-',
+    r'/brand-visibility', r'/citation-'
+]
+def is_core(url: str) -> bool:
+    return any(re.search(p, url, re.IGNORECASE) for p in CORE_PATTERNS)
+```
+
+### Job 3 — `find_link_suggestions` (Tuesday 04:00 UTC)
+
+Replaces n8n "WF1 — Koray Linking Finder". This is the brain.
+
+**Logic:**
+
+1. Read `inventory`, `link_stats`, and `link_graph` from DB.
+2. Build a `pages` dict keyed by URL, merging inventory + stats + (title, h1) from `link_graph` (use the most recent crawl entry for each source_url's title/h1).
+3. Build `existing_links_set = {(source, target) for row in link_graph}` for deduplication.
+4. **Identify receivers** (pages that almost rank): `position` in 4..20 AND `impressions` ≥ 30
+5. **Identify donors** (pages with authority): `position` < 4 AND `clicks` > 5, OR `pagerank` > 0 AND `inbound_count` ≥ 2
+6. For each (receiver, donor) pair where the link doesn't already exist:
+   - **Anchor text** = receiver's H1 if available, else title, else top_query (Koray Lecture #74 — anchor MUST match target H1)
+   - Skip if anchor < 5 chars
+   - **Section link type** + weight (Koray section weighting):
+     - `outer_to_core`: 1.5x — "Outer→Core: educational page links up to commercial cluster. Outer builds historical data, core drives monetization."
+     - `core_to_core`: 1.2x — "Core→Core: sibling cluster reinforcement around central entity (AI visibility)."
+     - `outer_to_outer`: 0.8x — "Outer→Outer: contextual bridge inside know-predicate territory."
+     - `core_to_outer`: 0.4x — "Core→Outer: donates authority outward. Use sparingly per Koray Lecture #80."
+   - **Topical overlap check**: split receiver's top_query into words > 3 chars, count how many appear in donor's (h1 + title + top_query). If overlap_ratio < 0.3, skip.
+   - **Priority score** = `(impressions / position) × type_weight × overlap_ratio`
+7. Sort by priority, take top 100.
+8. For each of the top 100:
+   - Fetch donor URL HTML (10-second timeout, log + skip on failure)
+   - Call Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) with this exact system + user prompt structure:
+
+```python
+system = """You are placing an internal link on a Wellows blog page following Koray Tugberk Gubur's semantic SEO rules. Wellows is an AI visibility SaaS that tracks brand citations across ChatGPT, Gemini, Perplexity, AI Overviews, and AI Mode.
+
+Voice rules (non-negotiable):
+- Conversational casual, plain vocabulary
+- Confident, not hedgy
+- No emojis, no GPT-style openers ("In today's...", "Let's dive in")
+- Banned hype words: seamless, unlock, leverage, robust, cutting-edge, game-changer, supercharge
+- Short sentences, no em-dash decoration
+
+Koray rules:
+1. Lecture #73: Place link AFTER the concept is defined. Never on the first word of a sentence.
+2. Lecture #74: Anchor text must exactly match the target page's H1.
+"""
+
+user = f"""DONOR PAGE BODY (where the link will go):
+{stripped_text[:6000]}
+
+LINK TARGET:
+- URL: {receiver_url}
+- Target H1: {receiver_h1}
+- Anchor text (must match H1): "{anchor_text}"
+
+Return JSON only, no preamble:
+{{
+  "insertion_paragraph": "the existing paragraph from the donor page where the link fits naturally, with the anchor replaced by <a href=DUMMY>{anchor_text}</a>",
+  "why_this_fits": "one sentence on why this placement satisfies Koray's rules"
+}}"""
+```
+
+- Parse the response, replace `DUMMY` with `receiver_url` in `insertion_paragraph`.
+- Upsert into `link_suggestions` with status='pending_review'.
+
+**Rate limiting:** 5 concurrent Claude calls max (use `asyncio.Semaphore(5)`).
+
+### Job 4 — `optimize_queued_urls` (Wednesday 05:00 UTC)
+
+Replaces n8n "WF4 — URL Optimizer".
+
+**Logic:**
+
+1. Read `optimize_queue` WHERE status='optimize'.
+2. For each URL:
+   - Pull GSC last 90 days for THIS url only (use `dimensionFilterGroups` to filter by page)
+   - Bucket queries by position: top3 (≤3), pos4_10, pos11_20, pos21plus
+   - Fetch the page HTML, extract title + h1 + body text
+   - Pull inbound + outbound links from `link_graph` for this URL
+   - Take top 3 queries by impressions, call DataForSEO SERP API (`/v3/serp/google/organic/live/advanced`) — Basic auth with `DATAFORSEO_LOGIN:DATAFORSEO_PASSWORD`. For each query, extract top 5 organic results (rank, url, title, description).
+   - Call Claude Sonnet 4.6 (`claude-sonnet-4-6`) with `max_tokens=3000` to generate the brief. Use the exact prompt template from `prompts/optimization_brief.txt` (see below).
+   - Save the markdown brief to `optimize_queue.brief_markdown` and set `status='done'`, `completed_at=now()`.
+3. If a URL has no GSC data (no rows returned), set status='skipped_no_gsc' and move on.
+
+**Brief prompt template** (save as `prompts/optimization_brief.txt`):
+
+```
+You are writing an SEO optimization brief for Wellows, an AI visibility SaaS. Apply Koray Tugberk Gubur's semantic SEO framework.
+
+Voice: conversational casual, plain vocabulary, confident not hedgy. No emojis, no hype words (seamless, unlock, leverage, game-changer), no GPT openers.
+
+Wellows central entity: AI visibility. Four moats:
+1. Explicit + implicit citation tracking
+2. Outreach layer for citation acquisition
+3. Content optimization tied to citation impact
+4. 485K-citation research dataset
+
+TARGET PAGE:
+URL: {target_url}
+Title: {title}
+H1: {h1}
+Operator notes: {notes}
+
+CURRENT BODY EXCERPT:
+{body_excerpt[:8000]}
+
+GSC PERFORMANCE (last 90 days, grouped by position):
+Top 3: {json.dumps(buckets['top3'])}
+Positions 4-10: {json.dumps(buckets['pos4_10'])}
+Positions 11-20: {json.dumps(buckets['pos11_20'])}
+Positions 21+: {json.dumps(buckets['pos21plus'])}
+
+INTERNAL LINKS:
+Inbound ({len(inbound)}): {json.dumps(inbound[:10])}
+Outbound ({len(outbound)}): {json.dumps(outbound[:10])}
+
+SERP COMPETITION (top 5 per ranking query):
+{json.dumps(competitors)}
+
+Produce a markdown brief with these sections:
+
+# Optimization Brief: {target_url}
+
+## Diagnosis
+2-3 sentences on what is currently happening with this page.
+
+## Primary Target Query (canonical)
+The one query this page should own. Justify briefly.
+
+## Koray Contextual Structure (proposed H2/H3 hierarchy)
+List H2 and H3 headings. For each: contextual vector (entity-attribute pair it covers) and 1-line on content.
+
+## Entity & Attribute Coverage Gaps
+What AI-visibility entities/attributes competitors cover that this page does not. Be specific.
+
+## Internal Link Actions
+- Pages that should link TO this page (with anchor text matching H1)
+- Pages this page should link FROM (Outer→Core direction if applicable)
+
+## EEAT Additions
+Wellows-specific trust signals: Khadija Zaman byline (SEO/AEO/GEO Manager at Wellows), 485K-citation dataset reference where it fits, customer testimonials.
+
+## 7-Day Action List
+Numbered list of concrete edits to make this week.
+```
+
+---
+
+## Web routes (FastAPI)
+
+All routes behind HTTP Basic Auth using `ADMIN_PASSWORD` (single user, username = "admin").
+
+### `GET /` — Dashboard home
+- Top-level KPIs: total pages, total links, # orphans, # dead ends, # pending suggestions, # critical losers
+- 4 cards linking to the four sub-views
+- Last run timestamp for each job
+
+### `GET /link-map` — Force-directed graph
+- Server-side: read latest `link_stats` and `link_graph` from DB, render Jinja2 template
+- Client-side: D3.js force-directed graph (use the Wellows brand colors below)
+- Click a node → side panel shows inbound/outbound links, top GSC queries from `inventory`, section badge
+- Filters: orphans only, dead-ends only, Core section only, search box
+
+### `GET /suggestions` — Link Suggestions Inbox
+- Table of `link_suggestions` WHERE status='pending_review', sorted by priority_score DESC
+- Each row: donor_url, receiver_url, anchor_text, section_link_type badge, koray_rationale, insertion_sentence (as preview), priority_score
+- Buttons per row: `Approve`, `Reject`, `Mark Inserted`
+- `POST /suggestions/{id}/action` with `action` field updates status
+
+### `GET /losers` — Query Loser Tracker
+- Table of `query_losers` for the latest `week_of`, grouped by severity
+- Columns: url (clickable to /optimize?url=...), query, prev_position → curr_position with delta, impressions delta
+- "Send to Optimizer" button → adds row to `optimize_queue` with the URL pre-filled
+
+### `GET /optimize` — URL Optimizer Queue
+- Table of `optimize_queue` rows
+- "Add URL" form: url, priority, notes → inserts new row with status='optimize'
+- Each completed row shows a "View Brief" expand toggle that renders the markdown brief inline
+- "Re-queue" button to set status back to 'optimize'
+
+### `GET /api/link-graph.json` — Raw graph JSON
+For the standalone D3 dashboard or any external consumer. Returns `{generated_at, nodes, edges}` matching the n8n format.
+
+### `GET /healthz` — Health check (no auth)
+Returns `{"status": "ok", "last_crawl": timestamp, "last_gsc": timestamp}`.
+
+### `POST /jobs/{job_name}/run` — Manual job trigger
+For testing without waiting for schedule. Accepts `crawl_link_map`, `gsc_inventory_and_losers`, `find_link_suggestions`, `optimize_queued_urls`.
+
+---
+
+## Brand & UI
+
+Wellows is a **monochromatic blue brand**. Use these CSS variables in every template:
+
+```css
+:root {
+  --signal-blue: #0554F2;
+  --velocity-blue: #056CF2;
+  --cloud-blue: #C5DBFF;
+  --blue-0: #F5F8FF;
+  --blue-100: #D4E1FD;
+  --blue-200: #729DF4;
+  --blue-300: #1959D9;
+  --blue-400: #002B80;
+  --blue-500: #00153E;
+}
+```
+
+**Fonts** (load from Google Fonts):
+- Headlines: `Livvic` (weights 400, 500, 600, 700)
+- Accent labels: `Bebas Neue` (uppercase only)
+- Body: `Inter` (weights 400, 500, 600)
+
+**No other colors.** No orange, no green, no purple gradients. Buttons use `--blue-300` background with white text. Cards use `--blue-0` background with `--blue-300` left border accent.
+
+---
+
+## File structure
+
+```
+wellows-internal-linking/
+├── main.py                      # FastAPI app, mounts routes, starts scheduler
+├── config.py                    # Loads env vars, exposes settings
+├── db/
+│   ├── __init__.py
+│   ├── models.py                # SQLAlchemy models
+│   ├── session.py               # async session factory
+│   └── migrations/              # Alembic
+├── jobs/
+│   ├── __init__.py
+│   ├── scheduler.py             # APScheduler setup
+│   ├── crawl_link_map.py
+│   ├── gsc_inventory.py
+│   ├── find_suggestions.py
+│   └── optimize_urls.py
+├── integrations/
+│   ├── gsc.py                   # GSC OAuth + query helpers
+│   ├── claude.py                # Anthropic client wrapper
+│   └── dataforseo.py            # DataForSEO SERP helper
+├── routes/
+│   ├── dashboard.py
+│   ├── link_map.py
+│   ├── suggestions.py
+│   ├── losers.py
+│   ├── optimize.py
+│   └── api.py
+├── templates/
+│   ├── base.html
+│   ├── dashboard.html
+│   ├── link_map.html
+│   ├── suggestions.html
+│   ├── losers.html
+│   └── optimize.html
+├── static/
+│   ├── style.css                # Wellows brand styles
+│   └── link_map.js              # D3 force-directed graph
+├── prompts/
+│   └── optimization_brief.txt
+├── pyproject.toml               # uv/poetry deps
+├── replit.nix                   # Replit env
+├── .replit                      # entrypoint
+└── README.md                    # Setup instructions
+```
+
+---
+
+## README.md must include
+
+1. **One-time setup section** explaining how to:
+   - Enable Replit PostgreSQL
+   - Create Google Cloud OAuth credential and generate a refresh token (provide a one-liner Python script `scripts/get_gsc_refresh_token.py` that does the OAuth flow locally and prints the refresh token to paste into Secrets)
+   - Set all the secrets listed above
+   - Run `alembic upgrade head` to create tables
+2. **First-run instructions**: hit `/jobs/crawl_link_map/run` then `/jobs/gsc_inventory_and_losers/run` then `/jobs/find_link_suggestions/run`
+3. **Cost estimate**:
+   - Replit Reserved VM: $7/mo
+   - Replit Postgres: free tier sufficient for 5000 pages
+   - Claude Haiku (link suggestions): ~$0.50/week
+   - Claude Sonnet (briefs): ~$0.10 per brief
+   - DataForSEO: ~$0.002 per URL optimized
+   - Total: ~$8-15/mo
+4. **Architecture diagram** as ASCII showing: sitemap → crawler → DB ← (GSC job, suggestions job, optimizer job) ← FastAPI routes ← browser
+
+---
+
+## Critical implementation notes
+
+- **GSC pagination**: when row count hits 25000, paginate with `startRow` and merge results before processing
+- **Sitemap-index handling**: if `<sitemapindex>` is at the root, recursively fetch each child sitemap
+- **PageRank**: use a simple dict-based implementation in `jobs/crawl_link_map.py`. Don't pull in `networkx` for this — adds 30MB to the image. 10 iterations is plenty for a 5000-page graph.
+- **Claude rate limiting**: respect Anthropic's tier limits. For Tier 1 ($5 spend), that's 50 requests/min for Haiku — plenty for our use case. Add exponential backoff on 429.
+- **Idempotency**: every job must be safe to re-run. Use upserts everywhere (`ON CONFLICT DO UPDATE` for inventory/link_stats/suggestions).
+- **Logging**: use `loguru`, log to stdout (Replit captures this). Include job name + duration + row counts in every log line.
+- **Graceful schedule timing**: jobs run Sunday→Monday→Tuesday→Wednesday in that order so each can read fresh data from the previous one.
+
+---
+
+## What I expect Replit Agent to do
+
+1. Scaffold the file structure above
+2. Write all four job files with the exact logic specified
+3. Set up Alembic and create the initial migration
+4. Build all route handlers + Jinja2 templates with the Wellows brand styling
+5. Write the D3.js dashboard
+6. Write the `get_gsc_refresh_token.py` helper script
+7. Generate the README with setup steps
+8. Configure `.replit` to run `uvicorn main:app --host 0.0.0.0 --port 8000`
+
+Do not stub the job logic with TODOs. Write the actual working code. The four jobs are the entire point of the app — they must be complete and runnable on first deploy after secrets are set.
+
+Once scaffolded, give me a checklist of secrets to add and the order of manual job triggers for the first run.

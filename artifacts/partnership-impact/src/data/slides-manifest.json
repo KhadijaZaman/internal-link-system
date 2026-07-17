@@ -1,0 +1,50 @@
+[
+  {
+    "id": "a1c2e3f4-1111-4a01-9b01-000000000001",
+    "position": 1,
+    "filepath": "src/pages/slides/Title.tsx",
+    "title": "Partnership Impact",
+    "description": "Title slide: effect of ten partnership rounds on search visibility and direct traffic.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "a1c2e3f4-2222-4a02-9b02-000000000002",
+    "position": 2,
+    "filepath": "src/pages/slides/Method.tsx",
+    "title": "The method",
+    "description": "How the analysis compares partnership months to control months across two data sources.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "a1c2e3f4-3333-4a03-9b03-000000000003",
+    "position": 3,
+    "filepath": "src/pages/slides/SearchVisibility.tsx",
+    "title": "Search visibility",
+    "description": "Impressions grew ~3x faster and clicks ~2.2x faster in partnership months.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "a1c2e3f4-4444-4a04-9b04-000000000004",
+    "position": 4,
+    "filepath": "src/pages/slides/DirectTraffic.tsx",
+    "title": "Direct traffic",
+    "description": "Direct traffic showed no partnership lift; correlated long-run but not month-to-month.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "a1c2e3f4-5555-4a05-9b05-000000000005",
+    "position": 5,
+    "filepath": "src/pages/slides/RoundByRound.tsx",
+    "title": "Round by round",
+    "description": "Direct sign-ups by consecutive month with partnership months marked; growth tracks overall momentum, not individual rounds.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "a1c2e3f4-6666-4a06-9b06-000000000006",
+    "position": 6,
+    "filepath": "src/pages/slides/Conclusion.tsx",
+    "title": "What it means",
+    "description": "Takeaways and caveats: value shows up in search exposure, not direct visits.",
+    "speakerNotes": ""
+  }
+]

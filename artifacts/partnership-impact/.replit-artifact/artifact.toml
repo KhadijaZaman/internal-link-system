@@ -1,0 +1,31 @@
+kind = "slides"
+previewPath = "/partnership-impact/"
+title = "Wellows — Partnership Impact"
+version = "1.0.0"
+id = "artifacts/partnership-impact"
+router = "path"
+
+[[integratedSkills]]
+name = "slides"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/partnership-impact/" ]
+localPort = 20015
+
+[services.development]
+run = "pnpm --filter @workspace/partnership-impact run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/partnership-impact", "run", "build" ]
+publicDir = "artifacts/partnership-impact/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20015"
+BASE_PATH = "/partnership-impact/"

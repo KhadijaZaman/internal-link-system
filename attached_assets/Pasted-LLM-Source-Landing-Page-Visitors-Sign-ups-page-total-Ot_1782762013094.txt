@@ -1,0 +1,82 @@
+LLM Source	Landing Page	Visitors	Sign-ups (page total)
+Other LLM (untagged)	/blog/ai-startups/	38	3
+Other LLM (untagged)	/blog/startup-ideas/	35	3
+Other LLM (untagged)	/blog/google-ai-overviews-ranking-factors/	20	0
+Other LLM (untagged)	/blog/tech-startups/	8	0
+Other LLM (untagged)	/blog/fintech-startups/	5	0
+Other LLM (untagged)	/blog/saas-startups/	5	0
+Other LLM (untagged)	/blog/update-strategy/	4	0
+Other LLM (untagged)	/blog/ai-topic-clusters/	3	0
+Other LLM (untagged)	/blog/detect-bot-traffic-in-google-analytics/	3	0
+Other LLM (untagged)	/blog/how-google-ai-overviews-shape-local-seo-results/	3	0
+Other LLM (untagged)	/blog/social-media-ai-citations-report-2026/	3	0
+Other LLM (untagged)	/blog/ai-search-visibility-for-banking-financial-services-brands/	2	0
+Other LLM (untagged)	/blog/ai-overviews-optimization/	2	0
+Other LLM (untagged)	/blog/audit-brand-visibility-on-llms/	2	0
+Other LLM (untagged)	/	2	72
+ChatGPT	/blog/short-form-vs-long-form/	2	0
+ChatGPT	/blog/ai-search-visibility-for-hospitality-brands/	2	1
+Other LLM (untagged)	/blog/how-many-internal-links-per-page-seo/	2	0
+Other LLM (untagged)	/blog/how-to-rank-in-chatgpt/	2	0
+Other LLM (untagged)	/blog/chatgpt-impact-on-google-search-traffic/	2	0
+Other LLM (untagged)	/blog/ai-search-visibility-for-beauty-personal-care-brands/	2	1
+ChatGPT	/tools/free-ai-humanizer/	2	15
+Other LLM (untagged)	/blog/how-to-optimize-for-ai-query-fan-out/	2	0
+Other LLM (untagged)	/tools/free-ai-humanizer/	2	15
+Other LLM (untagged)	/blog/statistics/	2	0
+ChatGPT	/blog/audit-brand-visibility-on-llms/	1	0
+ChatGPT	/blog/ai-vs-human-writing/	1	0
+ChatGPT	/blog/ai-startups/	1	3
+ChatGPT	/blog/ai-search-visibility-for-beauty-personal-care-brands/	1	1
+ChatGPT	/blog/ai-search-visibility-for-b2b-saas-brands/	1	0
+ChatGPT	/blog/ai-search-visibility-for-banking-financial-services-brands/	1	0
+ChatGPT	/blog/ai-overviews-optimization/	1	0
+ChatGPT	/	1	72
+ChatGPT	/blog/google-ai-overviews-ranking-factors/	1	0
+ChatGPT	/blog/generative-engine-visibility-factors/	1	0
+ChatGPT	/blog/generative-engine-optimization-agencies/	1	0
+ChatGPT	/blog/digital-marketing-agencies/	1	0
+ChatGPT	/blog/detect-bot-traffic-in-google-analytics/	1	0
+ChatGPT	/blog/brand-signals/	1	0
+ChatGPT	/blog/best-ai-search-engines/	1	0
+ChatGPT	/blog/audit-checklist/	1	0
+Other LLM (untagged)	/blog/ai-detection-trends/	1	0
+Other LLM (untagged)	/blog/aeo-vs-geo/	1	0
+ChatGPT	/tools/query-fan-out/	1	1
+ChatGPT	/blog/launch-readiness-checklist-for-startups/	1	0
+ChatGPT	/blog/social-media-ai-citations-report-2026/	1	0
+ChatGPT	/solutions/startups/	1	0
+ChatGPT	/blog/how-google-ai-overviews-shape-local-seo-results/	1	0
+ChatGPT	/blog/google-rankings-and-llm-citations-gap/	1	0
+Other LLM (untagged)	/blog/generative-engine-visibility-factors/	1	0
+Other LLM (untagged)	/blog/gemini-search-visibility-tips/	1	0
+Other LLM (untagged)	/blog/best-ai-search-engines/	1	0
+Other LLM (untagged)	/blog/chatgpt-seo/	1	0
+Other LLM (untagged)	/blog/ai-search/	1	0
+Other LLM (untagged)	/blog/ai-search-visibility-for-mobile-app-businesses/	1	0
+Other LLM (untagged)	/blog/ai-search-visibility-for-legal-services-brands/	1	0
+Other LLM (untagged)	/blog/ai-vs-traditional-optimization/	1	0
+Other LLM (untagged)	/blog/ai-search-visibility-for-fashion-apparel-brands/	1	0
+ChatGPT	/insights/chatgpt-citations-report/	1	0
+ChatGPT	/blog/top-ai-seo-agencies/	1	0
+Other LLM (untagged)	/blog/image-seo/	1	0
+Other LLM (untagged)	/blog/google-rankings-and-llm-citations-gap/	1	0
+Other LLM (untagged)	/blog/how-brands-get-recommended-in-ai-search-engines/	1	0
+Other LLM (untagged)	/blog/how-to-rank-in-gemini/	1	0
+Other LLM (untagged)	/blog/how-to-use-ai-for-summarizing-articles/	1	0
+Other LLM (untagged)	/blog/perplexity-search-visibility-tips/	1	0
+Other LLM (untagged)	/blog/llm-seo/	1	0
+Other LLM (untagged)	/blog/llm-citations/	1	0
+Other LLM (untagged)	/blog/llm-citation-trends-for-ai-search/	1	0
+Other LLM (untagged)	/blog/legal-checklist-for-startups/	1	0
+Other LLM (untagged)	/blog/launch-readiness-checklist-for-startups/	1	0
+Other LLM (untagged)	/blog/internal-linking/	1	0
+Other LLM (untagged)	/blog/repurpose-content-with-ai/	1	0
+Other LLM (untagged)	/blog/top-content-marketing-statistics/	1	0
+Other LLM (untagged)	/blog/search-engine-ranking-factors/	1	0
+Other LLM (untagged)	/blog/wellows-vs-promptwatch/	1	0
+Other LLM (untagged)	/blog/visibility-issues/	1	0
+Other LLM (untagged)	/blog/why-your-website-traffic-is-dropping/	1	0
+Other LLM (untagged)	/features/	1	0
+Other LLM (untagged)	/features/monitoring/	1	0
+Other LLM (untagged)	/tools/query-fan-out/	1	1

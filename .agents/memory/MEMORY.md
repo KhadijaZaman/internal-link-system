@@ -1,0 +1,20 @@
+- [Embedding cosine thresholds](embedding-cosine-threshold.md) — text-embedding-3-small cosines are compressed; use ~0.42 (not 0.5) to split on/off-core demand.
+- [SEO activity & link placement](seo-activity-data-model.md) — published/optimized rules, link_graph counting & anchor capture, sidebar exclusion, re-crawl staleness, URL-form matching.
+- [Auth cookies in the canvas iframe](iframe-auth-cookies.md) — why session login fails in the embedded preview iframe and the cookie/CORS combo that fixes it safely.
+- [Body-parser vs contract cap](body-parser-vs-contract-cap.md) — a route body contract above 100KB silently 413s unless the express.json limit is raised for that path.
+- [Audit payload & exports](audit-payload-and-exports.md) — audit payload is unvalidated passthrough; sanitize at the job not the route, and reuse rowsToTsv/CopyButton for injection-safe exports.
+- [Tracked submissions checklist](tracked-submissions-checklist.md) — "My Submissions" merges 3 sources; tracked URLs are a manual checklist that must never trigger paid fetch/crawl/AI.
+- [GSC range drives query keys](gsc-range-querykey-cost.md) — range fields are in every GSC query key; debounce free-text inputs or each keystroke refetches the quota-limited Search Console API.
+- [GSC anchor-fragments & non-www](gsc-anchor-fragments.md) — GSC splits /page/#anchor into separate pages; SUM by path (never overwrite), property is non-www, else metrics 50-200x off.
+- [BOFU page taxonomy](bofu-taxonomy.md) — what counts as a Wellows BOFU page (user labels override) + rule-based query-intent rubric; direct OpenAI hangs here.
+- [First-fold CTA detection](first-fold-cta-detection.md) — score candidates; exclude nav toggles (aria-haspopup) & /author/ links; prefer hero over global header CTA; tag which zone won.
+- [GA4 Data API](ga4-data-api.md) — no Replit GA connector; use a service account + Data API, enable the API in the SA's own project (the number named in the 403), pull pagePath engagement metrics.
+- [Sandbox vs bash env](sandbox-vs-bash-env.md) — code_execution sandbox has no process.env secrets (use listConnections); bash node does; bridge via a /tmp JSON file.
+- [Google Sheets export](google-sheets-export.md) — Sheets connector authorized; create/write via listConnections token + Sheets v4 REST from the sandbox.
+- [SSE streaming through the Replit proxy](sse-streaming-replit-proxy.md) — needs 16KB padding + keep-alives server-side; clients skip ':' comments, buffer chunks, guard by request identity.
+- [Pipeline DB transient-retry](pipeline-db-retry.md) — autoscale+serverless PG drops connections mid-pipeline; wrap idempotent DB ops in withDbRetry.
+- [Prod→dev DB copy technique](prod-db-copy-technique.md) — bulk-copy prod via read replica: base64 JSON reads + jsonb_populate_recordset, 128KB arg cap, skip vector cols.
+- [Publish DB copy sequence lag](publish-db-copy-sequences.md) — "Create production database" can leave serial sequences behind max(id) → duplicate-key on every INSERT; startup resync self-heals.
+- [Autoscale kills long jobs](autoscale-long-jobs.md) — instance recycles once polling stops; heartbeat + "interrupted" status + self-ping mitigate; Reserved VM is the real fix.
+- [Graph clustering: Louvain not LP](graph-clustering-louvain.md) — label propagation collapses the dense content-link graph into one blob; use the deterministic Louvain in the knowledge-graph route.
+- [E2E testing auth bridge](e2e-test-auth-bridge.md) — testing subagent can't read ADMIN_PASSWORD; mint session via bash, pass cookie via addCookies url-form, logout after.

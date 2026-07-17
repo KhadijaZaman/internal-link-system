@@ -1,0 +1,56 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "EhPcYZCQiICUZRwGK6vu6"
+uri = "file://.local/outputs/Internal-Link-System.pdf"
+type = "pdf"
+title = "Internal Link System.pdf"
+
+[[outputs]]
+id = "HJm2hxZdSZDJV3RT28WwO"
+uri = "file://exports/wellows-features-gsc-compare-28d.csv"
+type = "table"
+title = "Performance: 28d vs previous 28d (clicks, impressions, CTR, position)"
+
+[[outputs]]
+id = "lxKacw98vK4b3p8J9r2jC"
+uri = "file://exports/wellows-features-gsc-breakdowns-28d.csv"
+type = "table"
+title = "Breakdowns: queries, countries, devices, search appearance (last 28d)"
+
+[[outputs]]
+id = "y4IthCaJBYd_ltbpMyHJ4"
+uri = "file://exports/wellows-features-gsc-searchtype-28d.csv"
+type = "table"
+title = "By search type: web / image / video / news (last 28d)"
+
+[[outputs]]
+id = "Kpt2rZEg1uEb3bnkKCuIF"
+uri = "file://exports/wellows-features-gsc-inspection.csv"
+type = "table"
+title = "URL Inspection: index status, last crawl, canonical, robots, rich results"
+
+[[outputs]]
+id = "R3ktJ6pMwp5N813Is8rBA"
+uri = "file://exports/wellows-gsc-summary.xlsx"
+type = "table"
+title = "Wellows GSC Summary — incl. Prompt → GSC Map tab"
+
+[[outputs]]
+id = "ejB3U41XOHtxbmbXVvRBx"
+uri = "file://.local/outputs/Wellows---Partnership-Impact.pptx"
+type = "slides"
+title = "Wellows — Partnership Impact (PPTX)"
+
+[[outputs]]
+id = "dwW-FVbDRj4tS8YKP9HQ_"
+uri = "file://.local/outputs/Internal-Link-System.pptx"
+type = "slides"
+title = "Internal Link System.pptx"
+
+[[outputs]]
+id = "7EeJ66L03CLKBLNgBaHWB"
+uri = "file://exports/wellows-source.zip"
+type = "unspecified"
+title = "Wellows — Full Source Code (663 files)"
