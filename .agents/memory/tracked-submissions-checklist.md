@@ -37,6 +37,11 @@ exclusively — still no page fetch, crawl, or AI.
   optional trailing slash and `[#?]` suffix) so #fragment/?query variants are
   summed (see gsc-anchor-fragments memory).
 - Server-cached 30 min; endDate = today-2 (GSC lag).
+- Query filter: GSC's `equals` operator is CASE-SENSITIVE while GSC stores
+  queries lowercased — a keyword saved as "Ai visibility ..." matches nothing
+  and keyword position silently falls back to zeros. Use `includingRegex` with
+  `(?i)^<escaped, \s+ for whitespace runs>$` for exact-match semantics that
+  tolerate capitalization/extra spaces from pasted sheets.
 - Orval quirk: a route with BOTH path and query params emits a zod const and a
   TS type with the same `<Op>Params` name → TS2308 in the api-zod barrel. Fix
   with explicit re-exports (zod const keeps name, type gets an alias).

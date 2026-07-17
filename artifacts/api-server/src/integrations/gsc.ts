@@ -104,7 +104,10 @@ export async function queryGscDimension(opts: {
   pageFilter?: string;
   /** RE2 regex page filter (use to include #fragment / ?query URL variants). */
   pageRegex?: string;
-  queryFilter?: { expression: string; operator?: "equals" | "contains" };
+  queryFilter?: {
+    expression: string;
+    operator?: "equals" | "contains" | "includingRegex";
+  };
   /** ISO 3166-1 alpha-3 country code (lowercase), e.g. "usa", "gbr", "ind". */
   countryFilter?: string;
   rowLimit?: number;

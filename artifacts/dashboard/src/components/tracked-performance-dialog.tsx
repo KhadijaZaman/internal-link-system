@@ -530,6 +530,13 @@ export function TrackedPerformanceDialog({
                 <div className="text-sm font-semibold mb-2">
                   Tracked keyword · “{d.keyword}”
                 </div>
+                {!d.keywordTotals && (
+                  <div className="mb-2 rounded-lg border border-dashed border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-muted-foreground">
+                    Google hasn't recorded any searches for this exact keyword
+                    in this range yet, so the numbers below are 0. Whole-page
+                    numbers are shown underneath for context.
+                  </div>
+                )}
                 <div className="grid grid-cols-3 gap-2">
                   <MetricCard
                     label="Impressions"
@@ -570,7 +577,7 @@ export function TrackedPerformanceDialog({
               </section>
             )}
 
-            {(!d.keyword || showDetails) && (
+            {(!d.keyword || !d.keywordTotals || showDetails) && (
             <section>
               <div className="text-sm font-semibold mb-2">
                 Whole page (all queries)

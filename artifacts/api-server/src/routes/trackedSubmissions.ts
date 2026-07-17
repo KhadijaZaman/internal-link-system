@@ -187,6 +187,20 @@ function pageVariantsRegex(url: string): string {
   return `^${escaped}/?([#?].*)?$`;
 }
 
+/**
+ * GSC's "equals" query filter is case-sensitive, but GSC stores queries
+ * lowercased — a keyword saved as "Ai visibility ..." would never match.
+ * Build a case-insensitive exact-match RE2 regex (whitespace-run tolerant)
+ * so the keyword matches regardless of how the operator typed it.
+ */
+function keywordExactRegex(keyword: string): string {
+  const escaped = keyword
+    .trim()
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\s+/g, "\\s+");
+  return `(?i)^${escaped}$`;
+}
+
 function toSeriesPoint(r: GscDimensionRow) {
   return {
     date: r.key,
@@ -259,7 +273,10 @@ router.get(
                 endDate,
                 dimension: "date",
                 pageRegex,
-                queryFilter: { expression: keyword, operator: "equals" },
+                queryFilter: {
+                  expression: keywordExactRegex(keyword),
+                  operator: "includingRegex",
+                },
                 countryFilter,
               })
             : Promise.resolve([] as GscDimensionRow[]),
@@ -292,7 +309,10 @@ router.get(
             impressions: Math.round(r.impressions),
             ctr: r.ctr,
             position: r.position,
-            isTracked: keyword != null && r.key.toLowerCase() === keyword.toLowerCase(),
+            isTracked:
+              keyword != null &&
+              r.key.toLowerCase().replace(/\s+/g, " ").trim() ===
+                keyword.toLowerCase().replace(/\s+/g, " ").trim(),
           }));
 
         return {
