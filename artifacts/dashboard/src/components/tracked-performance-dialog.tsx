@@ -36,7 +36,16 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
-import { ArrowDown, ArrowUp, Globe, Minus, Search, Target } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  ChevronUp,
+  Globe,
+  Minus,
+  Search,
+  Target,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const RANGE_OPTIONS = [
@@ -130,7 +139,13 @@ function DayTable({ series, title }: { series: GscTimeseriesPoint[]; title: stri
     return mapped.reverse(); // newest day first
   }, [series]);
 
-  if (rows.length === 0) return null;
+  if (rows.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-20 text-sm text-muted-foreground border border-dashed rounded-lg">
+        No Search Console data for this range
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -348,6 +363,7 @@ export function TrackedPerformanceDialog({
 }) {
   const [days, setDays] = useState("28");
   const [country, setCountry] = useState("all");
+  const [showDetails, setShowDetails] = useState(false);
   // The prop is a snapshot from the list; keep the live value locally so the
   // header updates immediately after an in-dialog save.
   const [effectiveKeyword, setEffectiveKeyword] = useState<string | null>(keyword);
@@ -538,20 +554,23 @@ export function TrackedPerformanceDialog({
                   />
                 </div>
                 <div className="mt-3">
-                  <TrendChart
-                    series={d.keywordSeries}
-                    title="Day-by-day: keyword position, impressions & clicks"
-                  />
-                </div>
-                <div className="mt-3">
                   <DayTable
                     series={d.keywordSeries}
                     title="Day-wise report (keyword)"
                   />
                 </div>
+                {showDetails && (
+                  <div className="mt-3">
+                    <TrendChart
+                      series={d.keywordSeries}
+                      title="Day-by-day: keyword position, impressions & clicks"
+                    />
+                  </div>
+                )}
               </section>
             )}
 
+            {(!d.keyword || showDetails) && (
             <section>
               <div className="text-sm font-semibold mb-2">
                 Whole page (all queries)
@@ -587,21 +606,44 @@ export function TrackedPerformanceDialog({
               {!d.keyword && (
                 <>
                   <div className="mt-3">
-                    <TrendChart
-                      series={d.overallSeries}
-                      title="Day-by-day: page position, impressions & clicks"
-                    />
-                  </div>
-                  <div className="mt-3">
                     <DayTable
                       series={d.overallSeries}
                       title="Day-wise report (whole page)"
                     />
                   </div>
+                  {showDetails && (
+                    <div className="mt-3">
+                      <TrendChart
+                        series={d.overallSeries}
+                        title="Day-by-day: page position, impressions & clicks"
+                      />
+                    </div>
+                  )}
                 </>
               )}
             </section>
+            )}
 
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-xs text-muted-foreground w-fit"
+              onClick={() => setShowDetails((v) => !v)}
+            >
+              {showDetails ? (
+                <>
+                  <ChevronUp className="h-3.5 w-3.5" /> Hide extra detail
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="h-3.5 w-3.5" /> More detail (trend
+                  chart{d.keyword ? ", whole-page numbers" : ""}, top queries)
+                </>
+              )}
+            </Button>
+
+            {showDetails && (
             <section>
               <div className="text-sm font-semibold mb-2">
                 Top queries for this page
@@ -665,6 +707,7 @@ export function TrackedPerformanceDialog({
                 </div>
               )}
             </section>
+            )}
 
             <div className="text-[11px] text-muted-foreground">
               {d.startDate} → {d.endDate}
@@ -673,8 +716,9 @@ export function TrackedPerformanceDialog({
                   {" "}· {COUNTRY_OPTIONS.find((o) => o.value === country)?.label ?? country} only
                 </>
               )}{" "}
-              · Search Console data (lags ~2 days) · shifts compare against the
-              preceding {days}-day window · cached 30 min
+              · All numbers come directly from Google Search Console (data lags
+              ~2 days) · shifts compare against the preceding {days}-day window
+              · cached 30 min
             </div>
           </div>
         ) : null}
