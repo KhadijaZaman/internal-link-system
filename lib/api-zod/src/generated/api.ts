@@ -591,6 +591,7 @@ export const RequeueOptimizeItemResponse = zod.object({
 export const ListTrackedSubmissionsResponseItem = zod.object({
   "id": zod.number(),
   "url": zod.string(),
+  "keyword": zod.string().nullable(),
   "label": zod.string().nullish(),
   "note": zod.string().nullish(),
   "status": zod.string(),
@@ -609,6 +610,7 @@ export const ListTrackedSubmissionsResponse = zod.array(ListTrackedSubmissionsRe
 
 export const CreateTrackedSubmissionsBody = zod.object({
   "urls": zod.array(zod.string().min(1)).min(1),
+  "keyword": zod.string().optional(),
   "note": zod.string().optional()
 })
 
@@ -621,12 +623,14 @@ export const UpdateTrackedSubmissionParams = zod.object({
 })
 
 export const UpdateTrackedSubmissionBody = zod.object({
-  "status": zod.enum(['tracking', 'done'])
+  "status": zod.enum(['tracking', 'done']).optional(),
+  "keyword": zod.string().nullish()
 })
 
 export const UpdateTrackedSubmissionResponse = zod.object({
   "id": zod.number(),
   "url": zod.string(),
+  "keyword": zod.string().nullable(),
   "label": zod.string().nullish(),
   "note": zod.string().nullish(),
   "status": zod.string(),
@@ -644,6 +648,78 @@ export const DeleteTrackedSubmissionParams = zod.object({
 
 export const DeleteTrackedSubmissionResponse = zod.object({
   "ok": zod.boolean()
+})
+
+
+/**
+ * @summary GSC performance for a tracked URL and its target keyword
+ */
+export const GetTrackedSubmissionPerformanceParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const getTrackedSubmissionPerformanceQueryDaysDefault = 28;
+export const getTrackedSubmissionPerformanceQueryDaysMin = 7;
+export const getTrackedSubmissionPerformanceQueryDaysMax = 180;
+
+
+
+export const GetTrackedSubmissionPerformanceQueryParams = zod.object({
+  "days": zod.coerce.number().min(getTrackedSubmissionPerformanceQueryDaysMin).max(getTrackedSubmissionPerformanceQueryDaysMax).default(getTrackedSubmissionPerformanceQueryDaysDefault)
+})
+
+export const GetTrackedSubmissionPerformanceResponse = zod.object({
+  "id": zod.number(),
+  "url": zod.string(),
+  "keyword": zod.string().nullable(),
+  "startDate": zod.coerce.date(),
+  "endDate": zod.coerce.date(),
+  "overallSeries": zod.array(zod.object({
+  "date": zod.coerce.date(),
+  "clicks": zod.number(),
+  "impressions": zod.number(),
+  "ctr": zod.number(),
+  "position": zod.number()
+})),
+  "overallTotals": zod.object({
+  "clicks": zod.number(),
+  "impressions": zod.number(),
+  "ctr": zod.number(),
+  "position": zod.number()
+}),
+  "overallPrevTotals": zod.union([zod.object({
+  "clicks": zod.number(),
+  "impressions": zod.number(),
+  "ctr": zod.number(),
+  "position": zod.number()
+}),zod.null()]),
+  "keywordSeries": zod.array(zod.object({
+  "date": zod.coerce.date(),
+  "clicks": zod.number(),
+  "impressions": zod.number(),
+  "ctr": zod.number(),
+  "position": zod.number()
+})),
+  "keywordTotals": zod.union([zod.object({
+  "clicks": zod.number(),
+  "impressions": zod.number(),
+  "ctr": zod.number(),
+  "position": zod.number()
+}),zod.null()]),
+  "keywordPrevTotals": zod.union([zod.object({
+  "clicks": zod.number(),
+  "impressions": zod.number(),
+  "ctr": zod.number(),
+  "position": zod.number()
+}),zod.null()]),
+  "topQueries": zod.array(zod.object({
+  "query": zod.string(),
+  "clicks": zod.number(),
+  "impressions": zod.number(),
+  "ctr": zod.number(),
+  "position": zod.number(),
+  "isTracked": zod.boolean()
+}))
 })
 
 

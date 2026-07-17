@@ -24,6 +24,23 @@ would silently reintroduce the cost they rejected.
 for tracked URLs, confirm intent first — it crosses the cost boundary. Keep the
 tracked-submissions route free of fetch/crawl/A/I calls.
 
+## Keyword tracking / performance dialog (GSC-only exception)
+
+Each tracked URL may carry one optional target `keyword`. The performance
+endpoint (`GET /tracked-submissions/:id/performance`) is the ONLY processing
+allowed for tracked URLs, and it calls the Google Search Console API
+exclusively — still no page fetch, crawl, or AI.
+
+- One GSC call per scope spans previous+current window (dimension=date, split
+  locally at the window boundary) — halves quota use vs two calls.
+- Page filter uses `includingRegex` built from the stored URL (escaped, with
+  optional trailing slash and `[#?]` suffix) so #fragment/?query variants are
+  summed (see gsc-anchor-fragments memory).
+- Server-cached 30 min; endDate = today-2 (GSC lag).
+- Orval quirk: a route with BOTH path and query params emits a zod const and a
+  TS type with the same `<Op>Params` name → TS2308 in the api-zod barrel. Fix
+  with explicit re-exports (zod const keeps name, type gets an alias).
+
 ## Other durable choices
 
 - Still-open tracked items (status `tracking`) are exempt from the page's

@@ -819,6 +819,8 @@ export interface TrackedSubmission {
   id: number;
   url: string;
   /** @nullable */
+  keyword: string | null;
+  /** @nullable */
   label?: string | null;
   /** @nullable */
   note?: string | null;
@@ -831,6 +833,7 @@ export interface TrackedSubmission {
 export interface TrackedSubmissionCreate {
   /** @minItems 1 */
   urls: string[];
+  keyword?: string;
   note?: string;
 }
 
@@ -843,13 +846,26 @@ export const TrackedSubmissionUpdateStatus = {
 } as const;
 
 export interface TrackedSubmissionUpdate {
-  status: TrackedSubmissionUpdateStatus;
+  status?: TrackedSubmissionUpdateStatus;
+  /** @nullable */
+  keyword?: string | null;
 }
 
-export interface JobRunResult {
-  jobName: string;
-  started: boolean;
-  message: string;
+export interface TrackedQueryRow {
+  query: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  isTracked: boolean;
+}
+
+export interface GscTimeseriesPoint {
+  date: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
 }
 
 export interface GscMetricsTotals {
@@ -859,15 +875,29 @@ export interface GscMetricsTotals {
   position: number;
 }
 
-export interface GscDeltaPct {
-  clicks: number;
-  impressions: number;
-  ctr: number;
-  position: number;
+export interface TrackedPerformance {
+  id: number;
+  url: string;
+  /** @nullable */
+  keyword: string | null;
+  startDate: string;
+  endDate: string;
+  overallSeries: GscTimeseriesPoint[];
+  overallTotals: GscMetricsTotals;
+  overallPrevTotals: GscMetricsTotals | null;
+  keywordSeries: GscTimeseriesPoint[];
+  keywordTotals: GscMetricsTotals | null;
+  keywordPrevTotals: GscMetricsTotals | null;
+  topQueries: TrackedQueryRow[];
 }
 
-export interface GscTimeseriesPoint {
-  date: string;
+export interface JobRunResult {
+  jobName: string;
+  started: boolean;
+  message: string;
+}
+
+export interface GscDeltaPct {
   clicks: number;
   impressions: number;
   ctr: number;
@@ -1787,6 +1817,14 @@ export type GetQueryInsightsParams = {
  * @maxLength 200
  */
 q: string;
+};
+
+export type GetTrackedSubmissionPerformanceParams = {
+/**
+ * @minimum 7
+ * @maximum 180
+ */
+days?: number;
 };
 
 export type GetGscOverviewParams = {

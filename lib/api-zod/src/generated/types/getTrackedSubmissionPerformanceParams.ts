@@ -6,9 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface TrackedSubmissionCreate {
-  /** @minItems 1 */
-  urls: string[];
-  keyword?: string;
-  note?: string;
-}
+export type GetTrackedSubmissionPerformanceParams = {
+/**
+ * @minimum 7
+ * @maximum 180
+ */
+days?: number;
+};

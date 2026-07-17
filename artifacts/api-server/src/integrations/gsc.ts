@@ -102,6 +102,8 @@ export async function queryGscDimension(opts: {
   endDate: string;
   dimension: "query" | "page" | "country" | "device" | "date";
   pageFilter?: string;
+  /** RE2 regex page filter (use to include #fragment / ?query URL variants). */
+  pageRegex?: string;
   queryFilter?: { expression: string; operator?: "equals" | "contains" };
   rowLimit?: number;
 }): Promise<GscDimensionRow[]> {
@@ -116,6 +118,9 @@ export async function queryGscDimension(opts: {
   const filters: NonNullable<NonNullable<searchconsole_v1.Schema$SearchAnalyticsQueryRequest["dimensionFilterGroups"]>[number]["filters"]> = [];
   if (opts.pageFilter) {
     filters.push({ dimension: "page", operator: "equals", expression: opts.pageFilter });
+  }
+  if (opts.pageRegex) {
+    filters.push({ dimension: "page", operator: "includingRegex", expression: opts.pageRegex });
   }
   if (opts.queryFilter) {
     filters.push({

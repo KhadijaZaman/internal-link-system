@@ -10,6 +10,8 @@ export interface TrackedSubmission {
   id: number;
   url: string;
   /** @nullable */
+  keyword: string | null;
+  /** @nullable */
   label?: string | null;
   /** @nullable */
   note?: string | null;

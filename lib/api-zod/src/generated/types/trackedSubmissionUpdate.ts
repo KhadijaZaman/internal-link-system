@@ -8,5 +8,7 @@
 import type { TrackedSubmissionUpdateStatus } from './trackedSubmissionUpdateStatus';
 
 export interface TrackedSubmissionUpdate {
-  status: TrackedSubmissionUpdateStatus;
+  status?: TrackedSubmissionUpdateStatus;
+  /** @nullable */
+  keyword?: string | null;
 }

@@ -506,6 +506,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OkResponse"
+  /tracked-submissions/{id}/performance:
+    get:
+      operationId: getTrackedSubmissionPerformance
+      tags: [trackedSubmissions]
+      summary: GSC performance for a tracked URL and its target keyword
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: days
+          required: false
+          schema: { type: integer, minimum: 7, maximum: 180, default: 28 }
+      responses:
+        "200":
+          description: Daily keyword and page performance with previous-window comparison
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackedPerformance"
+        "404":
+          description: Not found
   /jobs/{jobName}/run:
     post:
       operationId: runJob
@@ -2213,10 +2236,11 @@ components:
         notes: { type: string }
     TrackedSubmission:
       type: object
-      required: [id, url, status, createdAt]
+      required: [id, url, keyword, status, createdAt]
       properties:
         id: { type: integer }
         url: { type: string }
+        keyword: { type: ["string", "null"] }
         label: { type: ["string", "null"] }
         note: { type: ["string", "null"] }
         status: { type: string }
@@ -2230,14 +2254,70 @@ components:
           type: array
           items: { type: string, minLength: 1 }
           minItems: 1
+        keyword: { type: string }
         note: { type: string }
     TrackedSubmissionUpdate:
       type: object
-      required: [status]
       properties:
         status:
           type: string
           enum: [tracking, done]
+        keyword: { type: ["string", "null"] }
+    TrackedQueryRow:
+      type: object
+      required: [query, clicks, impressions, ctr, position, isTracked]
+      properties:
+        query: { type: string }
+        clicks: { type: integer }
+        impressions: { type: integer }
+        ctr: { type: number }
+        position: { type: number }
+        isTracked: { type: boolean }
+    TrackedPerformance:
+      type: object
+      required:
+        [
+          id,
+          url,
+          keyword,
+          startDate,
+          endDate,
+          overallSeries,
+          overallTotals,
+          overallPrevTotals,
+          keywordSeries,
+          keywordTotals,
+          keywordPrevTotals,
+          topQueries,
+        ]
+      properties:
+        id: { type: integer }
+        url: { type: string }
+        keyword: { type: ["string", "null"] }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        overallSeries:
+          type: array
+          items: { $ref: "#/components/schemas/GscTimeseriesPoint" }
+        overallTotals: { $ref: "#/components/schemas/GscMetricsTotals" }
+        overallPrevTotals:
+          oneOf:
+            - $ref: "#/components/schemas/GscMetricsTotals"
+            - type: "null"
+        keywordSeries:
+          type: array
+          items: { $ref: "#/components/schemas/GscTimeseriesPoint" }
+        keywordTotals:
+          oneOf:
+            - $ref: "#/components/schemas/GscMetricsTotals"
+            - type: "null"
+        keywordPrevTotals:
+          oneOf:
+            - $ref: "#/components/schemas/GscMetricsTotals"
+            - type: "null"
+        topQueries:
+          type: array
+          items: { $ref: "#/components/schemas/TrackedQueryRow" }
     JobRunResult:
       type: object
       required: [jobName, started, message]

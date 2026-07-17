@@ -6,6 +6,13 @@ import {
   CreateTrackedSubmissionsBody,
   UpdateTrackedSubmissionBody,
 } from "@workspace/api-zod";
+import {
+  queryGscDimension,
+  aggregateTotals,
+  withCache,
+  GSC_CACHE_TTL_MS,
+  type GscDimensionRow,
+} from "../integrations/gsc";
 
 const router: IRouter = Router();
 
@@ -22,6 +29,7 @@ function serialize(t: typeof trackedSubmissionsTable.$inferSelect) {
   return {
     id: t.id,
     url: t.url,
+    keyword: t.keyword,
     label: t.label,
     note: t.note,
     status: t.status,
@@ -45,6 +53,7 @@ router.post("/tracked-submissions", requireAuth, async (req, res) => {
     return;
   }
   const note = parsed.data.note?.trim() || null;
+  const keyword = parsed.data.keyword?.trim() || null;
   const seen = new Set<string>();
   const values = parsed.data.urls
     .map((u) => u.trim())
@@ -55,7 +64,7 @@ router.post("/tracked-submissions", requireAuth, async (req, res) => {
       seen.add(key);
       return true;
     })
-    .map((url) => ({ url, note }));
+    .map((url) => ({ url, note, keyword }));
   if (values.length === 0) {
     res.status(400).json({ error: "No valid http(s) URLs" });
     return;
@@ -78,12 +87,21 @@ router.patch("/tracked-submissions/:id", requireAuth, async (req, res) => {
     res.status(400).json({ error: "Invalid input" });
     return;
   }
+  const patch: Partial<typeof trackedSubmissionsTable.$inferInsert> = {};
+  if (parsed.data.status !== undefined) {
+    patch.status = parsed.data.status;
+    patch.completedAt = parsed.data.status === "done" ? new Date() : null;
+  }
+  if (parsed.data.keyword !== undefined) {
+    patch.keyword = parsed.data.keyword?.trim() || null;
+  }
+  if (Object.keys(patch).length === 0) {
+    res.status(400).json({ error: "Nothing to update" });
+    return;
+  }
   const updated = await db
     .update(trackedSubmissionsTable)
-    .set({
-      status: parsed.data.status,
-      completedAt: parsed.data.status === "done" ? new Date() : null,
-    })
+    .set(patch)
     .where(eq(trackedSubmissionsTable.id, id))
     .returning();
   if (updated.length === 0) {
@@ -104,5 +122,144 @@ router.delete("/tracked-submissions/:id", requireAuth, async (req, res) => {
     .where(eq(trackedSubmissionsTable.id, id));
   res.json({ ok: true });
 });
+
+// ---------- Keyword / URL performance (GSC only — no crawl, no AI) ----------
+
+function isoDay(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * GSC records /page/#fragment (and ?query) variants as separate page URLs, so
+ * an "equals" filter undercounts. Build an RE2 regex that matches the exact
+ * URL plus optional trailing slash and any #fragment / ?query suffix.
+ */
+function pageVariantsRegex(url: string): string {
+  const base = url.replace(/\/+$/, "");
+  const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return `^${escaped}/?([#?].*)?$`;
+}
+
+function toSeriesPoint(r: GscDimensionRow) {
+  return {
+    date: r.key,
+    clicks: Math.round(r.clicks),
+    impressions: Math.round(r.impressions),
+    ctr: r.ctr,
+    position: r.position,
+  };
+}
+
+router.get(
+  "/tracked-submissions/:id/performance",
+  requireAuth,
+  async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    const daysRaw = Number(req.query["days"] ?? 28);
+    const days = Math.min(180, Math.max(7, Number.isFinite(daysRaw) ? Math.round(daysRaw) : 28));
+
+    const rows = await db
+      .select()
+      .from(trackedSubmissionsTable)
+      .where(eq(trackedSubmissionsTable.id, id));
+    const sub = rows[0];
+    if (!sub) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    // GSC data lags ~2 days behind real time.
+    const end = new Date();
+    end.setUTCDate(end.getUTCDate() - 2);
+    const start = new Date(end);
+    start.setUTCDate(start.getUTCDate() - (days - 1));
+    const prevStart = new Date(start);
+    prevStart.setUTCDate(prevStart.getUTCDate() - days);
+
+    const endDate = isoDay(end);
+    const startDate = isoDay(start);
+    const prevStartDate = isoDay(prevStart);
+    const pageRegex = pageVariantsRegex(sub.url);
+    const keyword = sub.keyword?.trim() || null;
+
+    const cacheKey = `tracked-perf:${id}:${sub.url}:${keyword ?? ""}:${days}:${endDate}`;
+    try {
+      const payload = await withCache(cacheKey, GSC_CACHE_TTL_MS, async () => {
+        // One call per scope covering current + previous window, split locally.
+        const [overallDaily, keywordDaily, queryRows] = await Promise.all([
+          queryGscDimension({
+            startDate: prevStartDate,
+            endDate,
+            dimension: "date",
+            pageRegex,
+          }),
+          keyword
+            ? queryGscDimension({
+                startDate: prevStartDate,
+                endDate,
+                dimension: "date",
+                pageRegex,
+                queryFilter: { expression: keyword, operator: "equals" },
+              })
+            : Promise.resolve([] as GscDimensionRow[]),
+          queryGscDimension({
+            startDate,
+            endDate,
+            dimension: "query",
+            pageRegex,
+            rowLimit: 25,
+          }),
+        ]);
+
+        const splitWindow = (daily: GscDimensionRow[]) => {
+          const current = daily.filter((r) => r.key >= startDate);
+          const previous = daily.filter((r) => r.key < startDate);
+          return { current, previous };
+        };
+
+        const overall = splitWindow(overallDaily);
+        const kw = splitWindow(keywordDaily);
+
+        const topQueries = queryRows
+          .slice()
+          .sort((a, b) => b.impressions - a.impressions || b.clicks - a.clicks)
+          .slice(0, 10)
+          .map((r) => ({
+            query: r.key,
+            clicks: Math.round(r.clicks),
+            impressions: Math.round(r.impressions),
+            ctr: r.ctr,
+            position: r.position,
+            isTracked: keyword != null && r.key.toLowerCase() === keyword.toLowerCase(),
+          }));
+
+        return {
+          id: sub.id,
+          url: sub.url,
+          keyword,
+          startDate,
+          endDate,
+          overallSeries: overall.current.map(toSeriesPoint),
+          overallTotals: aggregateTotals(overall.current),
+          overallPrevTotals:
+            overall.previous.length > 0 ? aggregateTotals(overall.previous) : null,
+          keywordSeries: kw.current.map(toSeriesPoint),
+          keywordTotals: keyword && kw.current.length > 0 ? aggregateTotals(kw.current) : null,
+          keywordPrevTotals:
+            keyword && kw.previous.length > 0 ? aggregateTotals(kw.previous) : null,
+          topQueries,
+        };
+      });
+      res.json(payload);
+    } catch (err) {
+      req.log.error({ err, id }, "tracked submission performance fetch failed");
+      res.status(502).json({ error: "Search Console request failed" });
+    }
+  },
+);
 
 export default router;

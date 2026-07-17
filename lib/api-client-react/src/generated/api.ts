@@ -56,6 +56,7 @@ import type {
   GetLoserPagesParams,
   GetPagesReportParams,
   GetQueryInsightsParams,
+  GetTrackedSubmissionPerformanceParams,
   GetUrlLinkBreakdownParams,
   GscBatchInspectionRequest,
   GscBatchInspectionResponse,
@@ -107,6 +108,7 @@ import type {
   StructuralSuggestResult,
   StructuralTargets,
   SuggestionActionInput,
+  TrackedPerformance,
   TrackedSubmission,
   TrackedSubmissionCreate,
   TrackedSubmissionUpdate,
@@ -2162,6 +2164,95 @@ export const useDeleteTrackedSubmission = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getDeleteTrackedSubmissionMutationOptions(options));
     }
+
+export const getGetTrackedSubmissionPerformanceUrl = (id: number,
+    params?: GetTrackedSubmissionPerformanceParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/tracked-submissions/${id}/performance?${stringifiedParams}` : `/api/tracked-submissions/${id}/performance`
+}
+
+/**
+ * @summary GSC performance for a tracked URL and its target keyword
+ */
+export const getTrackedSubmissionPerformance = async (id: number,
+    params?: GetTrackedSubmissionPerformanceParams, options?: RequestInit): Promise<TrackedPerformance> => {
+
+  return customFetch<TrackedPerformance>(getGetTrackedSubmissionPerformanceUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTrackedSubmissionPerformanceQueryKey = (id: number,
+    params?: GetTrackedSubmissionPerformanceParams,) => {
+    return [
+    `/api/tracked-submissions/${id}/performance`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetTrackedSubmissionPerformanceQueryOptions = <TData = Awaited<ReturnType<typeof getTrackedSubmissionPerformance>>, TError = ErrorType<void>>(id: number,
+    params?: GetTrackedSubmissionPerformanceParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrackedSubmissionPerformance>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTrackedSubmissionPerformanceQueryKey(id,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTrackedSubmissionPerformance>>> = ({ signal }) => getTrackedSubmissionPerformance(id,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTrackedSubmissionPerformance>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTrackedSubmissionPerformanceQueryResult = NonNullable<Awaited<ReturnType<typeof getTrackedSubmissionPerformance>>>
+export type GetTrackedSubmissionPerformanceQueryError = ErrorType<void>
+
+
+/**
+ * @summary GSC performance for a tracked URL and its target keyword
+ */
+
+export function useGetTrackedSubmissionPerformance<TData = Awaited<ReturnType<typeof getTrackedSubmissionPerformance>>, TError = ErrorType<void>>(
+ id: number,
+    params?: GetTrackedSubmissionPerformanceParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrackedSubmissionPerformance>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTrackedSubmissionPerformanceQueryOptions(id,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getRunJobUrl = (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest',) => {
 

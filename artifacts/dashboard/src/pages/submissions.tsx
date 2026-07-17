@@ -39,11 +39,14 @@ import {
   Check,
   RotateCcw,
   Trash2,
+  Search,
+  LineChart,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { InfoTip } from "@/components/info-tip";
 import { HowThisWorks } from "@/components/how-this-works";
+import { TrackedPerformanceDialog } from "@/components/tracked-performance-dialog";
 
 const DAY_OPTIONS = [
   { value: "7", label: "Last 7 days" },
@@ -74,6 +77,7 @@ interface SubmissionItem {
   key: string;
   type: SubmissionType;
   trackedId?: number;
+  keyword?: string | null;
   title: string;
   detail: string;
   externalUrl: string | null;
@@ -237,6 +241,7 @@ function mapTracked(t: TrackedSubmission): SubmissionItem {
     key: `tracked-${t.id}`,
     type: "tracked",
     trackedId: t.id,
+    keyword: t.keyword,
     title: t.label || pathOf(t.url),
     detail: t.note ? `${pathOf(t.url)} · ${t.note}` : pathOf(t.url),
     externalUrl: t.url,
@@ -262,6 +267,8 @@ export default function Submissions() {
   const [showAdd, setShowAdd] = useState(false);
   const [urlsText, setUrlsText] = useState("");
   const [noteText, setNoteText] = useState("");
+  const [keywordText, setKeywordText] = useState("");
+  const [perfItem, setPerfItem] = useState<SubmissionItem | null>(null);
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -310,7 +317,13 @@ export default function Submissions() {
       .filter(Boolean);
     if (urls.length === 0) return;
     createMutation.mutate(
-      { data: { urls, note: noteText.trim() || undefined } },
+      {
+        data: {
+          urls,
+          note: noteText.trim() || undefined,
+          keyword: keywordText.trim() || undefined,
+        },
+      },
       {
         onSuccess: (created) => {
           toast({
@@ -318,6 +331,7 @@ export default function Submissions() {
           });
           setUrlsText("");
           setNoteText("");
+          setKeywordText("");
           setShowAdd(false);
           queryClient.invalidateQueries({
             queryKey: getListTrackedSubmissionsQueryKey(),
@@ -504,16 +518,34 @@ export default function Submissions() {
                     className="font-mono text-sm"
                   />
                 </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground">
-                    Note (optional)
-                  </label>
-                  <Input
-                    value={noteText}
-                    onChange={(e) => setNoteText(e.target.value)}
-                    placeholder="e.g. Q3 priority pages"
-                    className="mt-1"
-                  />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="text-sm font-medium text-foreground">
+                      Target keyword (optional)
+                    </label>
+                    <p className="text-xs text-muted-foreground mb-1">
+                      Applied to every URL above. Used to chart its Search
+                      Console position over time.
+                    </p>
+                    <Input
+                      value={keywordText}
+                      onChange={(e) => setKeywordText(e.target.value)}
+                      placeholder="e.g. ai visibility tools"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-foreground">
+                      Note (optional)
+                    </label>
+                    <p className="text-xs text-muted-foreground mb-1">
+                      A label to remind you why these are tracked.
+                    </p>
+                    <Input
+                      value={noteText}
+                      onChange={(e) => setNoteText(e.target.value)}
+                      placeholder="e.g. Q3 priority pages"
+                    />
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
@@ -630,6 +662,7 @@ export default function Submissions() {
                         item={item}
                         onToggleTracked={handleToggleTracked}
                         onDeleteTracked={handleDeleteTracked}
+                        onOpenPerformance={setPerfItem}
                         toggleBusy={updateMutation.isPending}
                         deleteBusy={deleteMutation.isPending}
                       />
@@ -641,6 +674,19 @@ export default function Submissions() {
           </div>
         )}
       </div>
+
+      {perfItem && perfItem.trackedId != null && perfItem.externalUrl && (
+        <TrackedPerformanceDialog
+          key={perfItem.trackedId}
+          trackedId={perfItem.trackedId}
+          url={perfItem.externalUrl}
+          keyword={perfItem.keyword ?? null}
+          open
+          onOpenChange={(o) => {
+            if (!o) setPerfItem(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -680,12 +726,14 @@ function SubmissionRow({
   item,
   onToggleTracked,
   onDeleteTracked,
+  onOpenPerformance,
   toggleBusy,
   deleteBusy,
 }: {
   item: SubmissionItem;
   onToggleTracked: (item: SubmissionItem) => void;
   onDeleteTracked: (item: SubmissionItem) => void;
+  onOpenPerformance: (item: SubmissionItem) => void;
   toggleBusy: boolean;
   deleteBusy: boolean;
 }) {
@@ -724,6 +772,15 @@ function SubmissionRow({
               {item.priority}
             </Badge>
           )}
+          {isTracked && item.keyword && (
+            <Badge
+              variant="secondary"
+              className="flex-none gap-1 max-w-[16rem] truncate font-normal"
+              title={`Target keyword: ${item.keyword}`}
+            >
+              <Search className="h-3 w-3" /> {item.keyword}
+            </Badge>
+          )}
         </div>
         <div className="text-xs text-muted-foreground font-mono truncate">
           {item.detail}
@@ -731,6 +788,15 @@ function SubmissionRow({
       </div>
       {isTracked ? (
         <div className="flex-none flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2 text-xs"
+            onClick={() => onOpenPerformance(item)}
+            title="View Search Console performance for this URL and keyword"
+          >
+            <LineChart className="h-3.5 w-3.5" /> Performance
+          </Button>
           <Button
             variant="ghost"
             size="sm"
