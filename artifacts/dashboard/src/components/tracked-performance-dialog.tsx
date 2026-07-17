@@ -36,13 +36,37 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
-import { ArrowDown, ArrowUp, Minus, Search, Target } from "lucide-react";
+import { ArrowDown, ArrowUp, Globe, Minus, Search, Target } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const RANGE_OPTIONS = [
   { value: "14", label: "Last 14 days" },
   { value: "28", label: "Last 28 days" },
   { value: "90", label: "Last 90 days" },
+];
+
+// GSC uses ISO 3166-1 alpha-3 country codes (lowercase).
+const COUNTRY_OPTIONS = [
+  { value: "all", label: "Worldwide" },
+  { value: "usa", label: "United States" },
+  { value: "gbr", label: "United Kingdom" },
+  { value: "ind", label: "India" },
+  { value: "can", label: "Canada" },
+  { value: "aus", label: "Australia" },
+  { value: "deu", label: "Germany" },
+  { value: "fra", label: "France" },
+  { value: "nld", label: "Netherlands" },
+  { value: "esp", label: "Spain" },
+  { value: "ita", label: "Italy" },
+  { value: "bra", label: "Brazil" },
+  { value: "jpn", label: "Japan" },
+  { value: "sgp", label: "Singapore" },
+  { value: "are", label: "UAE" },
+  { value: "phl", label: "Philippines" },
+  { value: "idn", label: "Indonesia" },
+  { value: "pak", label: "Pakistan" },
+  { value: "nga", label: "Nigeria" },
+  { value: "zaf", label: "South Africa" },
 ];
 
 function pathOf(url: string): string {
@@ -232,6 +256,7 @@ export function TrackedPerformanceDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [days, setDays] = useState("28");
+  const [country, setCountry] = useState("all");
   // The prop is a snapshot from the list; keep the live value locally so the
   // header updates immediately after an in-dialog save.
   const [effectiveKeyword, setEffectiveKeyword] = useState<string | null>(keyword);
@@ -242,20 +267,22 @@ export function TrackedPerformanceDialog({
   const { toast } = useToast();
   const updateMutation = useUpdateTrackedSubmission();
 
-  const perfQ = useGetTrackedSubmissionPerformance(
-    trackedId,
-    { days: Number(days) },
-    {
-      query: {
-        queryKey: getGetTrackedSubmissionPerformanceQueryKey(trackedId, {
-          days: Number(days),
-        }),
-        enabled: open,
-        staleTime: 5 * 60 * 1000,
-        retry: 1,
-      },
-    },
+  const perfParams = useMemo(
+    () => ({
+      days: Number(days),
+      ...(country !== "all" ? { country } : {}),
+    }),
+    [days, country],
   );
+
+  const perfQ = useGetTrackedSubmissionPerformance(trackedId, perfParams, {
+    query: {
+      queryKey: getGetTrackedSubmissionPerformanceQueryKey(trackedId, perfParams),
+      enabled: open,
+      staleTime: 5 * 60 * 1000,
+      retry: 1,
+    },
+  });
 
   const saveKeyword = () => {
     const next = keywordDraft.trim();
@@ -350,18 +377,35 @@ export function TrackedPerformanceDialog({
               </>
             )}
           </div>
-          <Select value={days} onValueChange={setDays}>
-            <SelectTrigger className="w-36 h-8">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {RANGE_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Select value={country} onValueChange={setCountry}>
+              <SelectTrigger className="w-44 h-8">
+                <span className="inline-flex items-center gap-1.5 truncate">
+                  <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <SelectValue />
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                {COUNTRY_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={days} onValueChange={setDays}>
+              <SelectTrigger className="w-36 h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {RANGE_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {perfQ.isLoading ? (
@@ -518,8 +562,14 @@ export function TrackedPerformanceDialog({
             </section>
 
             <div className="text-[11px] text-muted-foreground">
-              {d.startDate} → {d.endDate} · Search Console data (lags ~2 days) · shifts
-              compare against the preceding {days}-day window · cached 30 min
+              {d.startDate} → {d.endDate}
+              {country !== "all" && (
+                <>
+                  {" "}· {COUNTRY_OPTIONS.find((o) => o.value === country)?.label ?? country} only
+                </>
+              )}{" "}
+              · Search Console data (lags ~2 days) · shifts compare against the
+              preceding {days}-day window · cached 30 min
             </div>
           </div>
         ) : null}

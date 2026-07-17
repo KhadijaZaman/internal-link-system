@@ -12,4 +12,9 @@ export type GetTrackedSubmissionPerformanceParams = {
  * @maximum 180
  */
 days?: number;
+/**
+ * ISO 3166-1 alpha-3 country code (e.g. usa, gbr, ind); omit for worldwide
+ * @pattern ^[A-Za-z]{3}$
+ */
+country?: string;
 };

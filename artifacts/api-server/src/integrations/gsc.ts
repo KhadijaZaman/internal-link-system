@@ -105,6 +105,8 @@ export async function queryGscDimension(opts: {
   /** RE2 regex page filter (use to include #fragment / ?query URL variants). */
   pageRegex?: string;
   queryFilter?: { expression: string; operator?: "equals" | "contains" };
+  /** ISO 3166-1 alpha-3 country code (lowercase), e.g. "usa", "gbr", "ind". */
+  countryFilter?: string;
   rowLimit?: number;
 }): Promise<GscDimensionRow[]> {
   const sc = client();
@@ -127,6 +129,13 @@ export async function queryGscDimension(opts: {
       dimension: "query",
       operator: opts.queryFilter.operator ?? "equals",
       expression: opts.queryFilter.expression,
+    });
+  }
+  if (opts.countryFilter) {
+    filters.push({
+      dimension: "country",
+      operator: "equals",
+      expression: opts.countryFilter,
     });
   }
   if (filters.length > 0) {

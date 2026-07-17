@@ -520,6 +520,11 @@ paths:
           name: days
           required: false
           schema: { type: integer, minimum: 7, maximum: 180, default: 28 }
+        - in: query
+          name: country
+          required: false
+          description: ISO 3166-1 alpha-3 country code (e.g. usa, gbr, ind); omit for worldwide
+          schema: { type: string, pattern: "^[A-Za-z]{3}$" }
       responses:
         "200":
           description: Daily keyword and page performance with previous-window comparison

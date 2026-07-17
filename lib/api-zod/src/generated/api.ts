@@ -662,10 +662,12 @@ export const getTrackedSubmissionPerformanceQueryDaysDefault = 28;
 export const getTrackedSubmissionPerformanceQueryDaysMin = 7;
 export const getTrackedSubmissionPerformanceQueryDaysMax = 180;
 
+export const getTrackedSubmissionPerformanceQueryCountryRegExp = new RegExp('^[A-Za-z]{3}$');
 
 
 export const GetTrackedSubmissionPerformanceQueryParams = zod.object({
-  "days": zod.coerce.number().min(getTrackedSubmissionPerformanceQueryDaysMin).max(getTrackedSubmissionPerformanceQueryDaysMax).default(getTrackedSubmissionPerformanceQueryDaysDefault)
+  "days": zod.coerce.number().min(getTrackedSubmissionPerformanceQueryDaysMin).max(getTrackedSubmissionPerformanceQueryDaysMax).default(getTrackedSubmissionPerformanceQueryDaysDefault),
+  "country": zod.coerce.string().regex(getTrackedSubmissionPerformanceQueryCountryRegExp).optional().describe('ISO 3166-1 alpha-3 country code (e.g. usa, gbr, ind); omit for worldwide')
 })
 
 export const GetTrackedSubmissionPerformanceResponse = zod.object({

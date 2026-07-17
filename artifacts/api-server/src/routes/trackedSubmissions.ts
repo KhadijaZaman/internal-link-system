@@ -161,6 +161,13 @@ router.get(
     }
     const daysRaw = Number(req.query["days"] ?? 28);
     const days = Math.min(180, Math.max(7, Number.isFinite(daysRaw) ? Math.round(daysRaw) : 28));
+    const countryRaw = typeof req.query["country"] === "string" ? req.query["country"].trim() : "";
+    // "all" is rejected: it's the worldwide cache-key sentinel, not an ISO code.
+    if (countryRaw && (!/^[A-Za-z]{3}$/.test(countryRaw) || countryRaw.toLowerCase() === "all")) {
+      res.status(400).json({ error: "country must be a 3-letter ISO code" });
+      return;
+    }
+    const country = countryRaw ? countryRaw.toLowerCase() : null;
 
     const rows = await db
       .select()
@@ -186,16 +193,18 @@ router.get(
     const pageRegex = pageVariantsRegex(sub.url);
     const keyword = sub.keyword?.trim() || null;
 
-    const cacheKey = `tracked-perf:${id}:${sub.url}:${keyword ?? ""}:${days}:${endDate}`;
+    const cacheKey = `tracked-perf:${id}:${sub.url}:${keyword ?? ""}:${days}:${country ?? "all"}:${endDate}`;
     try {
       const payload = await withCache(cacheKey, GSC_CACHE_TTL_MS, async () => {
         // One call per scope covering current + previous window, split locally.
+        const countryFilter = country ?? undefined;
         const [overallDaily, keywordDaily, queryRows] = await Promise.all([
           queryGscDimension({
             startDate: prevStartDate,
             endDate,
             dimension: "date",
             pageRegex,
+            countryFilter,
           }),
           keyword
             ? queryGscDimension({
@@ -204,6 +213,7 @@ router.get(
                 dimension: "date",
                 pageRegex,
                 queryFilter: { expression: keyword, operator: "equals" },
+                countryFilter,
               })
             : Promise.resolve([] as GscDimensionRow[]),
           queryGscDimension({
@@ -212,6 +222,7 @@ router.get(
             dimension: "query",
             pageRegex,
             rowLimit: 25,
+            countryFilter,
           }),
         ]);
 
