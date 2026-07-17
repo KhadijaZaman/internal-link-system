@@ -211,6 +211,7 @@ export * from './trackedPerformance';
 export * from './trackedQueryRow';
 export * from './trackedSubmission';
 export * from './trackedSubmissionCreate';
+export * from './trackedSubmissionCreateItemsItem';
 export * from './trackedSubmissionUpdate';
 export * from './trackedSubmissionUpdateStatus';
 export * from './urlFilterParameter';

@@ -5,10 +5,11 @@
  * Wellows internal linking system API
  * OpenAPI spec version: 0.1.0
  */
+import type { TrackedSubmissionCreateItemsItem } from './trackedSubmissionCreateItemsItem';
 
 export interface TrackedSubmissionCreate {
-  /** @minItems 1 */
-  urls: string[];
+  urls?: string[];
+  items?: TrackedSubmissionCreateItemsItem[];
   keyword?: string;
   note?: string;
 }

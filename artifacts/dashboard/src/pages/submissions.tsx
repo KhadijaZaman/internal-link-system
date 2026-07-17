@@ -311,15 +311,27 @@ export default function Submissions() {
 
   const handleAddTracked = (e: React.FormEvent) => {
     e.preventDefault();
-    const urls = urlsText
+    // Each line: "URL" alone, or "URL<TAB>keyword" / "URL, keyword" /
+    // "URL keyword" — matches pasting two columns from a spreadsheet.
+    const items = urlsText
       .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (urls.length === 0) return;
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        let sep = line.indexOf("\t");
+        if (sep === -1) sep = line.indexOf(",");
+        if (sep === -1) sep = line.search(/\s/);
+        if (sep === -1) return { url: line };
+        const url = line.slice(0, sep).trim();
+        const keyword = line.slice(sep + 1).trim();
+        return keyword ? { url, keyword } : { url };
+      })
+      .filter((it) => it.url.length > 0);
+    if (items.length === 0) return;
     createMutation.mutate(
       {
         data: {
-          urls,
+          items,
           note: noteText.trim() || undefined,
           keyword: keywordText.trim() || undefined,
         },
@@ -327,7 +339,9 @@ export default function Submissions() {
       {
         onSuccess: (created) => {
           toast({
-            title: `Tracking ${created.length} URL${created.length === 1 ? "" : "s"}`,
+            title: `Saved ${created.length} tracked URL${created.length === 1 ? "" : "s"}`,
+            description:
+              "Already-tracked URLs had their keyword updated instead of being duplicated.",
           });
           setUrlsText("");
           setNoteText("");
@@ -507,13 +521,18 @@ export default function Submissions() {
                     URLs to track
                   </label>
                   <p className="text-xs text-muted-foreground mb-1">
-                    One URL per line. These are added to your personal tracking
-                    list — no fetching, crawling, or AI is run.
+                    One URL per line, with an optional keyword after it —
+                    paste both columns straight from your sheet (URL and
+                    keyword separated by a tab, comma, or space). Re-pasting a
+                    URL that's already tracked updates its keyword instead of
+                    duplicating it. No fetching, crawling, or AI is run.
                   </p>
                   <Textarea
                     value={urlsText}
                     onChange={(e) => setUrlsText(e.target.value)}
-                    placeholder={"https://wellows.com/features/...\nhttps://wellows.com/blog/..."}
+                    placeholder={
+                      "https://wellows.com/blog/ai-visibility-tools/, best ai visibility tools\nhttps://wellows.com/features/prompt-tracking/, prompt tracking\nhttps://wellows.com/tools/ai-overviews-tracker/"
+                    }
                     rows={6}
                     className="font-mono text-sm"
                   />
@@ -521,11 +540,12 @@ export default function Submissions() {
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <label className="text-sm font-medium text-foreground">
-                      Target keyword (optional)
+                      Default keyword (optional)
                     </label>
                     <p className="text-xs text-muted-foreground mb-1">
-                      Applied to every URL above. Used to chart its Search
-                      Console position over time.
+                      Used only for lines above that don't include their own
+                      keyword. Keywords chart Search Console position over
+                      time.
                     </p>
                     <Input
                       value={keywordText}

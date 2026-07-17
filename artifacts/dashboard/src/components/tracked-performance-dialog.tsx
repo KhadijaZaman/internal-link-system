@@ -87,6 +87,97 @@ function fmtDate(d: string): string {
   return `${Number(m)}/${Number(day)}`;
 }
 
+function fmtDayFull(d: string): string {
+  const [y, m, day] = d.split("-").map(Number);
+  return new Date(y, m - 1, day).toLocaleDateString(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
+
+// Day-over-day cell color: green = improved, red = declined, no color when
+// unchanged or when either day has no data.
+function dayCellClass(
+  curr: number | null,
+  prev: number | null,
+  lowerIsBetter = false,
+): string {
+  if (curr == null || prev == null || curr === prev) return "";
+  const improved = lowerIsBetter ? curr < prev : curr > prev;
+  return improved
+    ? "text-emerald-600 dark:text-emerald-400 font-medium"
+    : "text-red-600 dark:text-red-400 font-medium";
+}
+
+function DayTable({ series, title }: { series: GscTimeseriesPoint[]; title: string }) {
+  const rows = useMemo(() => {
+    const mapped = series.map((p, i) => {
+      const prev = i > 0 ? series[i - 1] : null;
+      const pos = p.position > 0 ? Number(p.position.toFixed(1)) : null;
+      const prevPos =
+        prev && prev.position > 0 ? Number(prev.position.toFixed(1)) : null;
+      return {
+        date: p.date,
+        pos,
+        posCls: dayCellClass(pos, prevPos, true),
+        impressions: p.impressions,
+        imprCls: dayCellClass(p.impressions, prev ? prev.impressions : null),
+        clicks: p.clicks,
+        clicksCls: dayCellClass(p.clicks, prev ? prev.clicks : null),
+      };
+    });
+    return mapped.reverse(); // newest day first
+  }, [series]);
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div>
+      <div className="text-xs font-medium text-muted-foreground mb-1">{title}</div>
+      <div className="rounded-lg border border-border/60 overflow-hidden">
+        <div className="max-h-72 overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-muted/95 backdrop-blur z-10">
+              <tr className="text-left text-xs text-muted-foreground border-b">
+                <th className="px-3 py-2 font-medium">Date</th>
+                <th className="px-3 py-2 font-medium text-right">Avg position</th>
+                <th className="px-3 py-2 font-medium text-right">Impressions</th>
+                <th className="px-3 py-2 font-medium text-right">Clicks</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/60">
+              {rows.map((r) => (
+                <tr key={r.date}>
+                  <td className="px-3 py-1.5 whitespace-nowrap text-muted-foreground">
+                    {fmtDayFull(r.date)}
+                  </td>
+                  <td className={`px-3 py-1.5 text-right tabular-nums ${r.posCls}`}>
+                    {r.pos != null ? r.pos.toFixed(1) : "—"}
+                  </td>
+                  <td className={`px-3 py-1.5 text-right tabular-nums ${r.imprCls}`}>
+                    {r.impressions.toLocaleString()}
+                  </td>
+                  <td className={`px-3 py-1.5 text-right tabular-nums ${r.clicksCls}`}>
+                    {r.clicks.toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="text-[11px] text-muted-foreground mt-1">
+        Compared with the previous day:{" "}
+        <span className="text-emerald-600 dark:text-emerald-400">green = uplift</span>
+        {" · "}
+        <span className="text-red-600 dark:text-red-400">red = decline</span>
+        {" · "}no color = unchanged. For position, lower is better.
+      </div>
+    </div>
+  );
+}
+
 function Delta({
   current,
   previous,
@@ -452,6 +543,12 @@ export function TrackedPerformanceDialog({
                     title="Day-by-day: keyword position, impressions & clicks"
                   />
                 </div>
+                <div className="mt-3">
+                  <DayTable
+                    series={d.keywordSeries}
+                    title="Day-wise report (keyword)"
+                  />
+                </div>
               </section>
             )}
 
@@ -488,12 +585,20 @@ export function TrackedPerformanceDialog({
                 />
               </div>
               {!d.keyword && (
-                <div className="mt-3">
-                  <TrendChart
-                    series={d.overallSeries}
-                    title="Day-by-day: page position, impressions & clicks"
-                  />
-                </div>
+                <>
+                  <div className="mt-3">
+                    <TrendChart
+                      series={d.overallSeries}
+                      title="Day-by-day: page position, impressions & clicks"
+                    />
+                  </div>
+                  <div className="mt-3">
+                    <DayTable
+                      series={d.overallSeries}
+                      title="Day-wise report (whole page)"
+                    />
+                  </div>
+                </>
               )}
             </section>
 

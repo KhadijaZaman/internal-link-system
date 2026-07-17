@@ -830,9 +830,15 @@ export interface TrackedSubmission {
   completedAt?: string | null;
 }
 
+export type TrackedSubmissionCreateItemsItem = {
+  /** @minLength 1 */
+  url: string;
+  keyword?: string;
+};
+
 export interface TrackedSubmissionCreate {
-  /** @minItems 1 */
-  urls: string[];
+  urls?: string[];
+  items?: TrackedSubmissionCreateItemsItem[];
   keyword?: string;
   note?: string;
 }

@@ -2253,12 +2253,18 @@ components:
         completedAt: { type: ["string", "null"], format: date-time }
     TrackedSubmissionCreate:
       type: object
-      required: [urls]
       properties:
         urls:
           type: array
           items: { type: string, minLength: 1 }
-          minItems: 1
+        items:
+          type: array
+          items:
+            type: object
+            required: [url]
+            properties:
+              url: { type: string, minLength: 1 }
+              keyword: { type: string }
         keyword: { type: string }
         note: { type: string }
     TrackedSubmissionUpdate:

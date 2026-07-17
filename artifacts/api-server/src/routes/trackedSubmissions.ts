@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray, sql } from "drizzle-orm";
 import { db, trackedSubmissionsTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
 import {
@@ -53,27 +53,74 @@ router.post("/tracked-submissions", requireAuth, async (req, res) => {
     return;
   }
   const note = parsed.data.note?.trim() || null;
-  const keyword = parsed.data.keyword?.trim() || null;
+  // Legacy shared keyword doubles as the default for items without their own.
+  const defaultKeyword = parsed.data.keyword?.trim() || null;
+
+  const rawItems: { url: string; keyword: string | null }[] = [
+    ...(parsed.data.items ?? []).map((it) => ({
+      url: it.url.trim(),
+      keyword: it.keyword?.trim() || defaultKeyword,
+    })),
+    ...(parsed.data.urls ?? []).map((u) => ({
+      url: u.trim(),
+      keyword: defaultKeyword,
+    })),
+  ];
+
   const seen = new Set<string>();
-  const values = parsed.data.urls
-    .map((u) => u.trim())
-    .filter((u) => u.length > 0 && isHttpUrl(u))
-    .filter((u) => {
-      const key = u.toLowerCase();
+  const items = rawItems
+    .filter((it) => it.url.length > 0 && isHttpUrl(it.url))
+    .filter((it) => {
+      const key = it.url.toLowerCase();
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
-    })
-    .map((url) => ({ url, note, keyword }));
-  if (values.length === 0) {
+    });
+  if (items.length === 0) {
     res.status(400).json({ error: "No valid http(s) URLs" });
     return;
   }
-  const inserted = await db
-    .insert(trackedSubmissionsTable)
-    .values(values)
-    .returning();
-  res.status(201).json(inserted.map(serialize));
+
+  // Upsert by URL: re-pasting a list updates keywords instead of duplicating.
+  // Case-insensitive match so re-pasting with different casing can't duplicate.
+  const existing = await db
+    .select()
+    .from(trackedSubmissionsTable)
+    .where(
+      inArray(
+        sql`lower(${trackedSubmissionsTable.url})`,
+        items.map((it) => it.url.toLowerCase()),
+      ),
+    );
+  const byUrl = new Map(existing.map((row) => [row.url.toLowerCase(), row]));
+
+  const toInsert: { url: string; note: string | null; keyword: string | null }[] = [];
+  const results: (typeof trackedSubmissionsTable.$inferSelect)[] = [];
+  for (const it of items) {
+    const ex = byUrl.get(it.url.toLowerCase());
+    if (!ex) {
+      toInsert.push({ url: it.url, note, keyword: it.keyword });
+      continue;
+    }
+    if (it.keyword && it.keyword !== ex.keyword) {
+      const updated = await db
+        .update(trackedSubmissionsTable)
+        .set({ keyword: it.keyword })
+        .where(eq(trackedSubmissionsTable.id, ex.id))
+        .returning();
+      if (updated[0]) results.push(updated[0]);
+    } else {
+      results.push(ex);
+    }
+  }
+  if (toInsert.length > 0) {
+    const inserted = await db
+      .insert(trackedSubmissionsTable)
+      .values(toInsert)
+      .returning();
+    results.push(...inserted);
+  }
+  res.status(201).json(results.map(serialize));
 });
 
 router.patch("/tracked-submissions/:id", requireAuth, async (req, res) => {

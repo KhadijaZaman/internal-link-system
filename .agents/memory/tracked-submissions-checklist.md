@@ -46,6 +46,17 @@ exclusively — still no page fetch, crawl, or AI.
 - Still-open tracked items (status `tracking`) are exempt from the page's
   day-window filter so the checklist never silently hides open items; everything
   else respects the selected window.
-- POST is batch (`urls: string[]`) and enforces http(s)-only URLs (mirrors the
-  `link-lookups` protocol check) because the UI renders each URL as a clickable
-  `<a href>`.
+- POST is batch and accepts BOTH shapes: legacy `urls: string[]` + shared
+  `keyword` (now a default), and `items: [{url, keyword?}]` for per-URL
+  keywords. It UPSERTS by URL (case-insensitive `lower(url)` match): re-pasting
+  a sheet updates keywords on existing rows instead of duplicating; a blank
+  keyword never clears an existing one, and note is never updated on upsert.
+- Enforces http(s)-only URLs (mirrors the `link-lookups` protocol check)
+  because the UI renders each URL as a clickable `<a href>`.
+- Bulk-add textarea parses each line as `URL<TAB>keyword` / `URL, keyword` /
+  `URL keyword` (tab first, then comma, then whitespace) so users paste two
+  spreadsheet columns directly.
+- Performance dialog has a day-wise table (Date/Position/Impressions/Clicks)
+  with day-over-day coloring: green uplift, red decline, NO color when
+  unchanged (explicit user requirement); position compared at 1 decimal,
+  lower is better.

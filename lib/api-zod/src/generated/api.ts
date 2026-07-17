@@ -609,7 +609,11 @@ export const ListTrackedSubmissionsResponse = zod.array(ListTrackedSubmissionsRe
 
 
 export const CreateTrackedSubmissionsBody = zod.object({
-  "urls": zod.array(zod.string().min(1)).min(1),
+  "urls": zod.array(zod.string().min(1)).optional(),
+  "items": zod.array(zod.object({
+  "url": zod.string().min(1),
+  "keyword": zod.string().optional()
+})).optional(),
   "keyword": zod.string().optional(),
   "note": zod.string().optional()
 })
