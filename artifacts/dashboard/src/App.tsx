@@ -31,6 +31,7 @@ import ContentWriter from "@/pages/content/writer";
 import KnowledgeBase from "@/pages/knowledge-base";
 import Ga4Pages from "@/pages/ga4/pages";
 import PageReport from "@/pages/report/pages";
+import KeywordReport from "@/pages/keyword-report";
 import { GscRangeProvider } from "@/components/gsc/range-context";
 
 const queryClient = new QueryClient({
@@ -81,6 +82,7 @@ function Router() {
       <Route path="/knowledge-base" component={() => <ProtectedRoute component={KnowledgeBase} />} />
       <Route path="/ga4" component={() => <ProtectedRoute component={Ga4Pages} />} />
       <Route path="/report" component={() => <ProtectedRoute component={PageReport} />} />
+      <Route path="/keyword-report" component={() => <ProtectedRoute component={KeywordReport} />} />
       <Route path="/gsc/:rest*">
         {() => (
           <GscRangeProvider>

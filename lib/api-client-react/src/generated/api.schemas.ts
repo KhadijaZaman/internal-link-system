@@ -897,6 +897,17 @@ export interface TrackedPerformance {
   topQueries: TrackedQueryRow[];
 }
 
+export interface KeywordReport {
+  url: string;
+  keyword: string;
+  startDate: string;
+  endDate: string;
+  series: GscTimeseriesPoint[];
+  totals: GscMetricsTotals | null;
+  prevTotals: GscMetricsTotals | null;
+  pageTotals: GscMetricsTotals | null;
+}
+
 export interface JobRunResult {
   jobName: string;
   started: boolean;
@@ -1826,6 +1837,24 @@ q: string;
 };
 
 export type GetTrackedSubmissionPerformanceParams = {
+/**
+ * @minimum 7
+ * @maximum 180
+ */
+days?: number;
+/**
+ * ISO 3166-1 alpha-3 country code (e.g. usa, gbr, ind); omit for worldwide
+ * @pattern ^[A-Za-z]{3}$
+ */
+country?: string;
+};
+
+export type GetKeywordReportParams = {
+url: string;
+/**
+ * @minLength 1
+ */
+keyword: string;
 /**
  * @minimum 7
  * @maximum 180

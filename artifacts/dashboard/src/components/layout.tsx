@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useLogout } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Network, TrendingDown, Settings2, LogOut, LineChart, FileText, Ban, PenLine, Link2, Compass, BookOpen, ClipboardList, Bot, Gauge, Table2, ListTodo, Newspaper, Waypoints } from "lucide-react";
+import { LayoutDashboard, Network, TrendingDown, Settings2, LogOut, LineChart, FileText, Ban, PenLine, Link2, Compass, BookOpen, ClipboardList, Bot, Gauge, Table2, ListTodo, Newspaper, Waypoints, SearchCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface NavItem {
@@ -31,6 +31,7 @@ const navSections: NavSection[] = [
       { href: "/ga4", label: "GA4 Engagement", icon: Gauge },
       { href: "/losers", label: "Query Losers", icon: TrendingDown },
       { href: "/report", label: "Page Report", icon: Table2 },
+      { href: "/keyword-report", label: "Keyword Report", icon: SearchCheck },
       { href: "/gsc/ask", label: "Ask AI", icon: Bot },
     ],
   },

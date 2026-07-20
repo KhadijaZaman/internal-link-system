@@ -730,6 +730,57 @@ export const GetTrackedSubmissionPerformanceResponse = zod.object({
 
 
 /**
+ * @summary Ad-hoc GSC keyword performance for any URL + keyword (GSC only, no crawl)
+ */
+
+export const getKeywordReportQueryDaysDefault = 28;
+export const getKeywordReportQueryDaysMin = 7;
+export const getKeywordReportQueryDaysMax = 180;
+
+export const getKeywordReportQueryCountryRegExp = new RegExp('^[A-Za-z]{3}$');
+
+
+export const GetKeywordReportQueryParams = zod.object({
+  "url": zod.coerce.string(),
+  "keyword": zod.coerce.string().min(1),
+  "days": zod.coerce.number().min(getKeywordReportQueryDaysMin).max(getKeywordReportQueryDaysMax).default(getKeywordReportQueryDaysDefault),
+  "country": zod.coerce.string().regex(getKeywordReportQueryCountryRegExp).optional().describe('ISO 3166-1 alpha-3 country code (e.g. usa, gbr, ind); omit for worldwide')
+})
+
+export const GetKeywordReportResponse = zod.object({
+  "url": zod.string(),
+  "keyword": zod.string(),
+  "startDate": zod.coerce.date(),
+  "endDate": zod.coerce.date(),
+  "series": zod.array(zod.object({
+  "date": zod.coerce.date(),
+  "clicks": zod.number(),
+  "impressions": zod.number(),
+  "ctr": zod.number(),
+  "position": zod.number()
+})),
+  "totals": zod.union([zod.object({
+  "clicks": zod.number(),
+  "impressions": zod.number(),
+  "ctr": zod.number(),
+  "position": zod.number()
+}),zod.null()]),
+  "prevTotals": zod.union([zod.object({
+  "clicks": zod.number(),
+  "impressions": zod.number(),
+  "ctr": zod.number(),
+  "position": zod.number()
+}),zod.null()]),
+  "pageTotals": zod.union([zod.object({
+  "clicks": zod.number(),
+  "impressions": zod.number(),
+  "ctr": zod.number(),
+  "position": zod.number()
+}),zod.null()])
+})
+
+
+/**
  * @summary Manually trigger a background job
  */
 export const RunJobParams = zod.object({

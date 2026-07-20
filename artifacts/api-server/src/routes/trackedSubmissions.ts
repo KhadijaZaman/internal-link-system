@@ -11,6 +11,8 @@ import {
   aggregateTotals,
   withCache,
   GSC_CACHE_TTL_MS,
+  pageVariantsRegex,
+  keywordExactRegex,
   type GscDimensionRow,
 } from "../integrations/gsc";
 
@@ -174,31 +176,6 @@ router.delete("/tracked-submissions/:id", requireAuth, async (req, res) => {
 
 function isoDay(d: Date): string {
   return d.toISOString().slice(0, 10);
-}
-
-/**
- * GSC records /page/#fragment (and ?query) variants as separate page URLs, so
- * an "equals" filter undercounts. Build an RE2 regex that matches the exact
- * URL plus optional trailing slash and any #fragment / ?query suffix.
- */
-function pageVariantsRegex(url: string): string {
-  const base = url.replace(/\/+$/, "");
-  const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return `^${escaped}/?([#?].*)?$`;
-}
-
-/**
- * GSC's "equals" query filter is case-sensitive, but GSC stores queries
- * lowercased — a keyword saved as "Ai visibility ..." would never match.
- * Build a case-insensitive exact-match RE2 regex (whitespace-run tolerant)
- * so the keyword matches regardless of how the operator typed it.
- */
-function keywordExactRegex(keyword: string): string {
-  const escaped = keyword
-    .trim()
-    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-    .replace(/\s+/g, "\\s+");
-  return `(?i)^${escaped}$`;
 }
 
 function toSeriesPoint(r: GscDimensionRow) {

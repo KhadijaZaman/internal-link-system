@@ -52,6 +52,7 @@ import type {
   GetGscUrlDrilldownParams,
   GetImpactDetailParams,
   GetInventoryPageParams,
+  GetKeywordReportParams,
   GetLinkGraphFocusParams,
   GetLoserPagesParams,
   GetPagesReportParams,
@@ -81,6 +82,7 @@ import type {
   JobStatus,
   KbDocument,
   KbDocumentInput,
+  KeywordReport,
   KnowledgeGraph,
   LinkGraph,
   LinkGraphFocus,
@@ -2242,6 +2244,90 @@ export function useGetTrackedSubmissionPerformance<TData = Awaited<ReturnType<ty
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetTrackedSubmissionPerformanceQueryOptions(id,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetKeywordReportUrl = (params: GetKeywordReportParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/keyword-report?${stringifiedParams}` : `/api/keyword-report`
+}
+
+/**
+ * @summary Ad-hoc GSC keyword performance for any URL + keyword (GSC only, no crawl)
+ */
+export const getKeywordReport = async (params: GetKeywordReportParams, options?: RequestInit): Promise<KeywordReport> => {
+
+  return customFetch<KeywordReport>(getGetKeywordReportUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetKeywordReportQueryKey = (params?: GetKeywordReportParams,) => {
+    return [
+    `/api/keyword-report`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetKeywordReportQueryOptions = <TData = Awaited<ReturnType<typeof getKeywordReport>>, TError = ErrorType<void>>(params: GetKeywordReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getKeywordReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetKeywordReportQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getKeywordReport>>> = ({ signal }) => getKeywordReport(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getKeywordReport>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetKeywordReportQueryResult = NonNullable<Awaited<ReturnType<typeof getKeywordReport>>>
+export type GetKeywordReportQueryError = ErrorType<void>
+
+
+/**
+ * @summary Ad-hoc GSC keyword performance for any URL + keyword (GSC only, no crawl)
+ */
+
+export function useGetKeywordReport<TData = Awaited<ReturnType<typeof getKeywordReport>>, TError = ErrorType<void>>(
+ params: GetKeywordReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getKeywordReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetKeywordReportQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

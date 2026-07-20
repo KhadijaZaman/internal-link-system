@@ -534,6 +534,40 @@ paths:
                 $ref: "#/components/schemas/TrackedPerformance"
         "404":
           description: Not found
+  /keyword-report:
+    get:
+      operationId: getKeywordReport
+      tags: [trackedSubmissions]
+      summary: Ad-hoc GSC keyword performance for any URL + keyword (GSC only, no crawl)
+      parameters:
+        - in: query
+          name: url
+          required: true
+          schema: { type: string }
+        - in: query
+          name: keyword
+          required: true
+          schema: { type: string, minLength: 1 }
+        - in: query
+          name: days
+          required: false
+          schema: { type: integer, minimum: 7, maximum: 180, default: 28 }
+        - in: query
+          name: country
+          required: false
+          description: ISO 3166-1 alpha-3 country code (e.g. usa, gbr, ind); omit for worldwide
+          schema: { type: string, pattern: "^[A-Za-z]{3}$" }
+      responses:
+        "200":
+          description: Daily keyword performance with previous-window comparison
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeywordReport"
+        "400":
+          description: Invalid input
+        "502":
+          description: Search Console request failed
   /jobs/{jobName}/run:
     post:
       operationId: runJob
@@ -2329,6 +2363,29 @@ components:
         topQueries:
           type: array
           items: { $ref: "#/components/schemas/TrackedQueryRow" }
+    KeywordReport:
+      type: object
+      required: [url, keyword, startDate, endDate, series, totals, prevTotals, pageTotals]
+      properties:
+        url: { type: string }
+        keyword: { type: string }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        series:
+          type: array
+          items: { $ref: "#/components/schemas/GscTimeseriesPoint" }
+        totals:
+          oneOf:
+            - $ref: "#/components/schemas/GscMetricsTotals"
+            - type: "null"
+        prevTotals:
+          oneOf:
+            - $ref: "#/components/schemas/GscMetricsTotals"
+            - type: "null"
+        pageTotals:
+          oneOf:
+            - $ref: "#/components/schemas/GscMetricsTotals"
+            - type: "null"
     JobRunResult:
       type: object
       required: [jobName, started, message]
