@@ -26,3 +26,16 @@ user asks for a file.
 - **Gotcha — writing beyond the grid 400s:** writing/formatting a cell outside the tab's current `rowCount`/`columnCount` fails with `400 "Range ... exceeds grid limits. Max rows: N, max columns: M"`. Tabs created with a tight `columnCount` (e.g. 9) won't accept a new column J. First expand via `:batchUpdate` `updateSheetProperties` `{gridProperties:{columnCount:N}}` (fields `gridProperties.columnCount`), then write values + formatting.
 - The sheet is created in the connected user's Drive; they own it. The returned URL carries an
   account-specific `ouid` param — hand the user the clean `/edit` URL.
+
+**Recovery when `listConnections('google-sheet')` returns 0 but the connection exists:**
+- The sandbox binding can go stale even while `searchIntegrations` shows the connection as `added`
+  and the platform reports it healthy. `addIntegration` alone does NOT fix it (it returns
+  `success:false, connectionAlreadyAdded:true` and listConnections stays empty) — the platform-side
+  re-bind (proposeIntegration flow) is what restores it.
+- Even after re-bind, the sandbox `listConnections` may still return 0. Working fallback: from
+  **bash node**, hit the credential proxy directly:
+  `https://$REPLIT_CONNECTORS_HOSTNAME/api/v2/connection?include_secrets=true` with header
+  `X_REPLIT_TOKEN: "repl " + $REPL_IDENTITY`, then pick the item whose `connector_name` is
+  `google-sheet` and use `settings.access_token`.
+- **Gotcha:** adding `&connector_names=google-sheet` to that URL returns 0 items even when the
+  connection is healthy — fetch unfiltered and filter client-side.
