@@ -857,6 +857,20 @@ export interface TrackedSubmissionUpdate {
   keyword?: string | null;
 }
 
+export interface SubmissionsSheetExportInput {
+  /**
+     * @minimum 7
+     * @maximum 180
+     */
+  days?: number;
+}
+
+export interface SubmissionsSheetExportResult {
+  url: string;
+  title: string;
+  keywordCount: number;
+}
+
 export interface TrackedQueryRow {
   query: string;
   clicks: number;

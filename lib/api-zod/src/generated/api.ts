@@ -730,6 +730,26 @@ export const GetTrackedSubmissionPerformanceResponse = zod.object({
 
 
 /**
+ * @summary Export tracked keywords to a Google Sheet (Target Keyword Daily Movement template)
+ */
+export const exportSubmissionsSheetBodyDaysDefault = 90;
+export const exportSubmissionsSheetBodyDaysMin = 7;
+export const exportSubmissionsSheetBodyDaysMax = 180;
+
+
+
+export const ExportSubmissionsSheetBody = zod.object({
+  "days": zod.number().min(exportSubmissionsSheetBodyDaysMin).max(exportSubmissionsSheetBodyDaysMax).default(exportSubmissionsSheetBodyDaysDefault)
+})
+
+export const ExportSubmissionsSheetResponse = zod.object({
+  "url": zod.string(),
+  "title": zod.string(),
+  "keywordCount": zod.number()
+})
+
+
+/**
  * @summary Ad-hoc GSC keyword performance for any URL + keyword (GSC only, no crawl)
  */
 

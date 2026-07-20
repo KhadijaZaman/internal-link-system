@@ -112,6 +112,8 @@ import type {
   StructuralSuggestInput,
   StructuralSuggestResult,
   StructuralTargets,
+  SubmissionsSheetExportInput,
+  SubmissionsSheetExportResult,
   SuggestionActionInput,
   TrackedPerformance,
   TrackedSubmission,
@@ -2258,6 +2260,77 @@ export function useGetTrackedSubmissionPerformance<TData = Awaited<ReturnType<ty
 
 
 
+
+export const getExportSubmissionsSheetUrl = () => {
+
+
+
+
+  return `/api/tracked-submissions/export-sheet`
+}
+
+/**
+ * @summary Export tracked keywords to a Google Sheet (Target Keyword Daily Movement template)
+ */
+export const exportSubmissionsSheet = async (submissionsSheetExportInput?: SubmissionsSheetExportInput, options?: RequestInit): Promise<SubmissionsSheetExportResult> => {
+
+  return customFetch<SubmissionsSheetExportResult>(getExportSubmissionsSheetUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      submissionsSheetExportInput,)
+  }
+);}
+
+
+
+
+export const getExportSubmissionsSheetMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportSubmissionsSheet>>, TError,{data?: BodyType<SubmissionsSheetExportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof exportSubmissionsSheet>>, TError,{data?: BodyType<SubmissionsSheetExportInput>}, TContext> => {
+
+const mutationKey = ['exportSubmissionsSheet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof exportSubmissionsSheet>>, {data?: BodyType<SubmissionsSheetExportInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  exportSubmissionsSheet(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ExportSubmissionsSheetMutationResult = NonNullable<Awaited<ReturnType<typeof exportSubmissionsSheet>>>
+    export type ExportSubmissionsSheetMutationBody = BodyType<SubmissionsSheetExportInput> | undefined
+    export type ExportSubmissionsSheetMutationError = ErrorType<void>
+
+    /**
+ * @summary Export tracked keywords to a Google Sheet (Target Keyword Daily Movement template)
+ */
+export const useExportSubmissionsSheet = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportSubmissionsSheet>>, TError,{data?: BodyType<SubmissionsSheetExportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof exportSubmissionsSheet>>,
+        TError,
+        {data?: BodyType<SubmissionsSheetExportInput>},
+        TContext
+      > => {
+      return useMutation(getExportSubmissionsSheetMutationOptions(options));
+    }
 
 export const getGetKeywordReportUrl = (params: GetKeywordReportParams,) => {
   const normalizedParams = new URLSearchParams();

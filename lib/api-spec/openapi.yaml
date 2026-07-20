@@ -534,6 +534,28 @@ paths:
                 $ref: "#/components/schemas/TrackedPerformance"
         "404":
           description: Not found
+  /tracked-submissions/export-sheet:
+    post:
+      operationId: exportSubmissionsSheet
+      tags: [trackedSubmissions]
+      summary: Export tracked keywords to a Google Sheet (Target Keyword Daily Movement template)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmissionsSheetExportInput"
+      responses:
+        "200":
+          description: Spreadsheet created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionsSheetExportResult"
+        "400":
+          description: No tracked submissions with a target keyword
+        "502":
+          description: Search Console or Google Sheets request failed
   /keyword-report:
     get:
       operationId: getKeywordReport
@@ -2383,6 +2405,21 @@ components:
           type: string
           enum: [tracking, done]
         keyword: { type: ["string", "null"] }
+    SubmissionsSheetExportInput:
+      type: object
+      properties:
+        days:
+          type: integer
+          minimum: 7
+          maximum: 180
+          default: 90
+    SubmissionsSheetExportResult:
+      type: object
+      required: [url, title, keywordCount]
+      properties:
+        url: { type: string }
+        title: { type: string }
+        keywordCount: { type: integer }
     TrackedQueryRow:
       type: object
       required: [query, clicks, impressions, ctr, position, isTracked]

@@ -217,6 +217,8 @@ export * from './structuralSuggestResult';
 export * from './structuralSuggestResultRole';
 export * from './structuralTarget';
 export * from './structuralTargets';
+export * from './submissionsSheetExportInput';
+export * from './submissionsSheetExportResult';
 export * from './suggestionActionInput';
 export * from './suggestionActionInputAction';
 export * from './trackedPerformance';

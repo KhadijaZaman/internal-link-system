@@ -5,7 +5,12 @@ import { requireAuth } from "../lib/auth";
 import {
   CreateTrackedSubmissionsBody,
   UpdateTrackedSubmissionBody,
+  ExportSubmissionsSheetBody,
 } from "@workspace/api-zod";
+import {
+  exportKeywordMovementSheet,
+  NoTrackedKeywordsError,
+} from "../services/keywordMovementSheet";
 import {
   queryGscDimension,
   aggregateTotals,
@@ -170,6 +175,32 @@ router.delete("/tracked-submissions/:id", requireAuth, async (req, res) => {
     .delete(trackedSubmissionsTable)
     .where(eq(trackedSubmissionsTable.id, id));
   res.json({ ok: true });
+});
+
+// ---------- Google Sheets export (GSC + Sheets only — no crawl, no AI) ----------
+
+router.post("/tracked-submissions/export-sheet", requireAuth, async (req, res) => {
+  const parsed = ExportSubmissionsSheetBody.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid input" });
+    return;
+  }
+  const days = parsed.data.days ?? 90;
+  try {
+    const result = await exportKeywordMovementSheet(days);
+    req.log.info(
+      { keywordCount: result.keywordCount, days },
+      "exported keyword movement sheet",
+    );
+    res.json(result);
+  } catch (err) {
+    if (err instanceof NoTrackedKeywordsError) {
+      res.status(400).json({ error: "No tracked submissions with a target keyword" });
+      return;
+    }
+    req.log.error({ err }, "keyword movement sheet export failed");
+    res.status(502).json({ error: "Search Console or Google Sheets request failed" });
+  }
 });
 
 // ---------- Keyword / URL performance (GSC only — no crawl, no AI) ----------

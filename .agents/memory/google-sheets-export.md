@@ -14,7 +14,15 @@ OAuth, and it now works.
 stale. Only fall back to `.xlsx` if `listConnections('google-sheet')` returns nothing / 401, or the
 user asks for a file.
 
-**How to create/write a sheet (one-off, no app wiring or npm install):**
+**Preferred path (in-app):** the api-server now has a server-side Sheets client —
+`artifacts/api-server/src/integrations/googleSheets.ts` wraps `@replit/connectors-sdk`'s
+`connectors.proxy("google-sheet", path)`, which handles identity + token refresh in both dev and
+deployments (`REPL_IDENTITY` → `WEB_REPL_RENEWAL` fallback). Reuse it for any new server-side
+sheet work instead of re-deriving the raw credential-proxy approach. The "Target Keyword Daily
+Movement" workbook template lives as code in `services/keywordMovementSheet.ts` (exported via
+POST /api/tracked-submissions/export-sheet + the My Submissions "Export to Sheets" button).
+
+**How to create/write a sheet (one-off from the sandbox, no app wiring or npm install):**
 - In the `code_execution` sandbox: `const c = (await listConnections('google-sheet'))[0]`.
 - Token: `c.settings.access_token` (also at `c.settings.oauth.credentials.access_token`). Fetch it
   fresh each run; never cache or print it.

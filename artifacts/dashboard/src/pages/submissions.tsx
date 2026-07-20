@@ -10,6 +10,7 @@ import {
   useCreateTrackedSubmissions,
   useUpdateTrackedSubmission,
   useDeleteTrackedSubmission,
+  useExportSubmissionsSheet,
   type LinkLookup,
   type OptimizeQueueItem,
   type TrackedSubmission,
@@ -41,6 +42,7 @@ import {
   Trash2,
   Search,
   LineChart,
+  FileSpreadsheet,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -305,6 +307,44 @@ export default function Submissions() {
   const createMutation = useCreateTrackedSubmissions();
   const updateMutation = useUpdateTrackedSubmission();
   const deleteMutation = useDeleteTrackedSubmission();
+  const exportMutation = useExportSubmissionsSheet();
+
+  const trackedKeywordCount = (trackedQ.data ?? []).filter(
+    (t) => (t.keyword ?? "").trim().length > 0,
+  ).length;
+
+  const handleExportSheet = () => {
+    exportMutation.mutate(
+      { data: { days: 90 } },
+      {
+        onSuccess: (result) => {
+          window.open(result.url, "_blank", "noopener,noreferrer");
+          toast({
+            title: "Google Sheet created",
+            description: (
+              <a
+                href={result.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-2"
+              >
+                {result.title}
+              </a>
+            ),
+          });
+        },
+        onError: () =>
+          toast({
+            variant: "destructive",
+            title: "Export failed",
+            description:
+              trackedKeywordCount === 0
+                ? "Add tracked URLs with a target keyword first."
+                : "Google Sheets or Search Console didn't respond. Try again in a minute.",
+          }),
+      },
+    );
+  };
 
   const isLoading =
     lookupsQ.isLoading || optimizeQ.isLoading || trackedQ.isLoading;
@@ -484,6 +524,26 @@ export default function Submissions() {
               onClick={() => setShowAdd((v) => !v)}
             >
               <Plus className="h-4 w-4" /> Track URLs
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleExportSheet}
+              disabled={exportMutation.isPending || trackedKeywordCount === 0}
+              title={
+                trackedKeywordCount === 0
+                  ? "Add tracked URLs with a target keyword first"
+                  : "Creates a Google Sheet with daily movement for every tracked keyword (last 90 days)"
+              }
+            >
+              {exportMutation.isPending ? (
+                <>
+                  <Spinner className="h-4 w-4" /> Exporting…
+                </>
+              ) : (
+                <>
+                  <FileSpreadsheet className="h-4 w-4" /> Export to Sheets
+                </>
+              )}
             </Button>
             <Select value={typeFilter} onValueChange={setTypeFilter}>
               <SelectTrigger className="w-44">
