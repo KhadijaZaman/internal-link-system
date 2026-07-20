@@ -11,6 +11,7 @@ export interface Ga4PageRow {
   engagementRate: number;
   sessions: number;
   engagedSessions: number;
-  screenPageViews: number;
   avgEngagementTime: number;
+  keyEvents: number;
+  aiSessions: number;
 }

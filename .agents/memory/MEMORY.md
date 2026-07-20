@@ -9,7 +9,7 @@
 - [GSC anchor-fragments & non-www](gsc-anchor-fragments.md) — GSC splits /page/#anchor into separate pages; SUM by path (never overwrite), property is non-www, else metrics 50-200x off.
 - [BOFU page taxonomy](bofu-taxonomy.md) — what counts as a Wellows BOFU page (user labels override) + rule-based query-intent rubric; direct OpenAI hangs here.
 - [First-fold CTA detection](first-fold-cta-detection.md) — score candidates; exclude nav toggles (aria-haspopup) & /author/ links; prefer hero over global header CTA; tag which zone won.
-- [GA4 Data API](ga4-data-api.md) — no Replit GA connector; use a service account + Data API, enable the API in the SA's own project (the number named in the 403), pull pagePath engagement metrics.
+- [GA4 Data API](ga4-data-api.md) — service account + Data API (no connector); landingPage dim + host filter for engagement, but key events fire on OTHER hosts → separate unfiltered report merged by path.
 - [Sandbox vs bash env](sandbox-vs-bash-env.md) — code_execution sandbox has no process.env secrets (use listConnections); bash node does; bridge via a /tmp JSON file.
 - [Google Sheets export](google-sheets-export.md) — Sheets connector authorized; create/write via listConnections token + Sheets v4 REST from the sandbox.
 - [SSE streaming through the Replit proxy](sse-streaming-replit-proxy.md) — needs 16KB padding + keep-alives server-side; clients skip ':' comments, buffer chunks, guard by request identity.

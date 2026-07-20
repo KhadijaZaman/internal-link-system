@@ -11,6 +11,7 @@ import { runRecomputeActionQueue } from "../services/actionQueue";
 import { runWeeklyDigest } from "../services/digest";
 import { runKeywordClustering } from "./keywordClustering";
 import { runMigrateUrlHygiene } from "./migrateUrlHygiene";
+import { runSyncGa4Pages } from "./syncGa4Pages";
 import { logger } from "../lib/logger";
 
 export function setupJobs(): void {
@@ -36,6 +37,8 @@ export function setupJobs(): void {
   registerJob("keyword_clustering", runKeywordClustering);
   // One-shot retroactive URL-hygiene migration (idempotent) — manual only.
   registerJob("migrate_url_hygiene", runMigrateUrlHygiene);
+  // GA4 key events + AI sessions → pages registry (one runReport per run).
+  registerJob("sync_ga4_pages", runSyncGa4Pages);
 }
 
 export function startScheduler(): void {
@@ -43,6 +46,8 @@ export function startScheduler(): void {
   cron.schedule("0 2 * * 0", () => void runJob("crawl_wordpress"), { timezone: "UTC" });
   // Monday 03:00 UTC
   cron.schedule("0 3 * * 1", () => void runJob("gsc_inventory_and_losers"), { timezone: "UTC" });
+  // Monday 03:30 UTC — GA4 rollups after the GSC sync has refreshed pages
+  cron.schedule("30 3 * * 1", () => void runJob("sync_ga4_pages"), { timezone: "UTC" });
   // Tuesday 06:00 UTC — semantic linking engine (SOP §7.2). This replaces
   // the legacy `find_link_suggestions` Claude-only weekly job.
   cron.schedule("0 6 * * 2", () => void runJob("semantic_linking"), { timezone: "UTC" });

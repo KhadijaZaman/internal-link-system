@@ -7,7 +7,7 @@ import {
   withCache,
   GSC_CACHE_TTL_MS,
 } from "../integrations/gsc";
-import { queryGa4Pages } from "../integrations/ga4";
+import { queryGa4Pages, type Ga4Channel } from "../integrations/ga4";
 import { canonicalPath, isBlockedPath, loadBlockRegexes } from "../lib/urlCanon";
 
 const router: IRouter = Router();
@@ -25,6 +25,11 @@ function validateRange(
   }
   if (startDate > endDate) return { error: "startDate must be <= endDate" };
   return { startDate, endDate };
+}
+
+function validateChannel(req: { query: Record<string, unknown> }): Ga4Channel | null {
+  const c = String(req.query["channel"] ?? "organic");
+  return c === "organic" || c === "all" ? c : null;
 }
 
 interface QueryRow {
@@ -45,6 +50,8 @@ interface PageAcc {
   engagementRate: number;
   engagedSessions: number;
   avgEngagementTime: number;
+  keyEvents: number;
+  aiSessions: number;
   queries: QueryRow[];
 }
 
@@ -54,10 +61,16 @@ router.get("/report/pages", requireAuth, async (req, res) => {
     res.status(400).json({ error: v.error });
     return;
   }
+  const channel = validateChannel(req);
+  if (!channel) {
+    res.status(400).json({ error: "channel must be 'organic' or 'all'" });
+    return;
+  }
   const { startDate, endDate } = v;
   try {
-    // v3: canonical normalizer + url_blocklist filtering (URL hygiene layer).
-    const key = `report:pages:v3|${startDate}|${endDate}`;
+    // v5: GA4 scoped to a channel (organic by default) + key events + AI
+    // sessions (v5 = key events no longer host-filtered).
+    const key = `report:pages:v5|${channel}|${startDate}|${endDate}`;
     const data = await withCache(key, GSC_CACHE_TTL_MS, async () => {
       // GSC is the core source (page aggregates + per-query rows). GA4 is
       // best-effort so the report still renders if its quota is exhausted.
@@ -83,10 +96,12 @@ router.get("/report/pages", requireAuth, async (req, res) => {
         engagementRate: number;
         engagedSessions: number;
         avgEngagementTime: number;
+        keyEvents: number;
+        aiSessions: number;
       }[] = [];
       let ga4Notice = "";
       try {
-        const ga4 = await queryGa4Pages({ startDate, endDate });
+        const ga4 = await queryGa4Pages({ startDate, endDate, channel });
         ga4Rows = ga4.rows;
       } catch (err) {
         req.log.error({ err }, "GA4 fetch failed in page report");
@@ -108,6 +123,8 @@ router.get("/report/pages", requireAuth, async (req, res) => {
             engagementRate: 0,
             engagedSessions: 0,
             avgEngagementTime: 0,
+            keyEvents: 0,
+            aiSessions: 0,
             queries: [],
           };
           map.set(path, a);
@@ -169,6 +186,8 @@ router.get("/report/pages", requireAuth, async (req, res) => {
         a.engagementRate = r.engagementRate;
         a.engagedSessions = r.engagedSessions;
         a.avgEngagementTime = r.avgEngagementTime;
+        a.keyEvents = r.keyEvents;
+        a.aiSessions = r.aiSessions;
       }
 
       let tImp = 0;
@@ -196,6 +215,8 @@ router.get("/report/pages", requireAuth, async (req, res) => {
           engagementRate: a.engagementRate,
           engagedSessions: a.engagedSessions,
           avgEngagementTime: a.avgEngagementTime,
+          keyEvents: a.keyEvents,
+          aiSessions: a.aiSessions,
           queryCount: a.queries.length,
           topQueries: a.queries.slice(0, TOP_QUERIES_PER_PAGE),
         };

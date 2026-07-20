@@ -78,6 +78,12 @@ const JOB_LABELS: Record<string, JobLabel> = {
     route: "/digest",
     routeLabel: "Open Weekly Digest",
   },
+  sync_ga4_pages: {
+    title: "Sync GA4 Key Events",
+    description: "Rolls the last 28 days of GA4 key events (signups + demo bookings) and AI-assistant sessions onto each page. Runs Mondays at 03:30 UTC.",
+    route: "/report/pages",
+    routeLabel: "Open Page Report",
+  },
 };
 
 export function getJobLabel(name: string): JobLabel {

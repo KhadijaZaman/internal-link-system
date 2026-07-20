@@ -20,8 +20,11 @@ type SortKey =
   | "engagementRate"
   | "sessions"
   | "avgEngagementTime"
+  | "keyEvents"
+  | "aiSessions"
   | "queryCount";
 type Preset = "28d" | "3mo" | "6mo" | "custom";
+type Channel = "organic" | "all";
 
 function dateOffset(days: number): string {
   const d = new Date();
@@ -74,10 +77,11 @@ export default function PageReport() {
   const [startDate, setStartDate] = useState(initial.startDate);
   const [endDate, setEndDate] = useState(initial.endDate);
   const [search, setSearch] = useState("");
+  const [channel, setChannel] = useState<Channel>("organic");
   const [sort, setSort] = useState<SortState<SortKey>>({ key: "impressions", dir: "desc" });
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  const { data, isLoading, error } = useGetPagesReport({ startDate, endDate });
+  const { data, isLoading, error } = useGetPagesReport({ startDate, endDate, channel });
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -117,8 +121,9 @@ export default function PageReport() {
         <h2 className="text-3xl font-display text-foreground">Page Report</h2>
         <p className="text-muted-foreground mt-1 text-sm">
           One row per page combining Google Search Console (average position, impressions, clicks,
-          and the queries it ranks for) with GA4 engagement — rate, sessions, and average
-          engagement time. Refreshes automatically — cached for 30 minutes to protect API quota.
+          and the queries it ranks for) with GA4 engagement — scoped to Organic Search by default,
+          plus key events and AI-assistant referrals. Refreshes automatically — cached for 30
+          minutes to protect API quota.
         </p>
       </div>
 
@@ -157,6 +162,23 @@ export default function PageReport() {
             </div>
           </div>
         )}
+        <div className="flex gap-2 items-center">
+          <Label className="text-xs text-muted-foreground">GA4 traffic</Label>
+          <Button
+            size="sm"
+            variant={channel === "organic" ? "default" : "outline"}
+            onClick={() => setChannel("organic")}
+          >
+            Organic Search
+          </Button>
+          <Button
+            size="sm"
+            variant={channel === "all" ? "default" : "outline"}
+            onClick={() => setChannel("all")}
+          >
+            All channels
+          </Button>
+        </div>
         <div className="text-xs text-muted-foreground">
           {startDate} → {endDate}
         </div>
@@ -171,7 +193,7 @@ export default function PageReport() {
           },
           {
             title: "Read search next to engagement",
-            body: "Position, impressions and clicks are from Search Console. Engagement rate and sessions are from GA4 across every traffic source.",
+            body: "Position, impressions and clicks are from Search Console. Engagement rate and sessions are from GA4 landing pages — Organic Search only by default; use the toggle for all channels. AI sessions (ChatGPT, Claude, Perplexity, Gemini, Copilot referrals) are always counted across every channel.",
           },
           {
             title: "Expand for queries",
@@ -235,6 +257,8 @@ export default function PageReport() {
                     "Sessions",
                     "Engaged Sessions",
                     "Avg Engagement Time",
+                    "Key Events",
+                    "AI Sessions",
                     "Query Count",
                     "Top Queries",
                   ],
@@ -247,6 +271,8 @@ export default function PageReport() {
                     r.sessions,
                     r.engagedSessions,
                     r.sessions > 0 ? fmtTime(r.avgEngagementTime, r.sessions) : "",
+                    r.keyEvents,
+                    r.aiSessions,
                     r.queryCount,
                     r.topQueries.map((q) => q.query).join(" | "),
                   ]),
@@ -268,6 +294,8 @@ export default function PageReport() {
                     <SortableHeader col="engagementRate" label="Eng. Rate" sort={sort} onChange={setSort} />
                     <SortableHeader col="sessions" label="Sessions" sort={sort} onChange={setSort} />
                     <SortableHeader col="avgEngagementTime" label="Eng. Time" sort={sort} onChange={setSort} />
+                    <SortableHeader col="keyEvents" label="Key Events" sort={sort} onChange={setSort} />
+                    <SortableHeader col="aiSessions" label="AI Sess." sort={sort} onChange={setSort} />
                     <SortableHeader col="queryCount" label="Queries" sort={sort} onChange={setSort} />
                   </tr>
                 </thead>
@@ -299,12 +327,14 @@ export default function PageReport() {
                           <td className="p-3 text-right font-mono">{rate(r.engagementRate, r.sessions)}</td>
                           <td className="p-3 text-right font-mono">{r.sessions.toLocaleString()}</td>
                           <td className="p-3 text-right font-mono">{fmtTime(r.avgEngagementTime, r.sessions)}</td>
+                          <td className="p-3 text-right font-mono">{r.keyEvents.toLocaleString()}</td>
+                          <td className="p-3 text-right font-mono">{r.aiSessions.toLocaleString()}</td>
                           <td className="p-3 text-right font-mono">{r.queryCount.toLocaleString()}</td>
                         </tr>
                         {isOpen && canExpand ? (
                           <tr className="bg-muted/10 border-t">
                             <td />
-                            <td colSpan={8} className="p-3">
+                            <td colSpan={10} className="p-3">
                               <div className="text-xs text-muted-foreground mb-2">
                                 {r.sessions > 0 ? (
                                   <>

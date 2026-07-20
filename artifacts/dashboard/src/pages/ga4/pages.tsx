@@ -16,9 +16,11 @@ type SortKey =
   | "engagementRate"
   | "sessions"
   | "engagedSessions"
-  | "screenPageViews"
-  | "avgEngagementTime";
+  | "avgEngagementTime"
+  | "keyEvents"
+  | "aiSessions";
 type Preset = "28d" | "3mo" | "6mo" | "custom";
+type Channel = "organic" | "all";
 
 function dateOffset(days: number): string {
   const d = new Date();
@@ -62,9 +64,10 @@ export default function Ga4PagesPage() {
   const [startDate, setStartDate] = useState(initial.startDate);
   const [endDate, setEndDate] = useState(initial.endDate);
   const [search, setSearch] = useState("");
+  const [channel, setChannel] = useState<Channel>("organic");
   const [sort, setSort] = useState<SortState<SortKey>>({ key: "sessions", dir: "desc" });
 
-  const { data, isLoading, error } = useGetGa4Pages({ startDate, endDate });
+  const { data, isLoading, error } = useGetGa4Pages({ startDate, endDate, channel });
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -94,8 +97,9 @@ export default function Ga4PagesPage() {
       <div>
         <h2 className="text-3xl font-display text-foreground">GA4 Engagement</h2>
         <p className="text-muted-foreground mt-1 text-sm">
-          Page-by-page engagement rate, sessions, and average engagement time from Google
-          Analytics 4. Refreshes automatically — cached for 30 minutes to protect API quota.
+          Landing-page engagement from Google Analytics 4 — scoped to Organic Search by default,
+          with key events (signups + demo bookings) and AI-assistant referrals per page.
+          Refreshes automatically — cached for 30 minutes to protect API quota.
         </p>
       </div>
 
@@ -134,21 +138,38 @@ export default function Ga4PagesPage() {
             </div>
           </div>
         )}
+        <div className="flex gap-2 items-center">
+          <Label className="text-xs text-muted-foreground">Traffic</Label>
+          <Button
+            size="sm"
+            variant={channel === "organic" ? "default" : "outline"}
+            onClick={() => setChannel("organic")}
+          >
+            Organic Search
+          </Button>
+          <Button
+            size="sm"
+            variant={channel === "all" ? "default" : "outline"}
+            onClick={() => setChannel("all")}
+          >
+            All channels
+          </Button>
+        </div>
         <div className="text-xs text-muted-foreground">
           {startDate} → {endDate}
         </div>
       </div>
 
       <HowThisWorks
-        summary="On-site engagement from GA4, per page. Engagement rate is the share of sessions that were 'engaged' — lasted 10s+, fired a conversion, or had 2+ pageviews."
+        summary="On-site engagement from GA4, per landing page. Engagement rate is the share of sessions that were 'engaged' — lasted 10s+, fired a conversion, or had 2+ pageviews. By default only Organic Search sessions are counted; switch to All channels to include everything."
         steps={[
           {
-            title: "Pick a window",
-            body: "Use the presets or a custom range. GA4 keeps full history, so you can look back months — unlike the 28-day-limited live feeds.",
+            title: "Pick a window and traffic scope",
+            body: "Use the presets or a custom range. Organic Search (the default) matches how the rest of this dashboard thinks about SEO; All channels shows total traffic including paid, social, email, and direct.",
           },
           {
             title: "Sort & filter",
-            body: "Sort by engagement rate to find sticky vs. weak pages, or by sessions to weight by traffic. Filter by path to focus on a section.",
+            body: "Sort by engagement rate to find sticky vs. weak pages, by key events to find pages that convert, or by AI sessions to see which pages AI assistants send visitors to.",
           },
           {
             title: "Read rate next to sessions",
@@ -158,7 +179,15 @@ export default function Ga4PagesPage() {
         faqs={[
           {
             title: "Why does this differ from GSC Pages?",
-            body: "GSC measures Google Search impressions and clicks. GA4 measures on-site behavior across every traffic source after the click.",
+            body: "GSC measures Google Search impressions and clicks. GA4 measures on-site behavior after the click — sessions here are grouped by the page a visitor landed on.",
+          },
+          {
+            title: "What counts as an AI session?",
+            body: "Sessions referred by AI assistants — ChatGPT, Claude, Perplexity, Gemini, and Copilot. These are counted across every channel, even in the Organic Search view.",
+          },
+          {
+            title: "What is a key event?",
+            body: "Signups and demo bookings, credited to the marketing page the visitor landed on at the start of their session — even though the signup itself happens later in the app. Sessions that start directly inside the app aren't counted here.",
           },
         ]}
       />
@@ -173,8 +202,11 @@ export default function Ga4PagesPage() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <StatCard label="Sessions" value={data.totals.sessions.toLocaleString()} />
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <StatCard
+              label={channel === "organic" ? "Organic sessions" : "Sessions (all)"}
+              value={data.totals.sessions.toLocaleString()}
+            />
             <StatCard label="Engaged sessions" value={data.totals.engagedSessions.toLocaleString()} />
             <StatCard
               label="Engagement rate"
@@ -184,10 +216,15 @@ export default function Ga4PagesPage() {
               label="Avg engagement / session"
               value={fmtTime(data.totals.avgEngagementTime)}
             />
+            <StatCard label="Key events" value={data.totals.keyEvents.toLocaleString()} />
+            <StatCard label="AI sessions" value={data.totals.aiSessions.toLocaleString()} />
           </div>
 
           <div className="flex gap-2 items-center">
-            <InfoTip>Every page with at least one session in this window.</InfoTip>
+            <InfoTip>
+              Every landing page with at least one session, key event, or AI referral in this
+              window.
+            </InfoTip>
             <Input
               placeholder="Filter path..."
               value={search}
@@ -199,14 +236,15 @@ export default function Ga4PagesPage() {
               disabled={rows.length === 0}
               getText={() =>
                 rowsToTsv(
-                  ["Path", "Engagement Rate", "Sessions", "Engaged Sessions", "Views", "Avg Engagement Time"],
+                  ["Path", "Engagement Rate", "Sessions", "Engaged Sessions", "Avg Engagement Time", "Key Events", "AI Sessions"],
                   rows.slice(0, 1000).map((r) => [
                     r.path,
                     `${(r.engagementRate * 100).toFixed(1)}%`,
                     r.sessions,
                     r.engagedSessions,
-                    r.screenPageViews,
                     fmtTime(r.avgEngagementTime),
+                    r.keyEvents,
+                    r.aiSessions,
                   ]),
                 )
               }
@@ -222,8 +260,9 @@ export default function Ga4PagesPage() {
                     <SortableHeader col="engagementRate" label="Engagement Rate" sort={sort} onChange={setSort} />
                     <SortableHeader col="sessions" label="Sessions" sort={sort} onChange={setSort} />
                     <SortableHeader col="engagedSessions" label="Engaged" sort={sort} onChange={setSort} />
-                    <SortableHeader col="screenPageViews" label="Views" sort={sort} onChange={setSort} />
                     <SortableHeader col="avgEngagementTime" label="Avg Eng. Time" sort={sort} onChange={setSort} />
+                    <SortableHeader col="keyEvents" label="Key Events" sort={sort} onChange={setSort} />
+                    <SortableHeader col="aiSessions" label="AI Sessions" sort={sort} onChange={setSort} />
                   </tr>
                 </thead>
                 <tbody>
@@ -233,8 +272,9 @@ export default function Ga4PagesPage() {
                       <td className="p-3 text-right font-mono">{(r.engagementRate * 100).toFixed(1)}%</td>
                       <td className="p-3 text-right font-mono">{r.sessions.toLocaleString()}</td>
                       <td className="p-3 text-right font-mono">{r.engagedSessions.toLocaleString()}</td>
-                      <td className="p-3 text-right font-mono">{r.screenPageViews.toLocaleString()}</td>
                       <td className="p-3 text-right font-mono">{fmtTime(r.avgEngagementTime)}</td>
+                      <td className="p-3 text-right font-mono">{r.keyEvents.toLocaleString()}</td>
+                      <td className="p-3 text-right font-mono">{r.aiSessions.toLocaleString()}</td>
                     </tr>
                   ))}
                 </tbody>

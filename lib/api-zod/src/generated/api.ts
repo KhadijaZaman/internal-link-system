@@ -931,7 +931,7 @@ export const ListClusterRunClustersResponse = zod.array(ListClusterRunClustersRe
  * @summary Manually trigger a background job
  */
 export const RunJobParams = zod.object({
-  "jobName": zod.enum(['crawl_link_map', 'gsc_inventory_and_losers', 'optimize_queued_urls', 'crawl_wordpress', 'reembed_wordpress', 'semantic_linking', 'audit_orphans', 'audit_over_linked', 'audit_broken_links', 'run_full_pipeline', 'recompute_action_queue', 'weekly_digest', 'keyword_clustering', 'migrate_url_hygiene'])
+  "jobName": zod.enum(['crawl_link_map', 'gsc_inventory_and_losers', 'optimize_queued_urls', 'crawl_wordpress', 'reembed_wordpress', 'semantic_linking', 'audit_orphans', 'audit_over_linked', 'audit_broken_links', 'run_full_pipeline', 'recompute_action_queue', 'weekly_digest', 'keyword_clustering', 'migrate_url_hygiene', 'sync_ga4_pages'])
 })
 
 
@@ -1123,30 +1123,36 @@ export const GetGscPagesResponse = zod.object({
 
 
 /**
- * @summary Page-wise GA4 engagement (engagement rate, sessions, avg time)
+ * @summary Page-wise GA4 engagement (engagement rate, sessions, key events, AI referrals)
  */
+export const getGa4PagesQueryChannelDefault = `organic`;
+
 export const GetGa4PagesQueryParams = zod.object({
   "startDate": zod.date(),
-  "endDate": zod.date()
+  "endDate": zod.date(),
+  "channel": zod.enum(['organic', 'all']).default(getGa4PagesQueryChannelDefault)
 })
 
 export const GetGa4PagesResponse = zod.object({
   "startDate": zod.string(),
   "endDate": zod.string(),
+  "channel": zod.enum(['organic', 'all']),
   "rows": zod.array(zod.object({
   "path": zod.string(),
   "engagementRate": zod.number(),
   "sessions": zod.number(),
   "engagedSessions": zod.number(),
-  "screenPageViews": zod.number(),
-  "avgEngagementTime": zod.number()
+  "avgEngagementTime": zod.number(),
+  "keyEvents": zod.number(),
+  "aiSessions": zod.number()
 })),
   "totals": zod.object({
   "sessions": zod.number(),
   "engagedSessions": zod.number(),
-  "screenPageViews": zod.number(),
   "engagementRate": zod.number(),
-  "avgEngagementTime": zod.number()
+  "avgEngagementTime": zod.number(),
+  "keyEvents": zod.number(),
+  "aiSessions": zod.number()
 })
 })
 
@@ -1154,9 +1160,12 @@ export const GetGa4PagesResponse = zod.object({
 /**
  * @summary Combined per-page report — GSC position/impressions/clicks/queries + GA4 engagement
  */
+export const getPagesReportQueryChannelDefault = `organic`;
+
 export const GetPagesReportQueryParams = zod.object({
   "startDate": zod.date(),
-  "endDate": zod.date()
+  "endDate": zod.date(),
+  "channel": zod.enum(['organic', 'all']).default(getPagesReportQueryChannelDefault)
 })
 
 export const GetPagesReportResponse = zod.object({
@@ -1174,6 +1183,8 @@ export const GetPagesReportResponse = zod.object({
   "engagementRate": zod.number(),
   "engagedSessions": zod.number(),
   "avgEngagementTime": zod.number(),
+  "keyEvents": zod.number(),
+  "aiSessions": zod.number(),
   "queryCount": zod.number(),
   "topQueries": zod.array(zod.object({
   "query": zod.string(),

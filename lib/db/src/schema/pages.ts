@@ -31,6 +31,11 @@ export const pagesTable = pgTable(
     position: doublePrecision("position"),
     impressions: integer("impressions"),
     clicks: integer("clicks"),
+    // GA4 rollups (28-day rolling window, all channels, latest sync_ga4_pages
+    // run). keyEvents = signups + demo bookings landed on this page.
+    keyEvents: integer("key_events"),
+    aiSessions: integer("ai_sessions"),
+    ga4SyncedAt: timestamp("ga4_synced_at", { withTimezone: true }),
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },

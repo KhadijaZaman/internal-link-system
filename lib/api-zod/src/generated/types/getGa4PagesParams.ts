@@ -6,9 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { EndDateParameter } from './endDateParameter';
+import type { Ga4ChannelParameter } from './ga4ChannelParameter';
 import type { StartDateParameter } from './startDateParameter';
 
 export type GetGa4PagesParams = {
 startDate: StartDateParameter;
 endDate: EndDateParameter;
+channel?: Ga4ChannelParameter;
 };

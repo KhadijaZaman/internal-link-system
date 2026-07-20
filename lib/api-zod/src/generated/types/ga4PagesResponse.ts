@@ -6,11 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Ga4PageRow } from './ga4PageRow';
+import type { Ga4PagesResponseChannel } from './ga4PagesResponseChannel';
 import type { Ga4Totals } from './ga4Totals';
 
 export interface Ga4PagesResponse {
   startDate: string;
   endDate: string;
+  channel: Ga4PagesResponseChannel;
   rows: Ga4PageRow[];
   totals: Ga4Totals;
 }

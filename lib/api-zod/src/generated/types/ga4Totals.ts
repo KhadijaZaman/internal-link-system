@@ -9,7 +9,8 @@
 export interface Ga4Totals {
   sessions: number;
   engagedSessions: number;
-  screenPageViews: number;
   engagementRate: number;
   avgEngagementTime: number;
+  keyEvents: number;
+  aiSessions: number;
 }

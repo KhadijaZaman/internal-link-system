@@ -676,7 +676,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [crawl_link_map, gsc_inventory_and_losers, optimize_queued_urls, crawl_wordpress, reembed_wordpress, semantic_linking, audit_orphans, audit_over_linked, audit_broken_links, run_full_pipeline, recompute_action_queue, weekly_digest, keyword_clustering, migrate_url_hygiene]
+            enum: [crawl_link_map, gsc_inventory_and_losers, optimize_queued_urls, crawl_wordpress, reembed_wordpress, semantic_linking, audit_orphans, audit_over_linked, audit_broken_links, run_full_pipeline, recompute_action_queue, weekly_digest, keyword_clustering, migrate_url_hygiene, sync_ga4_pages]
       responses:
         "202":
           description: Job started
@@ -822,10 +822,11 @@ paths:
     get:
       operationId: getGa4Pages
       tags: [ga4]
-      summary: Page-wise GA4 engagement (engagement rate, sessions, avg time)
+      summary: Page-wise GA4 engagement (engagement rate, sessions, key events, AI referrals)
       parameters:
         - $ref: "#/components/parameters/StartDate"
         - $ref: "#/components/parameters/EndDate"
+        - $ref: "#/components/parameters/Ga4Channel"
       responses:
         "200":
           description: GA4 page engagement
@@ -841,6 +842,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/StartDate"
         - $ref: "#/components/parameters/EndDate"
+        - $ref: "#/components/parameters/Ga4Channel"
       responses:
         "200":
           description: Per-page combined GSC + GA4 report
@@ -1540,6 +1542,10 @@ components:
       in: query
       name: compare
       schema: { type: boolean }
+    Ga4Channel:
+      in: query
+      name: channel
+      schema: { type: string, enum: [organic, all], default: organic }
     UrlFilter:
       in: query
       name: url
@@ -2589,29 +2595,34 @@ components:
           items: { $ref: "#/components/schemas/GscPageRow" }
     Ga4PageRow:
       type: object
-      required: [path, engagementRate, sessions, engagedSessions, screenPageViews, avgEngagementTime]
+      required: [path, engagementRate, sessions, engagedSessions, avgEngagementTime, keyEvents, aiSessions]
       properties:
         path: { type: string }
         engagementRate: { type: number }
         sessions: { type: integer }
         engagedSessions: { type: integer }
-        screenPageViews: { type: integer }
         avgEngagementTime: { type: number }
+        # Key events (signups + demo bookings) in sessions landing on this page.
+        keyEvents: { type: integer }
+        # Sessions referred by AI assistants — always counted across ALL channels.
+        aiSessions: { type: integer }
     Ga4Totals:
       type: object
-      required: [sessions, engagedSessions, screenPageViews, engagementRate, avgEngagementTime]
+      required: [sessions, engagedSessions, engagementRate, avgEngagementTime, keyEvents, aiSessions]
       properties:
         sessions: { type: integer }
         engagedSessions: { type: integer }
-        screenPageViews: { type: integer }
         engagementRate: { type: number }
         avgEngagementTime: { type: number }
+        keyEvents: { type: integer }
+        aiSessions: { type: integer }
     Ga4PagesResponse:
       type: object
-      required: [startDate, endDate, rows, totals]
+      required: [startDate, endDate, channel, rows, totals]
       properties:
         startDate: { type: string }
         endDate: { type: string }
+        channel: { type: string, enum: [organic, all] }
         rows:
           type: array
           items: { $ref: "#/components/schemas/Ga4PageRow" }
@@ -2626,7 +2637,7 @@ components:
         clicks: { type: integer }
     PageReportRow:
       type: object
-      required: [path, title, position, impressions, clicks, ctr, sessions, engagementRate, engagedSessions, avgEngagementTime, queryCount, topQueries]
+      required: [path, title, position, impressions, clicks, ctr, sessions, engagementRate, engagedSessions, avgEngagementTime, keyEvents, aiSessions, queryCount, topQueries]
       properties:
         path: { type: string }
         title: { type: string }
@@ -2639,6 +2650,8 @@ components:
         engagedSessions: { type: integer }
         # Average user engagement time per session, in seconds (GA4).
         avgEngagementTime: { type: number }
+        keyEvents: { type: integer }
+        aiSessions: { type: integer }
         queryCount: { type: integer }
         topQueries:
           type: array

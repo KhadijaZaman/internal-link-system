@@ -979,21 +979,32 @@ export interface Ga4PageRow {
   engagementRate: number;
   sessions: number;
   engagedSessions: number;
-  screenPageViews: number;
   avgEngagementTime: number;
+  keyEvents: number;
+  aiSessions: number;
 }
 
 export interface Ga4Totals {
   sessions: number;
   engagedSessions: number;
-  screenPageViews: number;
   engagementRate: number;
   avgEngagementTime: number;
+  keyEvents: number;
+  aiSessions: number;
 }
+
+export type Ga4PagesResponseChannel = typeof Ga4PagesResponseChannel[keyof typeof Ga4PagesResponseChannel];
+
+
+export const Ga4PagesResponseChannel = {
+  organic: 'organic',
+  all: 'all',
+} as const;
 
 export interface Ga4PagesResponse {
   startDate: string;
   endDate: string;
+  channel: Ga4PagesResponseChannel;
   rows: Ga4PageRow[];
   totals: Ga4Totals;
 }
@@ -1016,6 +1027,8 @@ export interface PageReportRow {
   engagementRate: number;
   engagedSessions: number;
   avgEngagementTime: number;
+  keyEvents: number;
+  aiSessions: number;
   queryCount: number;
   topQueries: ReportQueryRow[];
 }
@@ -1936,6 +1949,14 @@ export type EndDateParameter = string;
 
 export type CompareParameter = boolean;
 
+export type Ga4ChannelParameter = typeof Ga4ChannelParameter[keyof typeof Ga4ChannelParameter];
+
+
+export const Ga4ChannelParameter = {
+  organic: 'organic',
+  all: 'all',
+} as const;
+
 export type UrlFilterParameter = string;
 
 export type RowLimitParameter = number;
@@ -2038,11 +2059,13 @@ limit?: RowLimitParameter;
 export type GetGa4PagesParams = {
 startDate: StartDateParameter;
 endDate: EndDateParameter;
+channel?: Ga4ChannelParameter;
 };
 
 export type GetPagesReportParams = {
 startDate: StartDateParameter;
 endDate: EndDateParameter;
+channel?: Ga4ChannelParameter;
 };
 
 export type GetGscGeoParams = {

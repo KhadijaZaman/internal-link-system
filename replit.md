@@ -25,6 +25,8 @@ _Replace the heading above with the project's name, and this line with one sente
 - `artifacts/api-server/src/lib/urlCanon.ts` — the single URL-hygiene module: canonical path/URL normalizer, url_blocklist matching, metric re-aggregation helpers
 - `artifacts/api-server/src/services/pageCounts.ts` — the one shared "content pages" count + filter label used by Dashboard, Knowledge Graph, and Site Authority headers
 - `artifacts/api-server/src/jobs/migrateUrlHygiene.ts` — idempotent retroactive migration (manual-only job `migrate_url_hygiene`)
+- `artifacts/api-server/src/integrations/ga4.ts` — GA4 landing-page engagement (organic/all channel views), key events, AI-referral sessions; two runReports per range (host-filtered engagement + unfiltered key events)
+- `artifacts/api-server/src/jobs/syncGa4Pages.ts` — weekly `sync_ga4_pages` job (Mon 03:30 UTC): 28d all-channel key events + AI sessions rolled onto `pages` (UPDATE-only, transactional reset+apply)
 
 ## Architecture decisions
 
@@ -42,7 +44,8 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 - Every ingestion path (GSC, GA4, crawler, WordPress sync) and every live read that joins on URL/path MUST go through `urlCanon.ts` (`canonicalPath` + blocklist) — never store or compare raw URLs
 - When rows collapse onto one canonical path, metrics must be MERGED (sum clicks/impressions, impression-weighted position), never overwritten
-- Any change to a cached response shape must bump that cache key in lockstep (e.g. `report:pages:v3`, `authority-snapshot:v2`)
+- Any change to a cached response shape must bump that cache key in lockstep (e.g. `report:pages:v5`, `ga4:pages:v4`, `authority-snapshot:v2`)
+- GA4 key-event metrics fire on the app/Calendly hosts, NOT the marketing host — never put a `hostName` filter on a runReport that requests `keyEvents:*` metrics (it silently returns 0); fetch them unfiltered and join by landing-page path
 
 ## Pointers
 

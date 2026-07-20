@@ -17,7 +17,8 @@ export type JobName =
   | "recompute_action_queue"
   | "weekly_digest"
   | "keyword_clustering"
-  | "migrate_url_hygiene";
+  | "migrate_url_hygiene"
+  | "sync_ga4_pages";
 
 export const ALL_JOBS: JobName[] = [
   "crawl_link_map",
@@ -34,6 +35,7 @@ export const ALL_JOBS: JobName[] = [
   "weekly_digest",
   "keyword_clustering",
   "migrate_url_hygiene",
+  "sync_ga4_pages",
 ];
 
 type JobFn = () => Promise<void>;
