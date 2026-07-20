@@ -19,6 +19,7 @@ type SortKey =
   | "clicks"
   | "engagementRate"
   | "sessions"
+  | "avgEngagementTime"
   | "queryCount";
 type Preset = "28d" | "3mo" | "6mo" | "custom";
 
@@ -48,6 +49,14 @@ function pos(n: number, impressions: number): string {
 
 function rate(n: number, sessions: number): string {
   return sessions > 0 ? `${(n * 100).toFixed(1)}%` : "—";
+}
+
+function fmtTime(sec: number, sessions: number): string {
+  if (sessions <= 0) return "—";
+  const s = Math.round(sec);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return m > 0 ? `${m}m ${r}s` : `${r}s`;
 }
 
 function StatCard({ label, value }: { label: string; value: string }) {
@@ -108,8 +117,8 @@ export default function PageReport() {
         <h2 className="text-3xl font-display text-foreground">Page Report</h2>
         <p className="text-muted-foreground mt-1 text-sm">
           One row per page combining Google Search Console (average position, impressions, clicks,
-          and the queries it ranks for) with GA4 engagement rate and sessions. Refreshes
-          automatically — cached for 30 minutes to protect API quota.
+          and the queries it ranks for) with GA4 engagement — rate, sessions, and average
+          engagement time. Refreshes automatically — cached for 30 minutes to protect API quota.
         </p>
       </div>
 
@@ -224,6 +233,8 @@ export default function PageReport() {
                     "Clicks",
                     "Engagement Rate",
                     "Sessions",
+                    "Engaged Sessions",
+                    "Avg Engagement Time",
                     "Query Count",
                     "Top Queries",
                   ],
@@ -234,6 +245,8 @@ export default function PageReport() {
                     r.clicks,
                     r.sessions > 0 ? `${(r.engagementRate * 100).toFixed(1)}%` : "",
                     r.sessions,
+                    r.engagedSessions,
+                    r.sessions > 0 ? fmtTime(r.avgEngagementTime, r.sessions) : "",
                     r.queryCount,
                     r.topQueries.map((q) => q.query).join(" | "),
                   ]),
@@ -254,6 +267,7 @@ export default function PageReport() {
                     <SortableHeader col="clicks" label="Clicks" sort={sort} onChange={setSort} />
                     <SortableHeader col="engagementRate" label="Eng. Rate" sort={sort} onChange={setSort} />
                     <SortableHeader col="sessions" label="Sessions" sort={sort} onChange={setSort} />
+                    <SortableHeader col="avgEngagementTime" label="Eng. Time" sort={sort} onChange={setSort} />
                     <SortableHeader col="queryCount" label="Queries" sort={sort} onChange={setSort} />
                   </tr>
                 </thead>
@@ -284,12 +298,26 @@ export default function PageReport() {
                           <td className="p-3 text-right font-mono">{r.clicks.toLocaleString()}</td>
                           <td className="p-3 text-right font-mono">{rate(r.engagementRate, r.sessions)}</td>
                           <td className="p-3 text-right font-mono">{r.sessions.toLocaleString()}</td>
+                          <td className="p-3 text-right font-mono">{fmtTime(r.avgEngagementTime, r.sessions)}</td>
                           <td className="p-3 text-right font-mono">{r.queryCount.toLocaleString()}</td>
                         </tr>
                         {isOpen && canExpand ? (
                           <tr className="bg-muted/10 border-t">
                             <td />
-                            <td colSpan={7} className="p-3">
+                            <td colSpan={8} className="p-3">
+                              <div className="text-xs text-muted-foreground mb-2">
+                                {r.sessions > 0 ? (
+                                  <>
+                                    Visitor engagement on this page: {r.sessions.toLocaleString()} sessions
+                                    {" · "}
+                                    {r.engagedSessions.toLocaleString()} engaged ({rate(r.engagementRate, r.sessions)})
+                                    {" · "}
+                                    {fmtTime(r.avgEngagementTime, r.sessions)} avg time
+                                  </>
+                                ) : (
+                                  "No GA4 sessions recorded for this page in this window."
+                                )}
+                              </div>
                               <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
                                 Top queries{r.queryCount > r.topQueries.length ? ` (top ${r.topQueries.length} of ${r.queryCount})` : ""}
                               </div>

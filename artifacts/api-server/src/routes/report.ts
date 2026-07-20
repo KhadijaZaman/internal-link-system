@@ -61,6 +61,8 @@ interface PageAcc {
   ctr: number;
   sessions: number;
   engagementRate: number;
+  engagedSessions: number;
+  avgEngagementTime: number;
   queries: QueryRow[];
 }
 
@@ -72,7 +74,8 @@ router.get("/report/pages", requireAuth, async (req, res) => {
   }
   const { startDate, endDate } = v;
   try {
-    const key = `report:pages|${startDate}|${endDate}`;
+    // v2: added engagedSessions + avgEngagementTime — bump on shape change.
+    const key = `report:pages:v2|${startDate}|${endDate}`;
     const data = await withCache(key, GSC_CACHE_TTL_MS, async () => {
       // GSC is the core source (page aggregates + per-query rows). GA4 is
       // best-effort so the report still renders if its quota is exhausted.
@@ -84,7 +87,13 @@ router.get("/report/pages", requireAuth, async (req, res) => {
           .from(inventoryTable),
       ]);
 
-      let ga4Rows: { path: string; sessions: number; engagementRate: number }[] = [];
+      let ga4Rows: {
+        path: string;
+        sessions: number;
+        engagementRate: number;
+        engagedSessions: number;
+        avgEngagementTime: number;
+      }[] = [];
       let ga4Notice = "";
       try {
         const ga4 = await queryGa4Pages({ startDate, endDate });
@@ -107,6 +116,8 @@ router.get("/report/pages", requireAuth, async (req, res) => {
             ctr: 0,
             sessions: 0,
             engagementRate: 0,
+            engagedSessions: 0,
+            avgEngagementTime: 0,
             queries: [],
           };
           map.set(path, a);
@@ -143,6 +154,8 @@ router.get("/report/pages", requireAuth, async (req, res) => {
         const a = ensure(toPathKey(r.path));
         a.sessions = r.sessions;
         a.engagementRate = r.engagementRate;
+        a.engagedSessions = r.engagedSessions;
+        a.avgEngagementTime = r.avgEngagementTime;
       }
 
       let tImp = 0;
@@ -168,6 +181,8 @@ router.get("/report/pages", requireAuth, async (req, res) => {
           ctr: a.ctr,
           sessions: a.sessions,
           engagementRate: a.engagementRate,
+          engagedSessions: a.engagedSessions,
+          avgEngagementTime: a.avgEngagementTime,
           queryCount: a.queries.length,
           topQueries: a.queries.slice(0, TOP_QUERIES_PER_PAGE),
         };

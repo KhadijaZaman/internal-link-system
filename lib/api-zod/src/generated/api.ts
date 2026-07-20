@@ -1169,6 +1169,8 @@ export const GetPagesReportResponse = zod.object({
   "ctr": zod.number(),
   "sessions": zod.number(),
   "engagementRate": zod.number(),
+  "engagedSessions": zod.number(),
+  "avgEngagementTime": zod.number(),
   "queryCount": zod.number(),
   "topQueries": zod.array(zod.object({
   "query": zod.string(),

@@ -2622,7 +2622,7 @@ components:
         clicks: { type: integer }
     PageReportRow:
       type: object
-      required: [path, title, position, impressions, clicks, ctr, sessions, engagementRate, queryCount, topQueries]
+      required: [path, title, position, impressions, clicks, ctr, sessions, engagementRate, engagedSessions, avgEngagementTime, queryCount, topQueries]
       properties:
         path: { type: string }
         title: { type: string }
@@ -2632,6 +2632,9 @@ components:
         ctr: { type: number }
         sessions: { type: integer }
         engagementRate: { type: number }
+        engagedSessions: { type: integer }
+        # Average user engagement time per session, in seconds (GA4).
+        avgEngagementTime: { type: number }
         queryCount: { type: integer }
         topQueries:
           type: array

@@ -16,6 +16,8 @@ export interface PageReportRow {
   ctr: number;
   sessions: number;
   engagementRate: number;
+  engagedSessions: number;
+  avgEngagementTime: number;
   queryCount: number;
   topQueries: ReportQueryRow[];
 }
