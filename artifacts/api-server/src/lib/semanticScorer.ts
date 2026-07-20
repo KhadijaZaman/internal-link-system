@@ -102,6 +102,87 @@ export function isBannedAnchor(anchor: string): boolean {
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// Plain-English "why this link" line — computed at read time from the stored
+// sub-scores (no schema change / backfill). Returns null when every sub-score
+// is missing (legacy-v0 rows) so the caller can fall back to korayRationale.
+// ---------------------------------------------------------------------------
+
+export interface WhySubScores {
+  similarity: number | null | undefined;
+  authority: number | null | undefined;
+  anchorFit: number | null | undefined;
+  freshness: number | null | undefined;
+}
+
+const TIER_ROLE: Record<string, string> = {
+  T1: "a key landing page",
+  T2: "a pillar (hub) page",
+  T3: "a supporting article",
+  T4: "a deep-dive article",
+};
+
+export function buildWhyLine(
+  sub: WhySubScores,
+  tierPairLabel: string | null | undefined,
+): string | null {
+  const { similarity, authority, anchorFit, freshness } = sub;
+  const hasAny = [similarity, authority, anchorFit, freshness].some(
+    (v) => v !== null && v !== undefined,
+  );
+  if (!hasAny) return null;
+
+  const parts: string[] = [];
+
+  if (similarity !== null && similarity !== undefined) {
+    const pct = Math.round(similarity * 100);
+    // text-embedding-3-small cosines are compressed — ~0.42 already splits
+    // on-topic from off-topic, so the wording bands reflect that scale.
+    const strength =
+      similarity >= 0.7
+        ? "very closely related topics"
+        : similarity >= 0.55
+          ? "closely related topics"
+          : similarity >= 0.42
+            ? "related topics"
+            : "loosely related topics";
+    parts.push(`These two pages cover ${strength} (${pct}% topic match).`);
+  }
+
+  const m = /^T(\d|\?)\s*(?:→|->)\s*T(\d|\?)$/.exec((tierPairLabel ?? "").trim());
+  if (m && m[1] !== "?" && m[2] !== "?") {
+    const donorRole = TIER_ROLE[`T${m[1]}`];
+    const receiverRole = TIER_ROLE[`T${m[2]}`];
+    if (donorRole && receiverRole) {
+      parts.push(`The link goes from ${donorRole} to ${receiverRole}.`);
+    }
+  }
+
+  if (authority !== null && authority !== undefined) {
+    if (authority <= 0.3) {
+      parts.push(
+        "The target page has few internal links pointing at it yet, so this link gives it a real boost.",
+      );
+    } else if (authority >= 0.7) {
+      parts.push("The target page already attracts many internal links.");
+    }
+  }
+
+  if (anchorFit !== null && anchorFit !== undefined) {
+    if (anchorFit >= 0.8) {
+      parts.push("The suggested anchor text already appears naturally in the source page.");
+    } else if (anchorFit >= 0.4) {
+      parts.push("Most of the anchor's words already appear in the source page.");
+    }
+  }
+
+  if (freshness !== null && freshness !== undefined && freshness >= 0.8) {
+    parts.push("The source page was updated recently, so search engines will pick the link up fast.");
+  }
+
+  return parts.length > 0 ? parts.join(" ") : null;
+}
+
 export interface DensityCheckInput {
   wordCount: number;
   currentOutbound: number;

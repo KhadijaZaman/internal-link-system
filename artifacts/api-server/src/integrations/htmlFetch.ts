@@ -20,7 +20,8 @@ export interface FetchedContent {
   source: "in_house";
 }
 
-function isPrivateOrReservedIp(addr: string): boolean {
+// Exported for unit tests — the SSRF guard's core predicate.
+export function isPrivateOrReservedIp(addr: string): boolean {
   if (net.isIPv4(addr)) {
     const parts = addr.split(".").map((n) => Number(n));
     const [a = 0, b = 0] = parts;

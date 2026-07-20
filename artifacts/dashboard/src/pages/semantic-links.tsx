@@ -200,7 +200,24 @@ function InboxTab() {
                 <TableHead>Source → Target</TableHead>
                 <TableHead>Anchor + variants</TableHead>
                 <TableHead>Placement hint</TableHead>
-                <TableHead>Scores</TableHead>
+                <TableHead>
+                  <span className="inline-flex items-center gap-1">
+                    Scores
+                    <InfoTip>
+                      <strong>What the score chips mean</strong> (all 0–1, higher is better):
+                      <br /><br />
+                      <strong>sim</strong> — how closely related the two pages' topics are (embedding similarity).
+                      <br />
+                      <strong>auth</strong> — how many internal links already point at the target page. Low = the target needs links, so a new one helps more.
+                      <br />
+                      <strong>fit</strong> — how naturally the suggested anchor text fits the source page's existing wording.
+                      <br />
+                      <strong>fresh</strong> — how recently the source page was updated (recent pages get crawled faster).
+                      <br /><br />
+                      <strong>total</strong> combines them: 50% sim + 20% auth + 20% fit + 10% fresh.
+                    </InfoTip>
+                  </span>
+                </TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -245,6 +262,11 @@ function InboxTab() {
                       >
                         → {s.receiverUrl}
                       </a>
+                      {(s.why ?? s.korayRationale) && (
+                        <p className="text-[11px] text-muted-foreground italic mt-1.5 leading-snug">
+                          {s.why ?? s.korayRationale}
+                        </p>
+                      )}
                     </TableCell>
                     <TableCell className="max-w-[260px] align-top">
                       <div className="font-medium text-sm">{primary}</div>

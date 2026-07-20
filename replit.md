@@ -8,6 +8,7 @@ _Replace the heading above with the project's name, and this line with one sente
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
+- `pnpm --filter @workspace/api-server run test` — vitest unit tests (pure scoring/chunking helpers + SSRF guard)
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string
 
@@ -27,6 +28,10 @@ _Replace the heading above with the project's name, and this line with one sente
 - `artifacts/api-server/src/jobs/migrateUrlHygiene.ts` — idempotent retroactive migration (manual-only job `migrate_url_hygiene`)
 - `artifacts/api-server/src/integrations/ga4.ts` — GA4 landing-page engagement (organic/all channel views), key events, AI-referral sessions; two runReports per range (host-filtered engagement + unfiltered key events)
 - `artifacts/api-server/src/jobs/syncGa4Pages.ts` — weekly `sync_ga4_pages` job (Mon 03:30 UTC): 28d all-channel key events + AI sessions rolled onto `pages` (UPDATE-only, transactional reset+apply)
+- `artifacts/api-server/src/lib/chunkText.ts` — pure, db-free KB chunking (paragraph-boundary splits + overlap); unit-tested
+- `artifacts/api-server/src/jobs/embedKbChunks.ts` — background KB embedding drain loop (`embed_kb_chunks`): uploads store chunks with NULL embeddings, job embeds and derives doc status (pending/partial/ready) by counting embedded chunks vs `chunkCount`; triggered on upload + 10-min sweep cron
+- `artifacts/api-server/src/lib/semanticScorer.ts` — pure scoring functions + `buildWhyLine()` (plain-English rationale computed at read time from stored sub-scores; null for legacy-v0 rows so the UI falls back to `korayRationale`)
+- `artifacts/api-server/src/lib/kbGrounding.ts` — returns grounding `{text, passages}`; passages are persisted on `optimize_queue.grounding_passages` (jsonb) so the brief drawer can show "Knowledge-base sources used" (null = legacy brief, [] = generated ungrounded)
 
 ## Architecture decisions
 

@@ -21,11 +21,22 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { Trash2, Upload } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { InfoTip } from "@/components/info-tip";
 import { HowThisWorks } from "@/components/how-this-works";
 
 export default function KnowledgeBase() {
-  const { data, isLoading, error } = useListKbDocuments();
+  const { data, isLoading, error } = useListKbDocuments({
+    query: {
+      queryKey: getListKbDocumentsQueryKey(),
+      // Poll while any document is still embedding in the background so the
+      // status badges flip to Ready without a manual refresh.
+      refetchInterval: (q) =>
+        (q.state.data ?? []).some((d) => d.embedStatus === "pending")
+          ? 4000
+          : false,
+    },
+  });
   const qc = useQueryClient();
   const add = useAddKbDocument();
   const del = useDeleteKbDocument();
@@ -46,7 +57,11 @@ export default function KnowledgeBase() {
       { data: { title: t, content: c } },
       {
         onSuccess: (doc) => {
-          toast({ title: `Uploaded — ${doc.chunkCount} chunks embedded` });
+          toast({
+            title: `Uploaded — ${doc.chunkCount} chunks stored`,
+            description:
+              "Embedding runs in the background; the document shows Ready when done.",
+          });
           setTitle("");
           setContent("");
           refresh();
@@ -139,7 +154,7 @@ export default function KnowledgeBase() {
               disabled={add.isPending || !title.trim() || !content.trim()}
             >
               <Upload className="h-4 w-4 mr-1" />
-              {add.isPending ? "Embedding…" : "Upload & embed"}
+              {add.isPending ? "Uploading…" : "Upload"}
             </Button>
           </div>
         </CardContent>
@@ -174,6 +189,17 @@ export default function KnowledgeBase() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Title</TableHead>
+                  <TableHead>
+                    <span className="inline-flex items-center gap-1">
+                      Status
+                      <InfoTip>
+                        Embedding… — passages are being embedded in the
+                        background. Ready — all passages can ground briefs.
+                        Partial — some passages failed to embed; they retry
+                        automatically the next time a document is uploaded.
+                      </InfoTip>
+                    </span>
+                  </TableHead>
                   <TableHead className="text-right">Characters</TableHead>
                   <TableHead className="text-right">Chunks</TableHead>
                   <TableHead>Added</TableHead>
@@ -184,6 +210,22 @@ export default function KnowledgeBase() {
                 {docs.map((d) => (
                   <TableRow key={d.id}>
                     <TableCell className="font-medium">{d.title}</TableCell>
+                    <TableCell>
+                      {d.embedStatus === "pending" ? (
+                        <Badge variant="secondary" className="gap-1">
+                          <Spinner className="h-3 w-3" />
+                          Embedding…
+                        </Badge>
+                      ) : d.embedStatus === "partial" ? (
+                        <Badge variant="outline" className="text-amber-600 border-amber-600/50">
+                          Partial {d.embeddedChunkCount}/{d.chunkCount}
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-emerald-600 border-emerald-600/50">
+                          Ready
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right text-muted-foreground">
                       {d.charCount.toLocaleString()}
                     </TableCell>

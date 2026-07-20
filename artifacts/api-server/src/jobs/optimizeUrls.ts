@@ -89,7 +89,7 @@ export async function processOptimizeItem(item: OptimizeItem): Promise<void> {
       .from(pageTargetKeywordsTable)
       .where(eq(pageTargetKeywordsTable.url, item.url));
     const targetKeywords = targetKeywordRows.map((r) => r.keyword);
-    const brief = await generateBrief({
+    const { brief, groundingPassages } = await generateBrief({
       targetUrl: item.url,
       title,
       h1,
@@ -103,7 +103,7 @@ export async function processOptimizeItem(item: OptimizeItem): Promise<void> {
     });
     await db
       .update(optimizeQueueTable)
-      .set({ briefMarkdown: brief, status: "done", completedAt: new Date() })
+      .set({ briefMarkdown: brief, groundingPassages, status: "done", completedAt: new Date() })
       .where(eq(optimizeQueueTable.id, item.id));
     logger.info({ id: item.id, url: item.url }, "Optimize: brief generated");
   } catch (e) {

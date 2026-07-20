@@ -36,4 +36,9 @@ export interface LinkSuggestion {
   anchorVariants?: string[];
   /** @nullable */
   placementHint?: string | null;
+  /**
+     * Plain-English explanation of why this link is suggested, derived from the stored sub-scores. Null for legacy rows without sub-scores.
+     * @nullable
+     */
+  why?: string | null;
 }

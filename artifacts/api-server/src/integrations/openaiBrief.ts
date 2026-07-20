@@ -21,6 +21,7 @@ import {
 } from "./voice/khadija";
 import { logger } from "../lib/logger";
 import { retrieveKbGrounding } from "../services/kbGrounding";
+import type { GroundingPassage } from "@workspace/db";
 
 /**
  * Phase 1 brief generator.
@@ -157,7 +158,13 @@ function formatGrammar(g: GrammarOntology): string {
   ].join("\n");
 }
 
-export async function generateBrief(input: BriefInput): Promise<string> {
+export interface BriefResult {
+  brief: string;
+  /** KB passages injected into the prompt ([] = brief generated ungrounded). */
+  groundingPassages: GroundingPassage[];
+}
+
+export async function generateBrief(input: BriefInput): Promise<BriefResult> {
   const client = getClient();
   const primaryQuery = pickPrimaryQuery(input);
   const competitorUrls = extractCompetitorUrls(input, input.targetUrl, 5);
@@ -194,8 +201,8 @@ export async function generateBrief(input: BriefInput): Promise<string> {
     retrieveKbGrounding(`${primaryQuery} ${input.title} ${input.h1}`),
   ]);
 
-  const kbGroundingBlock = kbGrounding
-    ? `\n\n═══ KORAY TRANSCRIPT GROUNDING (operator knowledge base — apply these semantic-SEO principles and cite them where relevant) ═══\n${kbGrounding}`
+  const kbGroundingBlock = kbGrounding.text
+    ? `\n\n═══ KORAY TRANSCRIPT GROUNDING (operator knowledge base — apply these semantic-SEO principles and cite them where relevant) ═══\n${kbGrounding.text}`
     : "";
 
   logger.info(
@@ -314,7 +321,7 @@ VOICE NON-NEGOTIABLES (re-read system prompt):
   const brief = res.choices[0]?.message?.content ?? "";
   if (!brief) {
     logger.warn({ targetUrl: input.targetUrl }, "Brief pipeline: empty completion from OpenAI");
-    return "";
+    return { brief: "", groundingPassages: [] };
   }
 
   // 5) Quality gate
@@ -324,5 +331,8 @@ VOICE NON-NEGOTIABLES (re-read system prompt):
     "Brief pipeline: quality gate complete",
   );
 
-  return `${brief}\n\n---\n\n${formatQualityGateMarkdown(gate)}`;
+  return {
+    brief: `${brief}\n\n---\n\n${formatQualityGateMarkdown(gate)}`,
+    groundingPassages: kbGrounding.passages,
+  };
 }

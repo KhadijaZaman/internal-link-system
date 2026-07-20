@@ -337,6 +337,7 @@ router.post("/losers/:id/send-to-optimizer", requireAuth, async (req, res) => {
     priority: q.priority,
     notes: q.notes,
     briefMarkdown: q.briefMarkdown,
+    groundingPassages: q.groundingPassages,
     addedAt: (q.addedAt ?? new Date()).toISOString(),
     completedAt: q.completedAt?.toISOString() ?? null,
   });

@@ -5,6 +5,7 @@
  * Wellows internal linking system API
  * OpenAPI spec version: 0.1.0
  */
+import type { GroundingPassage } from './groundingPassage';
 
 export interface OptimizeQueueItem {
   id: number;
@@ -15,6 +16,11 @@ export interface OptimizeQueueItem {
   notes?: string | null;
   /** @nullable */
   briefMarkdown?: string | null;
+  /**
+     * Knowledge-base passages injected into the brief prompt. Null = brief predates grounding capture; empty = brief generated without KB grounding.
+     * @nullable
+     */
+  groundingPassages?: GroundingPassage[] | null;
   addedAt: Date;
   /** @nullable */
   completedAt?: Date | null;

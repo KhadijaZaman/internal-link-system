@@ -35,6 +35,11 @@ export const kbDocumentsTable = pgTable("kb_documents", {
   title: text("title").notNull(),
   charCount: integer("char_count").notNull().default(0),
   chunkCount: integer("chunk_count").notNull().default(0),
+  // Embedding lifecycle: "pending" (chunks stored, embeddings queued),
+  // "ready" (every chunk embedded), "partial" (embed job finished but some
+  // chunks failed — they retry on the next embed job run). Default "ready"
+  // because all pre-existing documents were embedded synchronously at upload.
+  embedStatus: text("embed_status").notNull().default("ready"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 

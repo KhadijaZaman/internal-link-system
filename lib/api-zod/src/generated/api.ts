@@ -253,7 +253,8 @@ export const ListSuggestionsResponseItem = zod.object({
   "anchorFitScore": zod.number().nullish(),
   "freshnessScore": zod.number().nullish(),
   "anchorVariants": zod.array(zod.string()).optional(),
-  "placementHint": zod.string().nullish()
+  "placementHint": zod.string().nullish(),
+  "why": zod.string().nullish().describe('Plain-English explanation of why this link is suggested, derived from the stored sub-scores. Null for legacy rows without sub-scores.')
 })
 export const ListSuggestionsResponse = zod.array(ListSuggestionsResponseItem)
 
@@ -288,7 +289,8 @@ export const ActSuggestionResponse = zod.object({
   "anchorFitScore": zod.number().nullish(),
   "freshnessScore": zod.number().nullish(),
   "anchorVariants": zod.array(zod.string()).optional(),
-  "placementHint": zod.string().nullish()
+  "placementHint": zod.string().nullish(),
+  "why": zod.string().nullish().describe('Plain-English explanation of why this link is suggested, derived from the stored sub-scores. Null for legacy rows without sub-scores.')
 })
 
 
@@ -527,6 +529,13 @@ export const SendLoserToOptimizerResponse = zod.object({
   "priority": zod.string(),
   "notes": zod.string().nullish(),
   "briefMarkdown": zod.string().nullish(),
+  "groundingPassages": zod.array(zod.object({
+  "documentId": zod.number(),
+  "documentTitle": zod.string(),
+  "chunkIndex": zod.number(),
+  "score": zod.number().describe('Cosine similarity between the brief query and this chunk'),
+  "excerpt": zod.string().describe('First ~300 chars of the injected passage')
+})).nullish().describe('Knowledge-base passages injected into the brief prompt. Null = brief predates grounding capture; empty = brief generated without KB grounding.'),
   "addedAt": zod.coerce.date(),
   "completedAt": zod.coerce.date().nullish()
 })
@@ -542,6 +551,13 @@ export const ListOptimizeQueueResponseItem = zod.object({
   "priority": zod.string(),
   "notes": zod.string().nullish(),
   "briefMarkdown": zod.string().nullish(),
+  "groundingPassages": zod.array(zod.object({
+  "documentId": zod.number(),
+  "documentTitle": zod.string(),
+  "chunkIndex": zod.number(),
+  "score": zod.number().describe('Cosine similarity between the brief query and this chunk'),
+  "excerpt": zod.string().describe('First ~300 chars of the injected passage')
+})).nullish().describe('Knowledge-base passages injected into the brief prompt. Null = brief predates grounding capture; empty = brief generated without KB grounding.'),
   "addedAt": zod.coerce.date(),
   "completedAt": zod.coerce.date().nullish()
 })
@@ -583,6 +599,13 @@ export const RequeueOptimizeItemResponse = zod.object({
   "priority": zod.string(),
   "notes": zod.string().nullish(),
   "briefMarkdown": zod.string().nullish(),
+  "groundingPassages": zod.array(zod.object({
+  "documentId": zod.number(),
+  "documentTitle": zod.string(),
+  "chunkIndex": zod.number(),
+  "score": zod.number().describe('Cosine similarity between the brief query and this chunk'),
+  "excerpt": zod.string().describe('First ~300 chars of the injected passage')
+})).nullish().describe('Knowledge-base passages injected into the brief prompt. Null = brief predates grounding capture; empty = brief generated without KB grounding.'),
   "addedAt": zod.coerce.date(),
   "completedAt": zod.coerce.date().nullish()
 })
@@ -931,7 +954,7 @@ export const ListClusterRunClustersResponse = zod.array(ListClusterRunClustersRe
  * @summary Manually trigger a background job
  */
 export const RunJobParams = zod.object({
-  "jobName": zod.enum(['crawl_link_map', 'gsc_inventory_and_losers', 'optimize_queued_urls', 'crawl_wordpress', 'reembed_wordpress', 'semantic_linking', 'audit_orphans', 'audit_over_linked', 'audit_broken_links', 'run_full_pipeline', 'recompute_action_queue', 'weekly_digest', 'keyword_clustering', 'migrate_url_hygiene', 'sync_ga4_pages'])
+  "jobName": zod.enum(['crawl_link_map', 'gsc_inventory_and_losers', 'optimize_queued_urls', 'crawl_wordpress', 'reembed_wordpress', 'semantic_linking', 'audit_orphans', 'audit_over_linked', 'audit_broken_links', 'run_full_pipeline', 'recompute_action_queue', 'weekly_digest', 'keyword_clustering', 'migrate_url_hygiene', 'sync_ga4_pages', 'embed_kb_chunks'])
 })
 
 
@@ -2293,6 +2316,8 @@ export const ListKbDocumentsResponseItem = zod.object({
   "title": zod.string(),
   "charCount": zod.number(),
   "chunkCount": zod.number(),
+  "embedStatus": zod.enum(['pending', 'ready', 'partial']).describe('Embedding lifecycle — pending = queued for background embedding, ready = all chunks embedded, partial = some chunks failed (retried on next embed run)'),
+  "embeddedChunkCount": zod.number(),
   "createdAt": zod.string().nullish()
 })
 export const ListKbDocumentsResponse = zod.array(ListKbDocumentsResponseItem)

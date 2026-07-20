@@ -3,12 +3,24 @@ import { desc, eq } from "drizzle-orm";
 import { db, linkSuggestionsTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
 import { ActSuggestionBody, ListSuggestionsQueryParams } from "@workspace/api-zod";
+import { buildWhyLine } from "../lib/semanticScorer";
 
 const router: IRouter = Router();
 
 function serialize(s: typeof linkSuggestionsTable.$inferSelect) {
   return {
     id: s.id,
+    // Computed at read time from stored sub-scores; null for legacy rows
+    // without sub-scores (the UI falls back to korayRationale).
+    why: buildWhyLine(
+      {
+        similarity: s.similarityScore,
+        authority: s.authorityScore,
+        anchorFit: s.anchorFitScore,
+        freshness: s.freshnessScore,
+      },
+      s.tierPair,
+    ),
     donorUrl: s.donorUrl,
     receiverUrl: s.receiverUrl,
     anchorText: s.anchorText,

@@ -12,6 +12,7 @@ import { runWeeklyDigest } from "../services/digest";
 import { runKeywordClustering } from "./keywordClustering";
 import { runMigrateUrlHygiene } from "./migrateUrlHygiene";
 import { runSyncGa4Pages } from "./syncGa4Pages";
+import { runEmbedKbChunks } from "./embedKbChunks";
 import { logger } from "../lib/logger";
 
 export function setupJobs(): void {
@@ -39,6 +40,9 @@ export function setupJobs(): void {
   registerJob("migrate_url_hygiene", runMigrateUrlHygiene);
   // GA4 key events + AI sessions → pages registry (one runReport per run).
   registerJob("sync_ga4_pages", runSyncGa4Pages);
+  // Drains NULL-embedding KB chunks; triggered by KB uploads + a 10-min
+  // sweep cron (no-ops when nothing is pending/partial).
+  registerJob("embed_kb_chunks", runEmbedKbChunks);
 }
 
 export function startScheduler(): void {
@@ -61,6 +65,14 @@ export function startScheduler(): void {
   // /api/jobs/optimize_queued_urls/run. The job is still registered above so
   // manual triggers work; it has been removed from the weekly schedule to
   // prevent surprise OpenAI/SERP spend.
+  // Every 10 minutes — KB embed sweep. Uploads trigger the job directly, but
+  // a doc can slip through if it lands in the instant between the running
+  // job's final empty check and its shutdown ("Already running" returned, yet
+  // never picked up). This sweep re-drains anything still pending and gives
+  // "partial" docs (per-chunk embed failures) an automatic retry. It exits
+  // immediately when there is nothing to do, so the cost of the cron is one
+  // cheap SELECT.
+  cron.schedule("*/10 * * * *", () => void runJob("embed_kb_chunks"), { timezone: "UTC" });
   // Monthly: 1st of month 01:00 UTC — full re-embed (also re-crawls + re-classifies)
   cron.schedule("0 1 1 * *", () => void runJob("reembed_wordpress"), { timezone: "UTC" });
   // Sitemap crawl kept as fallback weekly cross-check, Saturday 02:00 UTC

@@ -1,63 +1,33 @@
 import { Router, type IRouter } from "express";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { db, kbDocumentsTable, kbChunksTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
 import { AddKbDocumentBody } from "@workspace/api-zod";
-import { embedBatch } from "../integrations/openaiEmbed";
+import { chunkText } from "../lib/chunkText";
+import { runJob } from "../jobs/runner";
 
 const router: IRouter = Router();
 
-const CHUNK_TARGET = 1400;
-const CHUNK_MAX = 1600;
-const CHUNK_OVERLAP = 150;
+interface DocRow {
+  id: number;
+  title: string;
+  charCount: number;
+  chunkCount: number;
+  embedStatus: string;
+  embeddedChunkCount: number;
+  createdAt: Date | null;
+}
 
-/**
- * Split long-form text into overlapping chunks at paragraph boundaries. Each
- * chunk is ~1200-1500 chars; consecutive chunks share ~150 chars of overlap so
- * a concept that straddles a boundary is still retrievable. Paragraphs longer
- * than the max are hard-split.
- */
-function chunkText(text: string): string[] {
-  const clean = text.replace(/\r\n/g, "\n").trim();
-  if (clean.length === 0) return [];
-  const paras = clean
-    .split(/\n\s*\n/)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0);
-  const chunks: string[] = [];
-  let buf = "";
-  const flush = (): void => {
-    const t = buf.trim();
-    if (t.length === 0) return;
-    chunks.push(t);
-    buf = t.length > CHUNK_OVERLAP ? t.slice(t.length - CHUNK_OVERLAP) : "";
+function serialize(r: DocRow) {
+  return {
+    id: r.id,
+    title: r.title,
+    charCount: r.charCount,
+    chunkCount: r.chunkCount,
+    embedStatus: r.embedStatus,
+    embeddedChunkCount: r.embeddedChunkCount,
+    createdAt: r.createdAt?.toISOString() ?? null,
   };
-  for (const para of paras) {
-    if (para.length > CHUNK_MAX) {
-      if (buf.trim().length > 0) flush();
-      buf = "";
-      let i = 0;
-      while (i < para.length) {
-        const piece = para.slice(i, i + CHUNK_TARGET).trim();
-        if (piece.length > 0) chunks.push(piece);
-        i += CHUNK_TARGET - CHUNK_OVERLAP;
-      }
-      continue;
-    }
-    if (buf.length + para.length + 2 > CHUNK_MAX && buf.trim().length > 0) {
-      flush();
-    }
-    buf += buf.length > 0 ? `\n\n${para}` : para;
-  }
-  const tail = buf.trim();
-  const last = chunks[chunks.length - 1];
-  // Skip the leftover buffer when it is just the overlap suffix of the last
-  // emitted chunk (no genuinely new content) — avoids storing/embedding a
-  // redundant fragment.
-  if (tail.length > 0 && !(last && last.endsWith(tail))) {
-    chunks.push(tail);
-  }
-  return chunks;
 }
 
 router.get("/kb/documents", requireAuth, async (_req, res) => {
@@ -67,19 +37,16 @@ router.get("/kb/documents", requireAuth, async (_req, res) => {
       title: kbDocumentsTable.title,
       charCount: kbDocumentsTable.charCount,
       chunkCount: kbDocumentsTable.chunkCount,
+      embedStatus: kbDocumentsTable.embedStatus,
+      // count(col) skips NULLs, so this is "chunks with an embedding".
+      embeddedChunkCount: sql<number>`count(${kbChunksTable.embedding})::int`,
       createdAt: kbDocumentsTable.createdAt,
     })
     .from(kbDocumentsTable)
+    .leftJoin(kbChunksTable, eq(kbChunksTable.documentId, kbDocumentsTable.id))
+    .groupBy(kbDocumentsTable.id)
     .orderBy(desc(kbDocumentsTable.createdAt));
-  res.json(
-    rows.map((r) => ({
-      id: r.id,
-      title: r.title,
-      charCount: r.charCount,
-      chunkCount: r.chunkCount,
-      createdAt: r.createdAt?.toISOString() ?? null,
-    })),
-  );
+  res.json(rows.map(serialize));
 });
 
 router.post("/kb/documents", requireAuth, async (req, res) => {
@@ -103,48 +70,57 @@ router.post("/kb/documents", requireAuth, async (req, res) => {
     return;
   }
 
-  // Embed every chunk once at upload. embedBatch fails soft per-chunk (logs a
-  // warning and skips), so a missing OPENAI_API_KEY leaves chunks stored
-  // without embeddings rather than failing the upload — they just won't be
-  // retrievable until re-uploaded with a key present.
-  const embMap = await embedBatch(chunks.map((c, i) => ({ id: i, text: c })));
-  if (embMap.size === 0) {
-    req.log.warn(
-      { chunks: chunks.length },
-      "KB upload: no chunks embedded (OPENAI_API_KEY missing or all embeds failed); document stored without grounding vectors",
+  // Store the document + chunks immediately (no embeddings yet) and hand the
+  // embedding work to the background `embed_kb_chunks` job, so large uploads
+  // return fast instead of blocking the request on OpenAI calls.
+  // Single transaction: an already-running embed job must never observe the
+  // pending document without its chunks (it would otherwise see zero missing
+  // chunks and could mis-derive the document's status).
+  const doc = await db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(kbDocumentsTable)
+      .values({
+        title,
+        charCount: content.length,
+        chunkCount: chunks.length,
+        embedStatus: "pending",
+      })
+      .returning();
+    const d = inserted[0];
+    if (!d) throw new Error("Failed to create document");
+    await tx.insert(kbChunksTable).values(
+      chunks.map((chunkContent, i) => ({
+        documentId: d.id,
+        chunkIndex: i,
+        content: chunkContent,
+      })),
     );
-  }
-
-  const inserted = await db
-    .insert(kbDocumentsTable)
-    .values({ title, charCount: content.length, chunkCount: chunks.length })
-    .returning();
-  const doc = inserted[0];
-  if (!doc) {
-    res.status(500).json({ error: "Failed to create document" });
-    return;
-  }
-
-  await db.insert(kbChunksTable).values(
-    chunks.map((chunkContent, i) => ({
-      documentId: doc.id,
-      chunkIndex: i,
-      content: chunkContent,
-      embedding: embMap.get(i),
-    })),
-  );
-
-  req.log.info(
-    { documentId: doc.id, chunks: chunks.length, embedded: embMap.size },
-    "KB document uploaded",
-  );
-  res.status(201).json({
-    id: doc.id,
-    title: doc.title,
-    charCount: doc.charCount,
-    chunkCount: doc.chunkCount,
-    createdAt: doc.createdAt?.toISOString() ?? null,
+    return d;
   });
+
+  // Fire-and-forget: the job drain-loops until no pending documents remain,
+  // so "Already running" is fine — the running instance will pick this up.
+  const startResult = await runJob("embed_kb_chunks");
+  req.log.info(
+    {
+      documentId: doc.id,
+      chunks: chunks.length,
+      embedJobStarted: startResult.started,
+    },
+    "KB document uploaded; embedding queued",
+  );
+
+  res.status(201).json(
+    serialize({
+      id: doc.id,
+      title: doc.title,
+      charCount: doc.charCount,
+      chunkCount: doc.chunkCount,
+      embedStatus: doc.embedStatus,
+      embeddedChunkCount: 0,
+      createdAt: doc.createdAt,
+    }),
+  );
 });
 
 router.delete("/kb/documents/:id", requireAuth, async (req, res) => {

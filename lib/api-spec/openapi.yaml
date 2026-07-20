@@ -676,7 +676,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [crawl_link_map, gsc_inventory_and_losers, optimize_queued_urls, crawl_wordpress, reembed_wordpress, semantic_linking, audit_orphans, audit_over_linked, audit_broken_links, run_full_pipeline, recompute_action_queue, weekly_digest, keyword_clustering, migrate_url_hygiene, sync_ga4_pages]
+            enum: [crawl_link_map, gsc_inventory_and_losers, optimize_queued_urls, crawl_wordpress, reembed_wordpress, semantic_linking, audit_orphans, audit_over_linked, audit_broken_links, run_full_pipeline, recompute_action_queue, weekly_digest, keyword_clustering, migrate_url_hygiene, sync_ga4_pages, embed_kb_chunks]
       responses:
         "202":
           description: Job started
@@ -2147,6 +2147,9 @@ components:
           type: array
           items: { type: string }
         placementHint: { type: ["string", "null"] }
+        why:
+          type: ["string", "null"]
+          description: Plain-English explanation of why this link is suggested, derived from the stored sub-scores. Null for legacy rows without sub-scores.
     AuditReport:
       type: object
       required: [type, runAt, itemCount, items]
@@ -2369,8 +2372,22 @@ components:
         priority: { type: string }
         notes: { type: ["string", "null"] }
         briefMarkdown: { type: ["string", "null"] }
+        groundingPassages:
+          type: ["array", "null"]
+          description: Knowledge-base passages injected into the brief prompt. Null = brief predates grounding capture; empty = brief generated without KB grounding.
+          items:
+            $ref: "#/components/schemas/GroundingPassage"
         addedAt: { type: string, format: date-time }
         completedAt: { type: ["string", "null"], format: date-time }
+    GroundingPassage:
+      type: object
+      required: [documentId, documentTitle, chunkIndex, score, excerpt]
+      properties:
+        documentId: { type: integer }
+        documentTitle: { type: string }
+        chunkIndex: { type: integer }
+        score: { type: number, description: Cosine similarity between the brief query and this chunk }
+        excerpt: { type: string, description: First ~300 chars of the injected passage }
     OptimizeQueueInput:
       type: object
       required: [url]
@@ -3426,12 +3443,17 @@ components:
         keyword: { type: string, minLength: 1, maxLength: 200 }
     KbDocument:
       type: object
-      required: [id, title, charCount, chunkCount]
+      required: [id, title, charCount, chunkCount, embedStatus, embeddedChunkCount]
       properties:
         id: { type: integer }
         title: { type: string }
         charCount: { type: integer }
         chunkCount: { type: integer }
+        embedStatus:
+          type: string
+          enum: [pending, ready, partial]
+          description: Embedding lifecycle — pending = queued for background embedding, ready = all chunks embedded, partial = some chunks failed (retried on next embed run)
+        embeddedChunkCount: { type: integer }
         createdAt: { type: ["string", "null"] }
     KbDocumentInput:
       type: object

@@ -578,6 +578,11 @@ export interface LinkSuggestion {
   anchorVariants?: string[];
   /** @nullable */
   placementHint?: string | null;
+  /**
+     * Plain-English explanation of why this link is suggested, derived from the stored sub-scores. Null for legacy rows without sub-scores.
+     * @nullable
+     */
+  why?: string | null;
 }
 
 export type AuditReportItemsItem = { [key: string]: unknown };
@@ -788,6 +793,16 @@ export interface QueryInsights {
   insight?: QueryInsightsAi | null;
 }
 
+export interface GroundingPassage {
+  documentId: number;
+  documentTitle: string;
+  chunkIndex: number;
+  /** Cosine similarity between the brief query and this chunk */
+  score: number;
+  /** First ~300 chars of the injected passage */
+  excerpt: string;
+}
+
 export interface OptimizeQueueItem {
   id: number;
   url: string;
@@ -797,6 +812,11 @@ export interface OptimizeQueueItem {
   notes?: string | null;
   /** @nullable */
   briefMarkdown?: string | null;
+  /**
+     * Knowledge-base passages injected into the brief prompt. Null = brief predates grounding capture; empty = brief generated without KB grounding.
+     * @nullable
+     */
+  groundingPassages?: GroundingPassage[] | null;
   addedAt: string;
   /** @nullable */
   completedAt?: string | null;
@@ -1802,11 +1822,26 @@ export interface PageKeywordInput {
   keyword: string;
 }
 
+/**
+ * Embedding lifecycle — pending = queued for background embedding, ready = all chunks embedded, partial = some chunks failed (retried on next embed run)
+ */
+export type KbDocumentEmbedStatus = typeof KbDocumentEmbedStatus[keyof typeof KbDocumentEmbedStatus];
+
+
+export const KbDocumentEmbedStatus = {
+  pending: 'pending',
+  ready: 'ready',
+  partial: 'partial',
+} as const;
+
 export interface KbDocument {
   id: number;
   title: string;
   charCount: number;
   chunkCount: number;
+  /** Embedding lifecycle — pending = queued for background embedding, ready = all chunks embedded, partial = some chunks failed (retried on next embed run) */
+  embedStatus: KbDocumentEmbedStatus;
+  embeddedChunkCount: number;
   /** @nullable */
   createdAt?: string | null;
 }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListOptimizeQueue, useAddOptimizeQueueItem, useRequeueOptimizeItem, useRunOptimizeItem, getListOptimizeQueueQueryKey, useRunJob, useGetJobStatus, getGetJobStatusQueryKey, type JobStatus } from "@workspace/api-client-react";
+import { useListOptimizeQueue, useAddOptimizeQueueItem, useRequeueOptimizeItem, useRunOptimizeItem, getListOptimizeQueueQueryKey, useRunJob, useGetJobStatus, getGetJobStatusQueryKey, type JobStatus, type GroundingPassage } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } from "@/components/ui/drawer";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Play, FileText, Plus, Loader2, Zap } from "lucide-react";
+import { Play, FileText, Plus, Loader2, Zap, BookOpen } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { OptimizeQueueInputPriority } from "@workspace/api-client-react";
@@ -69,7 +69,13 @@ export default function Optimize() {
   const [notes, setNotes] = useState("");
 
   const [briefDrawerOpen, setBriefDrawerOpen] = useState(false);
-  const [activeBrief, setActiveBrief] = useState<{ url: string; content: string } | null>(null);
+  const [activeBrief, setActiveBrief] = useState<{
+    url: string;
+    content: string;
+    // null = brief predates grounding capture (hide the panel);
+    // [] = brief was generated with no KB grounding (show explicit note).
+    passages: GroundingPassage[] | null;
+  } | null>(null);
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,9 +129,13 @@ export default function Optimize() {
     );
   };
 
-  const viewBrief = (url: string, content: string | null | undefined) => {
+  const viewBrief = (
+    url: string,
+    content: string | null | undefined,
+    passages: GroundingPassage[] | null | undefined,
+  ) => {
     if (!content) return;
-    setActiveBrief({ url, content });
+    setActiveBrief({ url, content, passages: passages ?? null });
     setBriefDrawerOpen(true);
   };
 
@@ -329,7 +339,7 @@ export default function Optimize() {
                             variant="ghost" 
                             size="sm"
                             disabled={!item.briefMarkdown}
-                            onClick={() => viewBrief(item.url, item.briefMarkdown)}
+                            onClick={() => viewBrief(item.url, item.briefMarkdown, item.groundingPassages)}
                           >
                             <FileText className="h-4 w-4 mr-2" />
                             Brief
@@ -378,12 +388,50 @@ export default function Optimize() {
                 {activeBrief?.url}
               </DrawerDescription>
             </DrawerHeader>
-            <div className="p-4 overflow-y-auto flex-1 prose prose-slate dark:prose-invert prose-blue max-w-none prose-headings:font-headers">
-              {activeBrief?.content && (
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {activeBrief.content}
-                </ReactMarkdown>
+            <div className="p-4 overflow-y-auto flex-1">
+              {activeBrief?.passages !== null && activeBrief?.passages !== undefined && (
+                <div className="mb-6 rounded-lg border bg-muted/40 p-4 not-prose">
+                  <div className="flex items-center gap-2 mb-2">
+                    <BookOpen className="h-4 w-4 text-primary" />
+                    <span className="font-medium text-sm">Knowledge-base sources used</span>
+                    <InfoTip>
+                      The passages from your Knowledge Base that were most relevant to this
+                      page and were injected into the brief prompt as grounding context,
+                      with their similarity to the page's target query.
+                    </InfoTip>
+                  </div>
+                  {activeBrief.passages.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No knowledge-base passages grounded this brief — the knowledge base was
+                      empty or nothing was relevant enough.
+                    </p>
+                  ) : (
+                    <ul className="space-y-3">
+                      {activeBrief.passages.map((p, i) => (
+                        <li key={`${p.documentId}-${p.chunkIndex}-${i}`} className="text-sm">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium">{p.documentTitle}</span>
+                            <Badge variant="outline" className="text-xs">
+                              passage {p.chunkIndex + 1}
+                            </Badge>
+                            <Badge variant="secondary" className="text-xs">
+                              {Math.round(p.score * 100)}% match
+                            </Badge>
+                          </div>
+                          <p className="text-muted-foreground mt-1 line-clamp-3">{p.excerpt}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               )}
+              <div className="prose prose-slate dark:prose-invert prose-blue max-w-none prose-headings:font-headers">
+                {activeBrief?.content && (
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {activeBrief.content}
+                  </ReactMarkdown>
+                )}
+              </div>
             </div>
           </div>
         </DrawerContent>

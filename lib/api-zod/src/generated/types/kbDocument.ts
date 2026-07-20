@@ -5,12 +5,16 @@
  * Wellows internal linking system API
  * OpenAPI spec version: 0.1.0
  */
+import type { KbDocumentEmbedStatus } from './kbDocumentEmbedStatus';
 
 export interface KbDocument {
   id: number;
   title: string;
   charCount: number;
   chunkCount: number;
+  /** Embedding lifecycle — pending = queued for background embedding, ready = all chunks embedded, partial = some chunks failed (retried on next embed run) */
+  embedStatus: KbDocumentEmbedStatus;
+  embeddedChunkCount: number;
   /** @nullable */
   createdAt?: string | null;
 }

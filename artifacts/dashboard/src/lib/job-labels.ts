@@ -78,6 +78,12 @@ const JOB_LABELS: Record<string, JobLabel> = {
     route: "/digest",
     routeLabel: "Open Weekly Digest",
   },
+  embed_kb_chunks: {
+    title: "Embed Knowledge Base",
+    description: "Embeds newly uploaded knowledge-base documents in the background so their passages can ground optimization briefs. Starts automatically after each upload.",
+    route: "/knowledge-base",
+    routeLabel: "Open Knowledge Base",
+  },
   sync_ga4_pages: {
     title: "Sync GA4 Key Events",
     description: "Rolls the last 28 days of GA4 key events (signups + demo bookings) and AI-assistant sessions onto each page. Runs Mondays at 03:30 UTC.",
