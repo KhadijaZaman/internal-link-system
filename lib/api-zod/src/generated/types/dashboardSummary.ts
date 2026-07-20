@@ -10,6 +10,7 @@ import type { JobLastRun } from './jobLastRun';
 
 export interface DashboardSummary {
   totalPages: number;
+  pageFilterLabel: string;
   totalLinks: number;
   orphanCount: number;
   deadEndCount: number;

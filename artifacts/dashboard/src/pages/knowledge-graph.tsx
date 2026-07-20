@@ -478,10 +478,10 @@ export default function KnowledgeGraphPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>
           <CardContent className="pt-4 pb-3">
-            <div className="text-2xl font-semibold">{data.nodes.length}</div>
+            <div className="text-2xl font-semibold">{data.totalPages}</div>
             <div className="text-xs text-muted-foreground flex items-center gap-1">
               Pages
-              <InfoTip>Every page found by the site crawl.</InfoTip>
+              <InfoTip>{data.pageFilterLabel}</InfoTip>
             </div>
           </CardContent>
         </Card>

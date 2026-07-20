@@ -16,4 +16,6 @@ export interface KnowledgeGraph {
   clusters: KnowledgeGraphCluster[];
   embeddedPages: number;
   totalPosts: number;
+  totalPages: number;
+  pageFilterLabel: string;
 }

@@ -11,7 +11,16 @@ import {
   linkStatsTable,
   crawlProgressTable,
   wpPostsTable,
+  pagesTable,
+  urlBlocklistTable,
 } from "@workspace/db";
+import {
+  canonicalPath,
+  canonicalUrl,
+  isBlockedPath,
+  loadBlockRegexes,
+} from "../lib/urlCanon";
+import { sectionFor } from "../lib/sections";
 import { chainActionQueueRecompute } from "../services/actionQueue";
 import { logger } from "../lib/logger";
 
@@ -146,24 +155,40 @@ async function fetchSitemapUrls(sitemapUrl: string, domain: string): Promise<str
 }
 
 interface PageData {
-  url: string;
   title: string | null;
   h1: string | null;
   links: Array<{ target: string; anchor: string; surrounding: string; placement: LinkPlacement }>;
 }
 
-async function fetchPage(url: string, domain: string): Promise<PageData | null> {
+interface FetchResult {
+  /** Canonical URL / path of the fetched page. */
+  url: string;
+  path: string;
+  status: number;
+  /** Parsed page, or null when the response was not OK / not HTML. */
+  page: PageData | null;
+}
+
+async function fetchPage(
+  rawUrl: string,
+  domain: string,
+  block: RegExp[],
+): Promise<FetchResult | null> {
+  // URL hygiene: everything stored downstream uses the canonical form.
+  const path = canonicalPath(rawUrl);
+  if (!path || isBlockedPath(path, block)) return null;
+  const url = canonicalUrl(path);
   try {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 15000);
-    const res = await fetchWithSafeRedirects(url, domain, {
+    const res = await fetchWithSafeRedirects(rawUrl, domain, {
       headers: { "User-Agent": UA },
       signal: ctl.signal,
     });
     clearTimeout(t);
-    if (!res.ok) return null;
+    if (!res.ok) return { url, path, status: res.status, page: null };
     const ct = res.headers.get("content-type") ?? "";
-    if (!ct.includes("html")) return null;
+    if (!ct.includes("html")) return { url, path, status: res.status, page: null };
     const html = await res.text();
     const $ = cheerio.load(html);
     const title = $("title").first().text().trim() || null;
@@ -173,15 +198,13 @@ async function fetchPage(url: string, domain: string): Promise<PageData | null> 
     $("a[href]").each((_, el) => {
       const href = $(el).attr("href");
       if (!href) return;
-      const target = normalizeUrl(url, href);
-      if (!target) return;
-      let host: string;
-      try {
-        host = new URL(target).host.replace(/^www\./, "");
-      } catch {
-        return;
-      }
-      if (host !== domain.replace(/^www\./, "")) return;
+      const resolved = normalizeUrl(rawUrl, href);
+      if (!resolved) return;
+      // canonicalPath returns null for foreign hosts, so this doubles as the
+      // same-domain check; blocklisted targets never enter the link graph.
+      const targetPath = canonicalPath(resolved);
+      if (!targetPath || isBlockedPath(targetPath, block)) return;
+      const target = canonicalUrl(targetPath);
       if (target === url) return;
       const anchor = ($(el).text() || "").trim().slice(0, 150);
       const surrounding = ($(el).parent().text() || "").trim().slice(0, 80);
@@ -201,9 +224,9 @@ async function fetchPage(url: string, domain: string): Promise<PageData | null> 
       seen.set(key, links.length);
       links.push({ target, anchor, surrounding, placement });
     });
-    return { url, title, h1, links };
+    return { url, path, status: res.status, page: { title, h1, links } };
   } catch (e) {
-    logger.warn({ url, err: e instanceof Error ? e.message : String(e) }, "Page fetch failed");
+    logger.warn({ url: rawUrl, err: e instanceof Error ? e.message : String(e) }, "Page fetch failed");
     return null;
   }
 }
@@ -365,17 +388,73 @@ export async function runCrawlLinkMap(): Promise<void> {
 
   // WP is canonical: skip any source URL that already exists in wp_posts.
   // Sitemap crawl only fills gaps for pages the WP REST crawler did not cover.
+  // Comparison happens on canonical URLs since wp_posts stores those.
+  const block = await loadBlockRegexes();
   const wpRows = await db.select({ url: wpPostsTable.url }).from(wpPostsTable);
   const wpSources = new Set(wpRows.map((r) => r.url));
-  const sitemapChunk = chunk.filter((u) => !wpSources.has(u));
+  const sitemapChunk = chunk.filter((u) => {
+    const p = canonicalPath(u);
+    return p !== null && !wpSources.has(canonicalUrl(p));
+  });
   logger.info(
     { skippedWp: chunk.length - sitemapChunk.length, fetching: sitemapChunk.length },
     "Crawl: WP-canonical filter",
   );
 
-  const pages = await processWithConcurrency(sitemapChunk, CONCURRENCY, (u) => fetchPage(u, domain));
+  const results = await processWithConcurrency(sitemapChunk, CONCURRENCY, (u) =>
+    fetchPage(u, domain, block),
+  );
   let inserted = 0;
-  for (const p of pages) {
+  let blocked404 = 0;
+  for (const r of results) {
+    if (!r) continue;
+    if (r.status === 404) {
+      // Spec: any path that 404s joins the blocklist so no ingestion path
+      // (GSC, GA4, crawler) keeps reporting on a dead page.
+      try {
+        await db
+          .insert(urlBlocklistTable)
+          .values({ pattern: r.path, note: "404 (crawler)", source: "crawler-404" })
+          .onConflictDoNothing();
+        // Record the 404 on any existing pages-registry row so the shared
+        // content-pages count (status < 400) stops counting this page.
+        await db
+          .update(pagesTable)
+          .set({ httpStatus: 404 })
+          .where(eq(pagesTable.path, r.path));
+        blocked404++;
+      } catch (e) {
+        logger.warn({ err: e, path: r.path }, "Crawl: blocklist 404 upsert failed");
+      }
+      continue;
+    }
+    // Canonical page registry: record what the crawler saw for this path.
+    try {
+      await db
+        .insert(pagesTable)
+        .values({
+          path: r.path,
+          url: r.url,
+          title: r.page?.title ?? null,
+          section: sectionFor(r.url),
+          inSitemap: true,
+          httpStatus: r.status,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: pagesTable.path,
+          set: {
+            ...(r.page?.title ? { title: r.page.title } : {}),
+            section: sectionFor(r.url),
+            inSitemap: true,
+            httpStatus: r.status,
+            updatedAt: new Date(),
+          },
+        });
+    } catch (e) {
+      logger.warn({ err: e, path: r.path }, "Crawl: pages upsert failed");
+    }
+    const p = r.page;
     if (!p) continue;
     // Source is canonical: clear this page's prior edges before re-inserting
     // the freshly-classified set. Without this, the onConflictDoNothing below
@@ -384,16 +463,16 @@ export async function runCrawlLinkMap(): Promise<void> {
     // re-crawl. Only successfully-fetched pages are cleared, so a transient
     // fetch failure never wipes good data.
     try {
-      await db.delete(linkGraphTable).where(eq(linkGraphTable.sourceUrl, p.url));
+      await db.delete(linkGraphTable).where(eq(linkGraphTable.sourceUrl, r.url));
     } catch (e) {
-      logger.warn({ err: e, src: p.url }, "Crawl: clear prior edges failed");
+      logger.warn({ err: e, src: r.url }, "Crawl: clear prior edges failed");
     }
     for (const l of p.links) {
       try {
-        const r = await db
+        const ins = await db
           .insert(linkGraphTable)
           .values({
-            sourceUrl: p.url,
+            sourceUrl: r.url,
             targetUrl: l.target,
             anchorText: l.anchor || null,
             surroundingText: l.surrounding || null,
@@ -401,12 +480,13 @@ export async function runCrawlLinkMap(): Promise<void> {
           })
           .onConflictDoNothing()
           .returning({ id: linkGraphTable.id });
-        if (r.length > 0) inserted++;
+        if (ins.length > 0) inserted++;
       } catch (e) {
         logger.warn({ err: e }, "Insert link failed");
       }
     }
   }
+  if (blocked404 > 0) logger.info({ blocked404 }, "Crawl: 404 paths blocklisted");
   const nextOffset = offset + CHUNK_SIZE >= allUrls.length ? 0 : offset + CHUNK_SIZE;
   await db
     .insert(crawlProgressTable)

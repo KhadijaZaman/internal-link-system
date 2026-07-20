@@ -8,6 +8,7 @@ import {
   GSC_CACHE_TTL_MS,
 } from "../integrations/gsc";
 import { queryGa4Pages } from "../integrations/ga4";
+import { canonicalPath, isBlockedPath, loadBlockRegexes } from "../lib/urlCanon";
 
 const router: IRouter = Router();
 
@@ -24,25 +25,6 @@ function validateRange(
   }
   if (startDate > endDate) return { error: "startDate must be <= endDate" };
   return { startDate, endDate };
-}
-
-// Collapse an absolute GSC URL or a GA4/inventory path into one comparable key:
-// drop the origin, query string and hash, lowercase, and strip a trailing slash.
-// Mirrors normalizePath() in integrations/ga4.ts so the three sources line up.
-function toPathKey(u: string): string {
-  let p = u;
-  if (/^https?:\/\//i.test(u)) {
-    try {
-      p = new URL(u).pathname;
-    } catch {
-      /* keep raw */
-    }
-  }
-  const noQuery = p.split("?")[0] ?? p;
-  const noHash = noQuery.split("#")[0] ?? noQuery;
-  let s = noHash.toLowerCase();
-  if (s.length > 1) s = s.replace(/\/+$/, "");
-  return s || "/";
 }
 
 interface QueryRow {
@@ -74,18 +56,26 @@ router.get("/report/pages", requireAuth, async (req, res) => {
   }
   const { startDate, endDate } = v;
   try {
-    // v2: added engagedSessions + avgEngagementTime — bump on shape change.
-    const key = `report:pages:v2|${startDate}|${endDate}`;
+    // v3: canonical normalizer + url_blocklist filtering (URL hygiene layer).
+    const key = `report:pages:v3|${startDate}|${endDate}`;
     const data = await withCache(key, GSC_CACHE_TTL_MS, async () => {
       // GSC is the core source (page aggregates + per-query rows). GA4 is
       // best-effort so the report still renders if its quota is exhausted.
-      const [pageAgg, pageQueryRows, inv] = await Promise.all([
+      const [pageAgg, pageQueryRows, inv, block] = await Promise.all([
         queryGscDimension({ startDate, endDate, dimension: "page", rowLimit: 5000 }),
         queryGsc({ startDate, endDate, dimensions: ["page", "query"], rowLimit: 25000 }),
         db
           .select({ url: inventoryTable.url, title: inventoryTable.title })
           .from(inventoryTable),
+        loadBlockRegexes(),
       ]);
+      // Shared canonical key: fragment/query/slash variants collapse onto one
+      // path; blocklisted app-screen paths and foreign hosts are dropped.
+      const toPathKey = (u: string): string | null => {
+        const p = canonicalPath(u);
+        if (!p || isBlockedPath(p, block)) return null;
+        return p;
+      };
 
       let ga4Rows: {
         path: string;
@@ -127,31 +117,54 @@ router.get("/report/pages", requireAuth, async (req, res) => {
 
       // Seed every canonical page so pages with no traffic still appear.
       for (const r of inv) {
-        const a = ensure(toPathKey(r.url));
+        const key = toPathKey(r.url);
+        if (!key) continue;
+        const a = ensure(key);
         if (!a.title && r.title) a.title = r.title;
       }
-      // GSC per-page aggregates (matches the GSC Pages view).
+      // GSC per-page aggregates (matches the GSC Pages view). Fragment /
+      // slash variants collapse onto the same canonical path, so SUM clicks
+      // and impressions and impression-weight the position — never overwrite.
       for (const r of pageAgg) {
-        const a = ensure(toPathKey(r.key));
-        a.position = r.position;
-        a.impressions = r.impressions;
-        a.clicks = r.clicks;
-        a.ctr = r.ctr;
+        const key = toPathKey(r.key);
+        if (!key) continue;
+        const a = ensure(key);
+        const prevW = Math.max(a.impressions, a.impressions > 0 || a.clicks > 0 ? 1 : 0);
+        const w = Math.max(r.impressions, 1);
+        a.position =
+          prevW + w > 0 ? (a.position * prevW + r.position * w) / (prevW + w) : r.position;
+        a.impressions += r.impressions;
+        a.clicks += r.clicks;
+        a.ctr = a.impressions > 0 ? a.clicks / a.impressions : 0;
       }
-      // GSC per-query rows grouped by page.
+      // GSC per-query rows grouped by page; variants of the same page merge
+      // per query with the same sum/weighted rules.
       for (const r of pageQueryRows) {
         if (!r.query) continue;
-        const a = ensure(toPathKey(r.url));
-        a.queries.push({
-          query: r.query,
-          position: r.position,
-          impressions: r.impressions,
-          clicks: r.clicks,
-        });
+        const key = toPathKey(r.url);
+        if (!key) continue;
+        const a = ensure(key);
+        const existing = a.queries.find((q) => q.query === r.query);
+        if (existing) {
+          const prevW = Math.max(existing.impressions, 1);
+          const w = Math.max(r.impressions, 1);
+          existing.position = (existing.position * prevW + r.position * w) / (prevW + w);
+          existing.impressions += r.impressions;
+          existing.clicks += r.clicks;
+        } else {
+          a.queries.push({
+            query: r.query,
+            position: r.position,
+            impressions: r.impressions,
+            clicks: r.clicks,
+          });
+        }
       }
-      // GA4 engagement per path.
+      // GA4 engagement per path (already canonical + blocklisted upstream).
       for (const r of ga4Rows) {
-        const a = ensure(toPathKey(r.path));
+        const key = toPathKey(r.path);
+        if (!key) continue;
+        const a = ensure(key);
         a.sessions = r.sessions;
         a.engagementRate = r.engagementRate;
         a.engagedSessions = r.engagedSessions;

@@ -12,6 +12,7 @@ import { cosineSim } from "../lib/semanticScorer";
 import { compilePattern, isExcluded } from "../jobs/semanticLinking";
 import { embedBatch } from "../integrations/openaiEmbed";
 import { logger } from "../lib/logger";
+import { countContentPages, CONTENT_PAGES_FILTER_LABEL } from "./pageCounts";
 
 /**
  * Default cosine threshold separating on-core from off-core query demand.
@@ -59,6 +60,7 @@ export interface AuthoritySnapshot {
   threshold: number;
   health: {
     totalPages: number;
+    pageFilterLabel: string;
     pagesWithEmbedding: number;
     pagesTracked: number;
     orphanCount: number;
@@ -247,11 +249,11 @@ export async function computeAuthoritySnapshot(
   // Health metrics from the crawl + link graph.
   const [wpAgg] = await db
     .select({
-      totalPages: sql<number>`count(*)::int`,
       pagesWithEmbedding: sql<number>`count(${wpPostsTable.embedding})::int`,
       lastCrawledAt: sql<Date | null>`max(${wpPostsTable.crawledAt})`,
     })
     .from(wpPostsTable);
+  const canonicalPageCount = await countContentPages();
   const [lsAgg] = await db
     .select({
       pagesTracked: sql<number>`count(*)::int`,
@@ -309,7 +311,8 @@ export async function computeAuthoritySnapshot(
     generatedAt: new Date().toISOString(),
     threshold,
     health: {
-      totalPages: wpAgg?.totalPages ?? 0,
+      totalPages: canonicalPageCount,
+      pageFilterLabel: CONTENT_PAGES_FILTER_LABEL,
       pagesWithEmbedding: wpAgg?.pagesWithEmbedding ?? 0,
       pagesTracked: lsAgg?.pagesTracked ?? 0,
       orphanCount: lsAgg?.orphanCount ?? 0,

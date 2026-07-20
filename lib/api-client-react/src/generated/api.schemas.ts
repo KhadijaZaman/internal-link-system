@@ -39,6 +39,7 @@ export type DashboardSummarySectionCounts = {
 
 export interface DashboardSummary {
   totalPages: number;
+  pageFilterLabel: string;
   totalLinks: number;
   orphanCount: number;
   deadEndCount: number;
@@ -430,6 +431,8 @@ export interface KnowledgeGraph {
   clusters: KnowledgeGraphCluster[];
   embeddedPages: number;
   totalPosts: number;
+  totalPages: number;
+  pageFilterLabel: string;
 }
 
 export interface LinkGraphFocusSeed {
@@ -1662,6 +1665,7 @@ export interface DemandQuery {
 
 export interface SnapshotHealth {
   totalPages: number;
+  pageFilterLabel: string;
   pagesWithEmbedding: number;
   pagesTracked: number;
   orphanCount: number;

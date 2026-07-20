@@ -4,8 +4,16 @@ import {
   wpPostsTable,
   pageClassificationsTable,
   linkGraphTable,
+  pagesTable,
 } from "@workspace/db";
 import { fetchAllSitemapContent } from "../integrations/sitemapContent";
+import {
+  canonicalPath,
+  canonicalUrl,
+  isBlockedPath,
+  loadBlockRegexes,
+} from "../lib/urlCanon";
+import { sectionFor } from "../lib/sections";
 import { embedText } from "../integrations/openaiEmbed";
 import {
   classifyPage,
@@ -45,8 +53,35 @@ async function processConcurrent<T>(
 
 export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
   logger.info("Content crawl: starting (sitemap source)");
-  const items = await fetchAllSitemapContent();
-  logger.info({ count: items.length }, "Content crawl: fetched");
+  const rawItems = await fetchAllSitemapContent();
+
+  // URL hygiene: every URL entering wp_posts / link_graph is canonicalized
+  // (no fragment/query/trailing slash, lowercase) and blocklisted paths are
+  // dropped, so all stores join on the same canonical form.
+  const block = await loadBlockRegexes();
+  const seenPaths = new Set<string>();
+  const items: Array<(typeof rawItems)[number] & { path: string }> = [];
+  for (const it of rawItems) {
+    const path = canonicalPath(it.url);
+    if (!path || isBlockedPath(path, block)) continue;
+    // Variants collapsing to the same canonical path: keep the first.
+    if (seenPaths.has(path)) continue;
+    seenPaths.add(path);
+    items.push({
+      ...it,
+      path,
+      url: canonicalUrl(path),
+      outboundInternalLinks: it.outboundInternalLinks.flatMap((l) => {
+        const lp = canonicalPath(l.url);
+        if (!lp || isBlockedPath(lp, block)) return [];
+        return [{ ...l, url: canonicalUrl(lp) }];
+      }),
+    });
+  }
+  logger.info(
+    { raw: rawItems.length, canonical: items.length },
+    "Content crawl: fetched (raw → canonical)",
+  );
 
   // Guard against partial crawls: the reconcile below deletes every post and
   // link-graph edge not present in `items`, so acting on a suspiciously small
@@ -107,6 +142,35 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
       });
   }
   logger.info("Content crawl: posts persisted");
+
+  // Canonical page registry: WP/sitemap is one of the sources that "sees" a
+  // page. A successful content fetch implies the page resolves (status 200).
+  for (const it of items) {
+    await db
+      .insert(pagesTable)
+      .values({
+        path: it.path,
+        url: it.url,
+        title: it.title,
+        section: sectionFor(it.url),
+        inWp: true,
+        inSitemap: true,
+        httpStatus: 200,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: pagesTable.path,
+        set: {
+          title: it.title,
+          section: sectionFor(it.url),
+          inWp: true,
+          inSitemap: true,
+          httpStatus: 200,
+          updatedAt: new Date(),
+        },
+      });
+  }
+  logger.info("Content crawl: pages registry updated");
 
   // Reconcile: remove wp_posts rows whose URL is no longer in the sitemap.
   // Without this, deleted pages would linger forever in the embedding pool

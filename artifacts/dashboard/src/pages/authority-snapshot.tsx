@@ -179,10 +179,10 @@ export default function AuthoritySnapshot() {
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <StatCard
-          label="Pages crawled"
+          label="Content pages"
           value={health.totalPages.toLocaleString()}
           icon={FileText}
-          hint="Total pages discovered and stored from the latest crawl."
+          hint={health.pageFilterLabel}
         />
         <StatCard
           label="Embedded"

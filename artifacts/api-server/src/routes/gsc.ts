@@ -2,6 +2,12 @@ import { Router, type IRouter } from "express";
 import { db, linkGraphTable, linkStatsTable, inventoryTable, gscSnapshotsTable } from "@workspace/db";
 import { desc, sql, gte } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
+import {
+  canonicalPath,
+  canonicalUrl,
+  aggregateByCanonical,
+  loadBlockRegexes,
+} from "../lib/urlCanon";
 import { fetchTopReferringDomains } from "../integrations/dataforseo";
 import {
   queryGscDimension,
@@ -182,22 +188,37 @@ router.get("/gsc/pages", requireAuth, async (req, res) => {
   const { startDate, endDate, url } = v;
   const limit = parseLimit(req.query["limit"], 500, 5000);
   try {
-    const key = `pages|${startDate}|${endDate}|${url ?? ""}|${limit}`;
+    // v2: rows collapse onto canonical paths (fragment/slash variants merge,
+    // blocklisted paths drop) so totals match the Page Report exactly.
+    const key = `pages:v2|${startDate}|${endDate}|${url ?? ""}|${limit}`;
     const data = await withCache(key, GSC_CACHE_TTL_MS, async () => {
-      const rows = await queryGscDimension({
-        startDate,
-        endDate,
-        dimension: "page",
-        pageFilter: url,
-        rowLimit: limit,
-      });
-      const mapped = rows
-        .map((r) => ({
-          url: r.key,
+      const [rows, block] = await Promise.all([
+        queryGscDimension({
+          startDate,
+          endDate,
+          dimension: "page",
+          pageFilter: url,
+          rowLimit: limit,
+        }),
+        loadBlockRegexes(),
+      ]);
+      const grouped = aggregateByCanonical(
+        rows.map((r) => ({
+          key: r.key,
           clicks: r.clicks,
           impressions: r.impressions,
-          ctr: r.ctr,
           position: r.position,
+        })),
+        (r) => canonicalPath(r.key),
+        block,
+      );
+      const mapped = Array.from(grouped.entries())
+        .map(([path, g]) => ({
+          url: canonicalUrl(path),
+          clicks: g.merged.clicks,
+          impressions: g.merged.impressions,
+          ctr: g.merged.ctr,
+          position: g.merged.position,
         }))
         .sort((a, b) => b.impressions - a.impressions);
       return { rows: mapped };

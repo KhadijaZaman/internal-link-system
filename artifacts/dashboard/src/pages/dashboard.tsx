@@ -333,7 +333,7 @@ export default function Dashboard() {
       value: summary.totalPages,
       icon: LayoutTemplate,
       color: "text-primary",
-      tip: "Every page found in the latest site crawl.",
+      tip: summary.pageFilterLabel,
       urlType: "pages",
       fullPagePath: "/link-map",
       fullPageLabel: "Open Link Map →",

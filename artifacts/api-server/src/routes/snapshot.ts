@@ -23,7 +23,7 @@ router.get("/snapshot", requireAuth, async (req, res) => {
   }
   try {
     const data = await withCache(
-      `authority-snapshot|${threshold}`,
+      `authority-snapshot:v2|${threshold}`,
       SNAPSHOT_TTL_MS,
       () => computeAuthoritySnapshot(threshold),
     );

@@ -10,6 +10,7 @@ import { runFullPipeline } from "./runFullPipeline";
 import { runRecomputeActionQueue } from "../services/actionQueue";
 import { runWeeklyDigest } from "../services/digest";
 import { runKeywordClustering } from "./keywordClustering";
+import { runMigrateUrlHygiene } from "./migrateUrlHygiene";
 import { logger } from "../lib/logger";
 
 export function setupJobs(): void {
@@ -33,6 +34,8 @@ export function setupJobs(): void {
   registerJob("weekly_digest", runWeeklyDigest);
   // Paid DataForSEO SERP scraping — on-demand only, NEVER on a cron.
   registerJob("keyword_clustering", runKeywordClustering);
+  // One-shot retroactive URL-hygiene migration (idempotent) — manual only.
+  registerJob("migrate_url_hygiene", runMigrateUrlHygiene);
 }
 
 export function startScheduler(): void {

@@ -17,7 +17,7 @@ The user's BOFU (bottom-of-funnel) definition for the Wellows site, used when as
 - Generic checklists (`technical-seo-checklist-for-agencies`, `audit-checklist-for-agencies`).
 - Informational/educational content incl. GEO concept explainers (`generative-engine-optimization-kpis`, `generative-engine-visibility-factors`), how-to, what-is, trends, statistics.
 
-**Authoritative override:** the user's explicit BOFU list MINUS their NOT-BOFU list is ground truth; only extrapolate to unlabeled pages. (Last run: 36 user-BOFU, 9 user-NOT, → 103 BOFU total of 426 sitemap pages.)
+**Authoritative override:** the user's explicit BOFU list MINUS their NOT-BOFU list is ground truth; only extrapolate to unlabeled pages.
 
 **Borderline family — always flag for review:** the ~25 `/blog/ai-search-visibility-for-<industry>-brands/` pages (automotive, banking, beauty, gaming, legal, etc.). Structurally parallel to the BOFU "for-marketing-agencies" pages but they target brands, and the user knew of them yet did not list them. Classify as BOFU but mark "Review", never silently in or out.
 

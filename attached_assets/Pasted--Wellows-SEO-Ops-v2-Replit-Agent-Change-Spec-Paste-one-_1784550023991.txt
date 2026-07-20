@@ -1,0 +1,150 @@
+# Wellows SEO Ops v2 — Replit Agent Change Spec
+
+Paste one phase at a time into the Replit Agent. Each phase ends with acceptance
+checks the agent should verify before you move on. Order matters: Phase 1 fixes
+the data layer that every later phase depends on.
+
+---
+
+## Phase 1 — URL hygiene layer (fixes every number downstream)
+
+Add a single URL normalization module that ALL ingestion paths (GSC sync, GA4
+sync, crawler, WordPress sync) must pass URLs through before storing or joining:
+
+1. Strip `#fragment` from every URL and aggregate its metrics into the parent
+   page (sum clicks/impressions, impression-weighted average for position).
+2. Exclude non-content paths via a configurable blocklist, seeded with:
+   `/wp-content/`, `/blog/author/*/page/*`, `/auth/*`, `/account/*`,
+   `/overview/*`, `/queries/*`, `/gameplan*`, `/historical-overview/*`,
+   `/project/*`, `/content-optimization/*`, `/content-suggestion*`,
+   `/ai-strategy/*`, `/agent/*`, `/monitoring/*`, `/activities/*`,
+   `/accept-invitation/*`, `/error/*`, `(not set)`, and any path that 404s.
+3. Lock GA4 ingestion to hostname `wellows.com` only.
+4. Resolve known redirects/params to one canonical URL per page.
+5. Apply the normalizer retroactively: re-aggregate existing stored GSC/GA4
+   rows through it (migration script), don't just apply to new data.
+6. Merge the three page stores (dashboard crawl store, knowledge-graph store,
+   authority snapshot store) into ONE canonical `pages` table; every view reads
+   from it with explicit filters, and each view's header shows the filter that
+   produced its count.
+
+Acceptance: Query Losers contains zero URLs with `#`; GA4 Engagement contains
+zero `/overview/*` or `/auth/*` rows; Dashboard, Knowledge Graph, and Site
+Authority report the same total page count; GSC Pro and Page Report totals
+match for the same date range.
+
+## Phase 2 — GA4 scoping
+
+1. Default the GA4 Engagement and Page Report views to the **Organic Search**
+   default channel group, landing-page dimension (not all pageviews), with a
+   visible toggle for "all channels".
+2. Add a custom AI-referral channel (referrals from chatgpt.com,
+   perplexity.ai, gemini.google.com, copilot.microsoft.com, claude.ai) and
+   show it as its own column/filter.
+3. Pull GA4 key events (signups, demo bookings) per landing page and store
+   them on the canonical pages table.
+
+Acceptance: GA4 Engagement sessions total drops to organic-only by default;
+each page row exposes sessions, engaged rate, key events, and AI-referral
+sessions.
+
+## Phase 3 — Detection guardrails
+
+1. Exclude the most recent 3 days of GSC data from ALL delta and
+   loser-detection math; annotate charts "last 3 days provisional".
+2. Loser detection: require a minimum of 50 impressions in the baseline week
+   for a query to be flagged; "critical" additionally requires ≥100 impressions
+   lost. No more "critical, −0 impressions".
+3. Add a query classifier that quarantines: (a) LLM-agent queries — length
+   > 12 words, or containing tokens like "json", "rank the top", "my location
+   is", full sentences with punctuation; (b) queries in languages other than
+   the site's; (c) branded queries via regex `wellows|welows`. Quarantined
+   queries are EXCLUDED from losers/CTR actions and shown in a new report
+   "Agentic & filtered queries".
+4. Build the site's own CTR-by-position curve from its last 90 days of
+   query data (bucketed by position, min 500 impressions per bucket) and use
+   it instead of generic benchmarks in CTR actions. Exclude queries where
+   avg position < 2 with CTR < 1% (likely AI Overview citations) from CTR
+   actions.
+5. Direction-aware deltas: when CTR rises while impressions fall > 20%, or
+   position "improves" while impressions collapse, render the delta neutral
+   with a tooltip explaining the mix effect — never green.
+
+Acceptance: no loser with < 50 baseline impressions; the queue contains no
+prompt-shaped queries; GSC Pro headline cards no longer show a green CTR
+delta when impressions dropped sharply.
+
+## Phase 4 — Per-URL work items with value-weighted scoring
+
+1. Replace per-issue action cards with ONE work item per canonical URL that
+   groups all open issues (losing queries, CTR, orphan, dead-end, link
+   suggestions, cannibalization) as tags on the card.
+2. New score: `expected_clicks_regained × page_value_tier`.
+   - expected_clicks_regained: from the own CTR curve (Phase 3.4) for CTR
+     issues; from impressions lost × curve CTR for losers.
+   - page_value_tier defaults: `/tools/*`, `/features/*`, `/alternatives/*`,
+     `/blog/*-vs-*`, `/solutions/*` = 4.0; BOFU blog (comparison/checklist/
+     agency intent) = 2.0; TOFU blog = 1.0. Tiers editable in Settings.
+3. Show the formula on the card ("= 460 clicks × 4.0 comparison tier").
+4. Add per-item fields: status (Open / In progress / Done / Dismissed with
+   required reason), assignee, and quick links to the WordPress editor and
+   the optimizer brief for that URL.
+
+Acceptance: each URL appears at most once in the queue; hovering a score
+reveals its math; /blog/startup-ideas no longer outranks feature/comparison
+pages purely on impressions.
+
+## Phase 5 — Impact verification as a first-class page
+
+1. New top-level page "Impact": every Done work item enters a 28-day
+   measuring window; show position, clicks, impressions (and AI citations if
+   available) before vs after, graded Improved / Measuring / Flat / Declined,
+   each grade linking to the underlying item.
+2. Wire Done items into the Weekly Digest window correctly (digest currently
+   shows "Work completed (0)" while the queue shows 121 done).
+3. Aggregate learning: a small table of win-rate by action TYPE (link adds
+   vs rewrites vs CTR fixes) so future scoring can favor what works.
+
+Acceptance: Digest and Impact agree on completed counts; every "Improved"
+badge links to its work item with a before/after mini-chart.
+
+## Phase 6 — Reporting & navigation
+
+1. CSV export button on every table (losers, page report, work items,
+   clusters, GA4).
+2. Friday stakeholder report: one click (and scheduled Fridays 10:00 UTC)
+   generates a branded PDF + email + optional Slack message containing:
+   5 KPIs (organic clicks, non-branded impressions, AI citations, actions
+   completed, verified wins), plain-language summary, and next week's top 5
+   work items. Use Wellows blues (#0554F2 anchor, #00153E headings on light),
+   Livvic-style headings, no jargon (no "T3→T1", no raw scores).
+3. Consolidate navigation into 8 hubs: Today, Work Items, Impact, Search
+   (GSC Pro + Losers + Keyword Report + Clusters as tabs), Pages (Page
+   Report + GA4), Linking (Links + Map + Knowledge Graph + Authority),
+   Content (Optimizer + Writer + Knowledge Base + Submissions), Reports
+   (Digest + exports). Move WP Classifications / Exclude List under Settings.
+4. Replace the 0–100 health score with 4 trend KPIs (or keep the score but
+   make every deduction row clickable to its issue list and remove caps).
+
+Acceptance: a non-SEO reader can read the Friday PDF without a glossary;
+nav shows 8 items; every table has a working CSV export.
+
+## Quick fixes (bundle with any phase)
+
+- Login page: set `meta robots` to `noindex, nofollow`; replace Replit
+  boilerplate title/description; show an inline error on wrong password;
+  client-side block empty submits; rate-limit `/api/auth/login`.
+- Rename the `keyword_clustering` job to "Keyword Clustering" in the UI.
+- Virtualize or paginate all tables > 200 rows (Page Report currently
+  renders 1,849 rows and freezes the tab).
+- Validate crawler link extraction: sample 10 pages currently marked
+  "dead-end" against their live HTML; if template/related-post links are
+  being missed, fix extraction before orphan/dead-end audits run again.
+- Pipeline truthfulness: "Refresh Post Embeddings — Never" must either show
+  its real last run or block semantic suggestions with a warning.
+
+## Deferred (build after v2 stabilizes)
+
+- Join Wellows citation data per URL into work-item scoring (SERP + AI
+  citation combined opportunity).
+- "Agentic queries" quarantine feed → exportable dataset for research posts.

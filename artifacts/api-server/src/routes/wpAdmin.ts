@@ -7,6 +7,7 @@ import {
   wpPostsTable,
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { canonicalPath, canonicalUrl } from "../lib/urlCanon";
 
 const router: IRouter = Router();
 
@@ -56,6 +57,14 @@ router.patch("/wp/classifications", requireAuth, async (req, res) => {
     res.status(400).json({ error: "url required" });
     return;
   }
+  // Canonicalize before upserting so non-canonical URL forms can't re-enter
+  // the migrated page_classifications table.
+  const canonPath = canonicalPath(body.url);
+  if (!canonPath) {
+    res.status(400).json({ error: "url is not a valid page on this site" });
+    return;
+  }
+  const canonUrl = canonicalUrl(canonPath);
   const updates: Record<string, unknown> = { manuallyEdited: true };
   if (body.tier && body.tier >= 1 && body.tier <= 4) updates["tier"] = body.tier;
   if (typeof body.centralEntity === "string") updates["centralEntity"] = body.centralEntity;
@@ -68,7 +77,7 @@ router.patch("/wp/classifications", requireAuth, async (req, res) => {
 
   await db
     .insert(pageClassificationsTable)
-    .values({ url: body.url, ...updates })
+    .values({ url: canonUrl, ...updates })
     .onConflictDoUpdate({ target: pageClassificationsTable.url, set: updates });
   res.json({ ok: true });
 });

@@ -1,5 +1,6 @@
 import { google } from "googleapis";
 import { withCache } from "./gsc";
+import { canonicalPath, isBlockedPath, loadBlockRegexes, siteHost } from "../lib/urlCanon";
 
 const GA4_SCOPE = "https://www.googleapis.com/auth/analytics.readonly";
 const GA4_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -65,22 +66,16 @@ interface RunReportResponse {
   error?: { message?: string };
 }
 
-function normalizePath(p: string): string {
-  const noQuery = p.split("?")[0] ?? p;
-  const noHash = noQuery.split("#")[0] ?? noQuery;
-  let s = noHash.toLowerCase();
-  if (s.length > 1) s = s.replace(/\/+$/, "");
-  return s || "/";
-}
-
 export async function queryGa4Pages(opts: {
   startDate: string;
   endDate: string;
 }): Promise<{ rows: Ga4PageRow[]; totals: Ga4Totals }> {
   const { startDate, endDate } = opts;
-  return withCache(`ga4:pages|${startDate}|${endDate}`, GA4_CACHE_TTL_MS, async () => {
+  // v2: hostname lock + shared canonical normalizer + url_blocklist filter.
+  return withCache(`ga4:pages:v2|${startDate}|${endDate}`, GA4_CACHE_TTL_MS, async () => {
     const token = await accessToken();
     const property = ga4PropertyId();
+    const block = await loadBlockRegexes();
     const res = await fetch(
       `https://analyticsdata.googleapis.com/v1beta/properties/${property}:runReport`,
       {
@@ -95,6 +90,15 @@ export async function queryGa4Pages(opts: {
             { name: "screenPageViews" },
             { name: "userEngagementDuration" },
           ],
+          // Lock to the production site host: the GA4 property also receives
+          // hits from app screens / staging hosts whose paths (e.g.
+          // /overview/*, /auth/*) would otherwise pollute page metrics.
+          dimensionFilter: {
+            filter: {
+              fieldName: "hostName",
+              stringFilter: { matchType: "EXACT", value: siteHost() },
+            },
+          },
           orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
           limit: "100000",
         }),
@@ -105,11 +109,12 @@ export async function queryGa4Pages(opts: {
       throw new Error(json.error?.message ?? `GA4 runReport failed (${res.status})`);
     }
 
-    // Aggregate by normalized path so trailing-slash / query variants collapse
+    // Aggregate by canonical path so trailing-slash / query variants collapse
     // into one row, then derive rates from summed sessions for consistency.
     const agg = new Map<string, { sessions: number; engaged: number; views: number; dur: number }>();
     for (const r of json.rows ?? []) {
-      const path = normalizePath(r.dimensionValues?.[0]?.value ?? "");
+      const path = canonicalPath(r.dimensionValues?.[0]?.value ?? "");
+      if (!path || isBlockedPath(path, block)) continue;
       const m = r.metricValues ?? [];
       const cur = agg.get(path) ?? { sessions: 0, engaged: 0, views: 0, dur: 0 };
       cur.sessions += Number(m[0]?.value ?? 0);

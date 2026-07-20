@@ -10,13 +10,14 @@ import {
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
 import { loadJobStatuses } from "../jobs/runner";
+import { countContentPages, CONTENT_PAGES_FILTER_LABEL } from "../services/pageCounts";
 
 const router: IRouter = Router();
 
 router.get("/dashboard/summary", requireAuth, async (_req, res) => {
   const [pages, links, orphans, deadEnds, pending, criticalLosers, coreCount, outerCount] =
     await Promise.all([
-      db.select({ c: count() }).from(linkStatsTable),
+      countContentPages(),
       db.select({ c: count() }).from(linkGraphTable),
       db.select({ c: count() }).from(linkStatsTable).where(eq(linkStatsTable.isOrphan, true)),
       db.select({ c: count() }).from(linkStatsTable).where(eq(linkStatsTable.isDeadEnd, true)),
@@ -33,7 +34,8 @@ router.get("/dashboard/summary", requireAuth, async (_req, res) => {
     ]);
   const jobs = await loadJobStatuses();
   res.json({
-    totalPages: pages[0]?.c ?? 0,
+    totalPages: pages,
+    pageFilterLabel: CONTENT_PAGES_FILTER_LABEL,
     totalLinks: links[0]?.c ?? 0,
     orphanCount: orphans[0]?.c ?? 0,
     deadEndCount: deadEnds[0]?.c ?? 0,

@@ -676,7 +676,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [crawl_link_map, gsc_inventory_and_losers, optimize_queued_urls, crawl_wordpress, reembed_wordpress, semantic_linking, audit_orphans, audit_over_linked, audit_broken_links, run_full_pipeline, recompute_action_queue, weekly_digest, keyword_clustering]
+            enum: [crawl_link_map, gsc_inventory_and_losers, optimize_queued_urls, crawl_wordpress, reembed_wordpress, semantic_linking, audit_orphans, audit_over_linked, audit_broken_links, run_full_pipeline, recompute_action_queue, weekly_digest, keyword_clustering, migrate_url_hygiene]
       responses:
         "202":
           description: Job started
@@ -1578,6 +1578,7 @@ components:
       type: object
       required:
         - totalPages
+        - pageFilterLabel
         - totalLinks
         - orphanCount
         - deadEndCount
@@ -1587,6 +1588,7 @@ components:
         - jobs
       properties:
         totalPages: { type: integer }
+        pageFilterLabel: { type: string }
         totalLinks: { type: integer }
         orphanCount: { type: integer }
         deadEndCount: { type: integer }
@@ -1951,7 +1953,7 @@ components:
         size: { type: integer }
     KnowledgeGraph:
       type: object
-      required: [generatedAt, nodes, edges, clusters, embeddedPages, totalPosts]
+      required: [generatedAt, nodes, edges, clusters, embeddedPages, totalPosts, totalPages, pageFilterLabel]
       properties:
         generatedAt: { type: string, format: date-time }
         nodes:
@@ -1965,6 +1967,8 @@ components:
           items: { $ref: "#/components/schemas/KnowledgeGraphCluster" }
         embeddedPages: { type: integer }
         totalPosts: { type: integer }
+        totalPages: { type: integer }
+        pageFilterLabel: { type: string }
     LinkGraphFocusSeed:
       type: object
       required:
@@ -3256,6 +3260,7 @@ components:
       type: object
       required:
         - totalPages
+        - pageFilterLabel
         - pagesWithEmbedding
         - pagesTracked
         - orphanCount
@@ -3264,6 +3269,7 @@ components:
         - avgInternalPagerank
       properties:
         totalPages: { type: integer }
+        pageFilterLabel: { type: string }
         pagesWithEmbedding: { type: integer }
         pagesTracked: { type: integer }
         orphanCount: { type: integer }

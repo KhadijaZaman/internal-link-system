@@ -8,6 +8,7 @@
 
 export interface SnapshotHealth {
   totalPages: number;
+  pageFilterLabel: string;
   pagesWithEmbedding: number;
   pagesTracked: number;
   orphanCount: number;

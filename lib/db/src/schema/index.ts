@@ -24,3 +24,5 @@ export * from "./clusterRuns";
 export * from "./actionItems";
 export * from "./healthSnapshots";
 export * from "./digests";
+export * from "./urlBlocklist";
+export * from "./pages";

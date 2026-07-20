@@ -1,5 +1,6 @@
 - [Embedding cosine thresholds](embedding-cosine-threshold.md) — text-embedding-3-small cosines are compressed; use ~0.42 (not 0.5) to split on/off-core demand.
 - [SEO activity & link placement](seo-activity-data-model.md) — published/optimized rules, link_graph counting & anchor capture, sidebar exclusion, re-crawl staleness, URL-form matching.
+- [URL hygiene contract](url-hygiene-contract.md) — canonicalize+merge everywhere; crawler-404 blocklist is exact-match; pages registry only grows so counts filter blocklist at read time.
 - [Auth cookies in the canvas iframe](iframe-auth-cookies.md) — why session login fails in the embedded preview iframe and the cookie/CORS combo that fixes it safely.
 - [Body-parser vs contract cap](body-parser-vs-contract-cap.md) — a route body contract above 100KB silently 413s unless the express.json limit is raised for that path.
 - [Audit payload & exports](audit-payload-and-exports.md) — audit payload is unvalidated passthrough; sanitize at the job not the route, and reuse rowsToTsv/CopyButton for injection-safe exports.

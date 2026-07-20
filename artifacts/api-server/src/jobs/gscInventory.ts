@@ -1,5 +1,18 @@
-import { db, gscSnapshotsTable, queryLosersTable, inventoryTable } from "@workspace/db";
+import {
+  db,
+  gscSnapshotsTable,
+  queryLosersTable,
+  inventoryTable,
+  pagesTable,
+} from "@workspace/db";
 import { queryGsc, type GscRow } from "../integrations/gsc";
+import {
+  canonicalPath,
+  canonicalUrl,
+  isBlockedPath,
+  loadBlockRegexes,
+  mergeMetricRows,
+} from "../lib/urlCanon";
 import { sectionFor } from "../lib/sections";
 import { chainActionQueueRecompute } from "../services/actionQueue";
 import { logger } from "../lib/logger";
@@ -42,6 +55,49 @@ function classifySeverity(
   return null;
 }
 
+interface CanonRow {
+  path: string;
+  query: string;
+  clicks: number;
+  impressions: number;
+  position: number;
+  ctr: number;
+}
+
+/**
+ * Collapse raw GSC rows (which record #fragment / ?query / trailing-slash
+ * variants of the same page as separate URLs) onto (canonical path, query):
+ * clicks/impressions summed, position impression-weighted. Blocklisted and
+ * foreign-host rows are dropped here so they never reach any table.
+ */
+function collapseRows(rows: GscRow[], block: RegExp[]): Map<string, CanonRow> {
+  const groups = new Map<string, GscRow[]>();
+  const paths = new Map<string, string>();
+  for (const r of rows) {
+    const path = canonicalPath(r.url);
+    if (!path || isBlockedPath(path, block)) continue;
+    const key = `${path}||${r.query}`;
+    paths.set(key, path);
+    const g = groups.get(key);
+    if (g) g.push(r);
+    else groups.set(key, [r]);
+  }
+  const out = new Map<string, CanonRow>();
+  for (const [key, g] of groups) {
+    const m = mergeMetricRows(g);
+    const path = paths.get(key)!;
+    out.set(key, {
+      path,
+      query: key.slice(path.length + 2),
+      clicks: m.clicks,
+      impressions: m.impressions,
+      position: m.position,
+      ctr: m.ctr,
+    });
+  }
+  return out;
+}
+
 export async function runGscInventoryAndLosers(): Promise<void> {
   // GSC data for the most recent ~2-3 days is incomplete (processing lag), so
   // both windows end 3 days back. 7-day windows keep weekday mix identical.
@@ -51,15 +107,23 @@ export async function runGscInventoryAndLosers(): Promise<void> {
   const prevEnd = dateOffset(10);
   logger.info({ currStart, currEnd, prevStart, prevEnd }, "GSC: pulling rows");
 
-  const curr = await queryGsc({ startDate: currStart, endDate: currEnd });
-  const prev = await queryGsc({ startDate: prevStart, endDate: prevEnd });
-  logger.info({ curr: curr.length, prev: prev.length }, "GSC: rows pulled");
+  const [currRaw, prevRaw, block] = await Promise.all([
+    queryGsc({ startDate: currStart, endDate: currEnd }),
+    queryGsc({ startDate: prevStart, endDate: prevEnd }),
+    loadBlockRegexes(),
+  ]);
+  const curr = collapseRows(currRaw, block);
+  const prev = collapseRows(prevRaw, block);
+  logger.info(
+    { currRaw: currRaw.length, curr: curr.size, prevRaw: prevRaw.length, prev: prev.size },
+    "GSC: rows pulled (raw → canonical)",
+  );
 
   const today = new Date().toISOString().slice(0, 10);
-  if (curr.length > 0) {
-    const batch = curr.map((r) => ({
+  if (curr.size > 0) {
+    const batch = [...curr.values()].map((r) => ({
       snapshotDate: today,
-      url: r.url,
+      url: canonicalUrl(r.path),
       query: r.query,
       position: r.position,
       impressions: r.impressions,
@@ -71,18 +135,15 @@ export async function runGscInventoryAndLosers(): Promise<void> {
     }
   }
 
-  const prevMap = new Map<string, GscRow>();
-  for (const r of prev) prevMap.set(`${r.url}||${r.query}`, r);
-
   const losers: Array<typeof queryLosersTable.$inferInsert> = [];
-  for (const r of curr) {
-    const p = prevMap.get(`${r.url}||${r.query}`);
+  for (const [key, r] of curr) {
+    const p = prev.get(key);
     if (!p) continue;
     const sev = classifySeverity(p.position, r.position, p.impressions, r.impressions);
     if (!sev) continue;
     losers.push({
       weekOf: today,
-      url: r.url,
+      url: canonicalUrl(r.path),
       query: r.query,
       prevPosition: p.position,
       currPosition: r.position,
@@ -99,37 +160,66 @@ export async function runGscInventoryAndLosers(): Promise<void> {
   }
   logger.info({ losers: losers.length }, "GSC: losers computed");
 
-  // Rebuild inventory: for each URL, pick row with highest impressions
-  const byUrl = new Map<string, GscRow>();
-  for (const r of curr) {
-    const existing = byUrl.get(r.url);
-    if (!existing || r.impressions > existing.impressions) byUrl.set(r.url, r);
+  // Rebuild inventory: for each canonical path, pick query with highest impressions
+  const byPath = new Map<string, CanonRow>();
+  for (const r of curr.values()) {
+    const existing = byPath.get(r.path);
+    if (!existing || r.impressions > existing.impressions) byPath.set(r.path, r);
   }
-  for (const [url, r] of byUrl) {
+  const now = new Date();
+  for (const [path, r] of byPath) {
+    const url = canonicalUrl(path);
+    const section = sectionFor(url);
     await db
       .insert(inventoryTable)
       .values({
         url,
-        section: sectionFor(url),
+        section,
         topQuery: r.query,
         position: r.position,
         impressions: r.impressions,
         clicks: r.clicks,
-        lastUpdated: new Date(),
+        lastUpdated: now,
       })
       .onConflictDoUpdate({
         target: inventoryTable.url,
         set: {
-          section: sectionFor(url),
+          section,
           topQuery: r.query,
           position: r.position,
           impressions: r.impressions,
           clicks: r.clicks,
-          lastUpdated: new Date(),
+          lastUpdated: now,
+        },
+      });
+    // Canonical page registry: GSC is one of the sources that "sees" a page.
+    await db
+      .insert(pagesTable)
+      .values({
+        path,
+        url,
+        section,
+        inGsc: true,
+        topQuery: r.query,
+        position: r.position,
+        impressions: r.impressions,
+        clicks: r.clicks,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: pagesTable.path,
+        set: {
+          inGsc: true,
+          section,
+          topQuery: r.query,
+          position: r.position,
+          impressions: r.impressions,
+          clicks: r.clicks,
+          updatedAt: now,
         },
       });
   }
-  logger.info({ urls: byUrl.size }, "GSC: inventory updated");
+  logger.info({ urls: byPath.size }, "GSC: inventory + pages updated");
 
   // Fresh inventory + losers change action priorities — refresh the queue.
   await chainActionQueueRecompute("gsc_inventory_and_losers");

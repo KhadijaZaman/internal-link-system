@@ -54,6 +54,7 @@ export const GetSessionResponse = zod.object({
  */
 export const GetDashboardSummaryResponse = zod.object({
   "totalPages": zod.number(),
+  "pageFilterLabel": zod.string(),
   "totalLinks": zod.number(),
   "orphanCount": zod.number(),
   "deadEndCount": zod.number(),
@@ -187,7 +188,9 @@ export const GetKnowledgeGraphResponse = zod.object({
   "size": zod.number()
 })),
   "embeddedPages": zod.number(),
-  "totalPosts": zod.number()
+  "totalPosts": zod.number(),
+  "totalPages": zod.number(),
+  "pageFilterLabel": zod.string()
 })
 
 
@@ -928,7 +931,7 @@ export const ListClusterRunClustersResponse = zod.array(ListClusterRunClustersRe
  * @summary Manually trigger a background job
  */
 export const RunJobParams = zod.object({
-  "jobName": zod.enum(['crawl_link_map', 'gsc_inventory_and_losers', 'optimize_queued_urls', 'crawl_wordpress', 'reembed_wordpress', 'semantic_linking', 'audit_orphans', 'audit_over_linked', 'audit_broken_links', 'run_full_pipeline', 'recompute_action_queue', 'weekly_digest', 'keyword_clustering'])
+  "jobName": zod.enum(['crawl_link_map', 'gsc_inventory_and_losers', 'optimize_queued_urls', 'crawl_wordpress', 'reembed_wordpress', 'semantic_linking', 'audit_orphans', 'audit_over_linked', 'audit_broken_links', 'run_full_pipeline', 'recompute_action_queue', 'weekly_digest', 'keyword_clustering', 'migrate_url_hygiene'])
 })
 
 
@@ -2098,6 +2101,7 @@ export const GetAuthoritySnapshotResponse = zod.object({
   "threshold": zod.number(),
   "health": zod.object({
   "totalPages": zod.number(),
+  "pageFilterLabel": zod.string(),
   "pagesWithEmbedding": zod.number(),
   "pagesTracked": zod.number(),
   "orphanCount": zod.number(),

@@ -9,6 +9,8 @@ import {
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
 import { sectionFor } from "../lib/sections";
+import { canonicalPath } from "../lib/urlCanon";
+import { countContentPages, CONTENT_PAGES_FILTER_LABEL } from "../services/pageCounts";
 
 const router: IRouter = Router();
 
@@ -29,8 +31,14 @@ const MIN_CLUSTER_SIZE = 3;
  */
 const LOUVAIN_RESOLUTION = 1.0;
 
-/** Normalize URL for cross-table matching (wp_posts vs link_stats forms). */
+/**
+ * Normalize URL for cross-table matching (wp_posts vs link_stats forms).
+ * Uses the shared canonicalizer so fragment/query/slash variants land on
+ * the same node; falls back to simple cleanup for non-site URLs.
+ */
 function norm(url: string): string {
+  const p = canonicalPath(url);
+  if (p !== null) return p;
   return url.replace(/\/+$/, "").toLowerCase();
 }
 
@@ -202,7 +210,7 @@ function clusterLabel(
 }
 
 router.get("/knowledge-graph", requireAuth, async (_req, res) => {
-  const [stats, inv, contentLinks, semRes, embStats] = await Promise.all([
+  const [stats, inv, contentLinks, semRes, embStats, canonicalPageCount] = await Promise.all([
     db.select().from(linkStatsTable),
     db.select().from(inventoryTable),
     db
@@ -233,6 +241,7 @@ router.get("/knowledge-graph", requireAuth, async (_req, res) => {
         embedded: sql<number>`count(${wpPostsTable.embedding})::int`,
       })
       .from(wpPostsTable),
+    countContentPages(),
   ]);
 
   const invMap = new Map(inv.map((i) => [i.url, i]));
@@ -375,6 +384,8 @@ router.get("/knowledge-graph", requireAuth, async (_req, res) => {
     clusters,
     embeddedPages: embStats[0]?.embedded ?? 0,
     totalPosts: embStats[0]?.total ?? 0,
+    totalPages: canonicalPageCount,
+    pageFilterLabel: CONTENT_PAGES_FILTER_LABEL,
   });
 });
 
