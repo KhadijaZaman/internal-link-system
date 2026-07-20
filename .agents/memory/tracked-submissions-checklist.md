@@ -46,6 +46,16 @@ exclusively — still no page fetch, crawl, or AI.
   TS type with the same `<Op>Params` name → TS2308 in the api-zod barrel. Fix
   with explicit re-exports (zod const keeps name, type gets an alias).
 
+## Prod is the source of truth for the tracked list
+
+The dev DB copy of `tracked_submissions` goes stale — the operator adds URLs and
+keywords in the live app. At one point prod had 30 unique URLs (20 with
+keywords) while dev had 18 (8 with keywords). Any export/analysis of "my
+submissions" must read the list from the PRODUCTION db (read-only
+`executeSql({environment:"production"})`), then dedup by URL preferring the
+non-empty keyword (the prod table can hold duplicate rows per URL from
+re-pastes).
+
 ## Other durable choices
 
 - Still-open tracked items (status `tracking`) are exempt from the page's
