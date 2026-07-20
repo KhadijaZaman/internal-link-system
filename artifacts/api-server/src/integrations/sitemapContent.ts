@@ -120,8 +120,19 @@ async function fetchSitemapEntries(
       if (isAllowedUrl(loc, domain)) children.push(loc);
       else logger.warn({ loc }, "Sitemap index loc disallowed");
     });
+    // A failed child sitemap must fail the whole discovery. Silently
+    // returning [] here once caused a partial crawl that mass-deleted the
+    // post inventory and link graph downstream (post-sitemap.xml failed one
+    // night; the crawl "reconciled" against the 74 surviving URLs).
     const nested = await Promise.all(
-      children.map((c) => fetchSitemapEntries(c, domain).catch(() => [])),
+      children.map(async (c) => {
+        try {
+          return await fetchSitemapEntries(c, domain);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          throw new Error(`Child sitemap ${c} failed: ${msg}`);
+        }
+      }),
     );
     return nested.flat();
   }

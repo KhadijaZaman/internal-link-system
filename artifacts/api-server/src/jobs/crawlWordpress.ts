@@ -48,6 +48,25 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
   const items = await fetchAllSitemapContent();
   logger.info({ count: items.length }, "Content crawl: fetched");
 
+  // Guard against partial crawls: the reconcile below deletes every post and
+  // link-graph edge not present in `items`, so acting on a suspiciously small
+  // fetch would wipe real inventory (this happened when one child sitemap
+  // failed for a night). Abort before any writes; the job surfaces as failed.
+  const existingCountRows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(wpPostsTable);
+  const existingCount = existingCountRows[0]?.count ?? 0;
+  const allowShrink = process.env["CRAWL_ALLOW_SHRINK"] === "1";
+  if (!allowShrink && existingCount >= 20 && items.length < existingCount * 0.8) {
+    throw new Error(
+      `Content crawl aborted: sitemap fetch returned only ${items.length} pages ` +
+        `but ${existingCount} are already tracked (>20% drop). Refusing to ` +
+        `reconcile to avoid mass-deleting inventory after a partial fetch. ` +
+        `If the site really removed this many pages, set CRAWL_ALLOW_SHRINK=1 ` +
+        `and run the crawl once to accept the smaller inventory.`,
+    );
+  }
+
   // Persist posts (url is PK; upsert on conflict)
   for (const it of items) {
     await db

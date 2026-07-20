@@ -119,8 +119,17 @@ async function fetchSitemapUrls(sitemapUrl: string, domain: string): Promise<str
         logger.warn({ loc }, "Crawl: skipping disallowed sitemap index loc");
       }
     });
+    // Propagate child sitemap failures — silently returning [] produces a
+    // partial crawl with stale edges and no visible failure signal.
     const nested = await Promise.all(
-      children.map((c) => fetchSitemapUrls(c, domain).catch(() => [])),
+      children.map(async (c) => {
+        try {
+          return await fetchSitemapUrls(c, domain);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          throw new Error(`Child sitemap ${c} failed: ${msg}`);
+        }
+      }),
     );
     return nested.flat();
   }

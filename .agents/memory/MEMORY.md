@@ -18,3 +18,4 @@
 - [Autoscale kills long jobs](autoscale-long-jobs.md) — instance recycles once polling stops; heartbeat + "interrupted" status + self-ping mitigate; Reserved VM is the real fix.
 - [Graph clustering: Louvain not LP](graph-clustering-louvain.md) — label propagation collapses the dense content-link graph into one blob; use the deterministic Louvain implementation.
 - [E2E testing auth bridge](e2e-test-auth-bridge.md) — testing subagent can't read ADMIN_PASSWORD; mint session via bash, pass cookie via addCookies url-form, logout after.
+- [Crawl reconcile guard](crawl-reconcile-guard.md) — partial sitemap fetch once mass-deleted inventory & crashed health score; reconciles must propagate child failures + abort on >20% shrink.
