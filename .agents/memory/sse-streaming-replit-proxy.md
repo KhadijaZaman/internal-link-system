@@ -27,3 +27,15 @@ stream via `fetch` + `ReadableStream` must:
 **How to apply:** reuse this same shape for any future streaming endpoint in this repo (e.g. other
 AI features). EventSource can't POST a JSON body, so streaming endpoints here are POST + manual
 SSE parsing, not the native `EventSource` API.
+
+**Detect client disconnect with `res.on("close")`, never `req.on("close")`.** In Node 18+,
+`req` emits `close` as soon as the request body is fully consumed — for a JSON POST that is
+before any work starts. A `closed` flag keyed off `req` is true immediately, so the delta loop
+breaks on the first chunk, `res.end()` is skipped, and the client hangs on "thinking" forever
+with only padding + meta delivered. `res` emits `close` only when the response/connection
+actually terminates, which is the correct disconnect signal. This bug is invisible in tests
+that POST without a body (no body → no early `close`), so always test SSE endpoints with the
+real JSON body attached.
+
+**Give the model client a request timeout** (`new OpenAI({ timeout, maxRetries })`) so a stuck
+upstream becomes an `error` SSE event the client can render instead of an eternal spinner.

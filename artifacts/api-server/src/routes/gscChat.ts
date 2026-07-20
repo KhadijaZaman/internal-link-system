@@ -17,7 +17,9 @@ const CHAT_MODEL = "gpt-4o-mini";
 function getOpenAI(): OpenAI {
   const key = process.env["OPENAI_API_KEY"]?.trim();
   if (!key) throw new Error("OPENAI_API_KEY is required for GSC chat");
-  return new OpenAI({ apiKey: key });
+  // timeout caps each attempt so a stuck upstream surfaces as an error the
+  // client can show, instead of an SSE stream that hangs on "thinking" forever.
+  return new OpenAI({ apiKey: key, timeout: 60_000, maxRetries: 1 });
 }
 
 const BRAND_TERMS = (process.env["GSC_BRAND_TERMS"] ?? "wellows")
@@ -343,10 +345,22 @@ router.post("/gsc/chat/stream", requireAuth, async (req, res) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
+  // Detect client disconnect via res 'close', NOT req 'close'. Node emits
+  // req 'close' as soon as the request body is fully consumed (which for a
+  // JSON POST is before we even call the model), so keying off req would
+  // mark the stream dead immediately and the response would never finish.
   let closed = false;
-  req.on("close", () => {
+  res.on("close", () => {
     closed = true;
   });
+
+  // Start keep-alives immediately so the connection stays warm while we
+  // build the GSC context and wait for the model's first token, not just
+  // during delta streaming.
+  const keepalive = setInterval(() => {
+    if (closed) return;
+    res.write(": keep-alive\n\n");
+  }, 15_000);
 
   try {
     const contextJson = await buildContext(parsed);
@@ -371,19 +385,10 @@ router.post("/gsc/chat/stream", requireAuth, async (req, res) => {
       ],
     });
 
-    const keepalive = setInterval(() => {
-      if (closed) return;
-      res.write(": keep-alive\n\n");
-    }, 15_000);
-
-    try {
-      for await (const chunk of stream) {
-        if (closed) break;
-        const delta = chunk.choices[0]?.delta?.content;
-        if (delta) send("delta", { text: delta });
-      }
-    } finally {
-      clearInterval(keepalive);
+    for await (const chunk of stream) {
+      if (closed) break;
+      const delta = chunk.choices[0]?.delta?.content;
+      if (delta) send("delta", { text: delta });
     }
 
     if (!closed) {
@@ -396,6 +401,8 @@ router.post("/gsc/chat/stream", requireAuth, async (req, res) => {
       send("error", { error: "OpenAI streaming failed" });
       res.end();
     }
+  } finally {
+    clearInterval(keepalive);
   }
 });
 
