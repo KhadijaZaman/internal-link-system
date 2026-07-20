@@ -781,10 +781,134 @@ export const GetKeywordReportResponse = zod.object({
 
 
 /**
+ * @summary Start a keyword clustering run (paid DataForSEO SERP scrape)
+ */
+export const startClusterRunBodyDaysDefault = 90;
+export const startClusterRunBodyDaysMin = 7;
+export const startClusterRunBodyDaysMax = 180;
+
+export const startClusterRunBodyCountryRegExp = new RegExp('^[A-Za-z]{3}$');
+export const startClusterRunBodyKeywordLimitDefault = 250;
+export const startClusterRunBodyKeywordLimitMin = 10;
+export const startClusterRunBodyKeywordLimitMax = 1000;
+
+export const startClusterRunBodyLocationCodeDefault = 2840;
+export const startClusterRunBodyExcludeBrandDefault = true;
+
+export const StartClusterRunBody = zod.object({
+  "days": zod.number().min(startClusterRunBodyDaysMin).max(startClusterRunBodyDaysMax).default(startClusterRunBodyDaysDefault),
+  "country": zod.string().regex(startClusterRunBodyCountryRegExp).nullish().describe('ISO 3166-1 alpha-3 GSC country filter; omit for worldwide'),
+  "keywordLimit": zod.number().min(startClusterRunBodyKeywordLimitMin).max(startClusterRunBodyKeywordLimitMax).default(startClusterRunBodyKeywordLimitDefault),
+  "locationCode": zod.number().default(startClusterRunBodyLocationCodeDefault).describe('DataForSEO SERP location_code (2840 = United States)'),
+  "excludeBrand": zod.boolean().default(startClusterRunBodyExcludeBrandDefault)
+})
+
+
+/**
+ * @summary List recent clustering runs (newest first)
+ */
+export const ListClusterRunsResponseItem = zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['queued', 'running', 'complete', 'failed', 'interrupted']),
+  "phase": zod.string().nullable(),
+  "params": zod.object({
+  "days": zod.number(),
+  "country": zod.string().nullable(),
+  "keywordLimit": zod.number(),
+  "locationCode": zod.number(),
+  "excludeBrand": zod.boolean()
+}),
+  "progressDone": zod.number(),
+  "progressTotal": zod.number(),
+  "stats": zod.record(zod.string(), zod.number()),
+  "error": zod.string().nullable(),
+  "createdAt": zod.string(),
+  "startedAt": zod.string().nullable(),
+  "finishedAt": zod.string().nullable()
+})
+export const ListClusterRunsResponse = zod.array(ListClusterRunsResponseItem)
+
+
+/**
+ * @summary Get one clustering run (status, progress, stats)
+ */
+export const GetClusterRunParams = zod.object({
+  "runId": zod.coerce.number()
+})
+
+export const GetClusterRunResponse = zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['queued', 'running', 'complete', 'failed', 'interrupted']),
+  "phase": zod.string().nullable(),
+  "params": zod.object({
+  "days": zod.number(),
+  "country": zod.string().nullable(),
+  "keywordLimit": zod.number(),
+  "locationCode": zod.number(),
+  "excludeBrand": zod.boolean()
+}),
+  "progressDone": zod.number(),
+  "progressTotal": zod.number(),
+  "stats": zod.record(zod.string(), zod.number()),
+  "error": zod.string().nullable(),
+  "createdAt": zod.string(),
+  "startedAt": zod.string().nullable(),
+  "finishedAt": zod.string().nullable()
+})
+
+
+/**
+ * @summary Clusters produced by a run (sorted by impressions)
+ */
+export const ListClusterRunClustersParams = zod.object({
+  "runId": zod.coerce.number()
+})
+
+export const ListClusterRunClustersResponseItem = zod.object({
+  "id": zod.number(),
+  "clusterKey": zod.number().describe('Sequential cluster number; -1 = unclustered keywords'),
+  "topic": zod.string(),
+  "quadrant": zod.union([zod.literal('opportunities'),zod.literal('stars'),zod.literal('niche'),zod.literal('underperformers'),zod.literal(null)]).nullable(),
+  "isOutlier": zod.boolean(),
+  "keywordCount": zod.number(),
+  "totalClicks": zod.number(),
+  "totalImpressions": zod.number(),
+  "blendedCtr": zod.number().describe('Blended CTR as a percentage'),
+  "avgPosition": zod.number().nullable(),
+  "keywords": zod.array(zod.object({
+  "query": zod.string(),
+  "clicks": zod.number(),
+  "impressions": zod.number(),
+  "ctr": zod.number(),
+  "position": zod.number(),
+  "serpUrls": zod.array(zod.object({
+  "url": zod.string(),
+  "position": zod.number()
+}))
+})),
+  "ownUrls": zod.array(zod.object({
+  "url": zod.string(),
+  "domain": zod.string(),
+  "keywordCount": zod.number(),
+  "bestPosition": zod.number().nullable(),
+  "avgPosition": zod.number().nullable()
+})),
+  "competitorUrls": zod.array(zod.object({
+  "url": zod.string(),
+  "domain": zod.string(),
+  "keywordCount": zod.number(),
+  "bestPosition": zod.number().nullable(),
+  "avgPosition": zod.number().nullable()
+}))
+})
+export const ListClusterRunClustersResponse = zod.array(ListClusterRunClustersResponseItem)
+
+
+/**
  * @summary Manually trigger a background job
  */
 export const RunJobParams = zod.object({
-  "jobName": zod.enum(['crawl_link_map', 'gsc_inventory_and_losers', 'optimize_queued_urls', 'crawl_wordpress', 'reembed_wordpress', 'semantic_linking', 'audit_orphans', 'audit_over_linked', 'audit_broken_links', 'run_full_pipeline', 'recompute_action_queue', 'weekly_digest'])
+  "jobName": zod.enum(['crawl_link_map', 'gsc_inventory_and_losers', 'optimize_queued_urls', 'crawl_wordpress', 'reembed_wordpress', 'semantic_linking', 'audit_orphans', 'audit_over_linked', 'audit_broken_links', 'run_full_pipeline', 'recompute_action_queue', 'weekly_digest', 'keyword_clustering'])
 })
 
 

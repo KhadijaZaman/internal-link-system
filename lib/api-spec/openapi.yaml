@@ -568,6 +568,81 @@ paths:
           description: Invalid input
         "502":
           description: Search Console request failed
+  /clustering/runs:
+    post:
+      operationId: startClusterRun
+      tags: [clustering]
+      summary: Start a keyword clustering run (paid DataForSEO SERP scrape)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartClusterRunInput"
+      responses:
+        "202":
+          description: Run queued and job started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterRun"
+        "400":
+          description: Invalid input
+        "409":
+          description: A clustering run is already in progress
+    get:
+      operationId: listClusterRuns
+      tags: [clustering]
+      summary: List recent clustering runs (newest first)
+      responses:
+        "200":
+          description: Recent runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ClusterRun"
+  /clustering/runs/{runId}:
+    get:
+      operationId: getClusterRun
+      tags: [clustering]
+      summary: Get one clustering run (status, progress, stats)
+      parameters:
+        - in: path
+          name: runId
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterRun"
+        "404":
+          description: Not found
+  /clustering/runs/{runId}/clusters:
+    get:
+      operationId: listClusterRunClusters
+      tags: [clustering]
+      summary: Clusters produced by a run (sorted by impressions)
+      parameters:
+        - in: path
+          name: runId
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Clusters
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KeywordCluster"
+        "404":
+          description: Not found
   /jobs/{jobName}/run:
     post:
       operationId: runJob
@@ -579,7 +654,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [crawl_link_map, gsc_inventory_and_losers, optimize_queued_urls, crawl_wordpress, reembed_wordpress, semantic_linking, audit_orphans, audit_over_linked, audit_broken_links, run_full_pipeline, recompute_action_queue, weekly_digest]
+            enum: [crawl_link_map, gsc_inventory_and_losers, optimize_queued_urls, crawl_wordpress, reembed_wordpress, semantic_linking, audit_orphans, audit_over_linked, audit_broken_links, run_full_pipeline, recompute_action_queue, weekly_digest, keyword_clustering]
       responses:
         "202":
           description: Job started
@@ -3305,3 +3380,104 @@ components:
       properties:
         title: { type: string, minLength: 1, maxLength: 300 }
         content: { type: string, minLength: 1, maxLength: 500000 }
+    StartClusterRunInput:
+      type: object
+      properties:
+        days: { type: integer, minimum: 7, maximum: 180, default: 90 }
+        country:
+          type: ["string", "null"]
+          pattern: "^[A-Za-z]{3}$"
+          description: ISO 3166-1 alpha-3 GSC country filter; omit for worldwide
+        keywordLimit: { type: integer, minimum: 10, maximum: 1000, default: 250 }
+        locationCode:
+          type: integer
+          default: 2840
+          description: DataForSEO SERP location_code (2840 = United States)
+        excludeBrand: { type: boolean, default: true }
+    ClusterRunParams:
+      type: object
+      required: [days, country, keywordLimit, locationCode, excludeBrand]
+      properties:
+        days: { type: integer }
+        country: { type: ["string", "null"] }
+        keywordLimit: { type: integer }
+        locationCode: { type: integer }
+        excludeBrand: { type: boolean }
+    ClusterRun:
+      type: object
+      required: [id, status, phase, params, progressDone, progressTotal, stats, error, createdAt, startedAt, finishedAt]
+      properties:
+        id: { type: integer }
+        status:
+          type: string
+          enum: [queued, running, complete, failed, interrupted]
+        phase: { type: ["string", "null"] }
+        params:
+          $ref: "#/components/schemas/ClusterRunParams"
+        progressDone: { type: integer }
+        progressTotal: { type: integer }
+        stats:
+          type: object
+          additionalProperties: { type: number }
+        error: { type: ["string", "null"] }
+        createdAt: { type: string }
+        startedAt: { type: ["string", "null"] }
+        finishedAt: { type: ["string", "null"] }
+    ClusterSerpUrl:
+      type: object
+      required: [url, position]
+      properties:
+        url: { type: string }
+        position: { type: number }
+    ClusterKeyword:
+      type: object
+      required: [query, clicks, impressions, ctr, position, serpUrls]
+      properties:
+        query: { type: string }
+        clicks: { type: integer }
+        impressions: { type: integer }
+        ctr: { type: number }
+        position: { type: number }
+        serpUrls:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClusterSerpUrl"
+    ClusterUrl:
+      type: object
+      required: [url, domain, keywordCount, bestPosition, avgPosition]
+      properties:
+        url: { type: string }
+        domain: { type: string }
+        keywordCount: { type: integer }
+        bestPosition: { type: ["number", "null"] }
+        avgPosition: { type: ["number", "null"] }
+    KeywordCluster:
+      type: object
+      required: [id, clusterKey, topic, quadrant, isOutlier, keywordCount, totalClicks, totalImpressions, blendedCtr, avgPosition, keywords, ownUrls, competitorUrls]
+      properties:
+        id: { type: integer }
+        clusterKey:
+          type: integer
+          description: Sequential cluster number; -1 = unclustered keywords
+        topic: { type: string }
+        quadrant:
+          type: ["string", "null"]
+          enum: [opportunities, stars, niche, underperformers, null]
+        isOutlier: { type: boolean }
+        keywordCount: { type: integer }
+        totalClicks: { type: integer }
+        totalImpressions: { type: integer }
+        blendedCtr: { type: number, description: Blended CTR as a percentage }
+        avgPosition: { type: ["number", "null"] }
+        keywords:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClusterKeyword"
+        ownUrls:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClusterUrl"
+        competitorUrls:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClusterUrl"

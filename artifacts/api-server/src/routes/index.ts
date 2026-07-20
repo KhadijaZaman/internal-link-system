@@ -32,6 +32,7 @@ import actionsRouter from "./actions";
 import impactRouter from "./impact";
 import healthScoreRouter from "./healthScore";
 import digestsRouter from "./digests";
+import clusteringRouter from "./clustering";
 
 const router: IRouter = Router();
 
@@ -68,5 +69,6 @@ router.use(actionsRouter);
 router.use(impactRouter);
 router.use(healthScoreRouter);
 router.use(digestsRouter);
+router.use(clusteringRouter);
 
 export default router;

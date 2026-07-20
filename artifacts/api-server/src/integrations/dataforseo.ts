@@ -207,6 +207,117 @@ export async function fetchSearchVolumes(
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Batch SERP scraping via the cheap async task queue (task_post + task_get).
+// Used by the keyword clustering job. ~$0.0006 per SERP at standard priority.
+// ---------------------------------------------------------------------------
+
+function dfsAuth(): string {
+  const login = process.env["DATAFORSEO_LOGIN"];
+  const password = process.env["DATAFORSEO_PASSWORD"];
+  if (!login || !password) {
+    // Paid pipeline — fail loudly rather than silently returning nothing.
+    throw new Error("DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD must be set");
+  }
+  return Buffer.from(`${login}:${password}`).toString("base64");
+}
+
+/**
+ * Post SERP scrape tasks for the given keywords (batches of 100).
+ * Returns the DataForSEO task ids. Throws on transport/auth failure.
+ */
+export async function postSerpTasks(
+  keywords: string[],
+  locationCode: number,
+): Promise<string[]> {
+  const auth = dfsAuth();
+  const taskIds: string[] = [];
+  for (let i = 0; i < keywords.length; i += 100) {
+    const batch = keywords.slice(i, i + 100);
+    const res = await fetch(
+      "https://api.dataforseo.com/v3/serp/google/organic/task_post",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${auth}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(
+          batch.map((kw) => ({
+            keyword: kw,
+            location_code: locationCode,
+            language_code: "en",
+            device: "desktop",
+          })),
+        ),
+      },
+    );
+    if (!res.ok) throw new Error(`DataForSEO task_post HTTP ${res.status}`);
+    const data = (await res.json()) as {
+      status_code?: number;
+      status_message?: string;
+      tasks?: Array<{ id?: string; status_code?: number; status_message?: string }>;
+    };
+    if ((data.status_code ?? 0) !== 20000) {
+      throw new Error(
+        `DataForSEO task_post failed: ${data.status_message ?? data.status_code}`,
+      );
+    }
+    for (const task of data.tasks ?? []) {
+      // 20100 = "Task Created"
+      if (task.id && (task.status_code ?? 0) < 40000) taskIds.push(task.id);
+    }
+  }
+  return taskIds;
+}
+
+export type SerpTaskFetch =
+  | { status: "pending" }
+  | { status: "failed"; message: string }
+  | { status: "ok"; keyword: string; urls: Array<{ url: string; position: number }> };
+
+/**
+ * Fetch one posted SERP task's result. "pending" means the task hasn't been
+ * processed yet — re-poll later. Only organic items are returned.
+ */
+export async function fetchSerpTaskResult(taskId: string): Promise<SerpTaskFetch> {
+  const auth = dfsAuth();
+  const res = await fetch(
+    `https://api.dataforseo.com/v3/serp/google/organic/task_get/regular/${taskId}`,
+    { headers: { Authorization: `Basic ${auth}` } },
+  );
+  if (!res.ok) return { status: "failed", message: `HTTP ${res.status}` };
+  const data = (await res.json()) as {
+    tasks?: Array<{
+      status_code?: number;
+      status_message?: string;
+      result?: Array<{
+        keyword?: string;
+        items?: Array<{ type?: string; rank_absolute?: number; url?: string }>;
+      }>;
+    }>;
+  };
+  const task = data.tasks?.[0];
+  if (!task) return { status: "failed", message: "no task in response" };
+  const code = task.status_code ?? 0;
+  // 20100 = created, 40601 = task handed, 40602 = task in queue — all pending.
+  if (code === 20100 || code === 40601 || code === 40602) return { status: "pending" };
+  if (code !== 20000) {
+    const msg = (task.status_message ?? "").toLowerCase();
+    if (msg.includes("queue") || msg.includes("handed")) return { status: "pending" };
+    return { status: "failed", message: task.status_message ?? String(code) };
+  }
+  const result = task.result?.[0];
+  if (!result) return { status: "failed", message: "task ok but no result" };
+  const urls: Array<{ url: string; position: number }> = [];
+  for (const item of result.items ?? []) {
+    if (item.type === "organic" && item.url) {
+      urls.push({ url: item.url, position: item.rank_absolute ?? urls.length + 1 });
+    }
+  }
+  return { status: "ok", keyword: result.keyword ?? "", urls };
+}
+
 export async function fetchSerpTop5(query: string): Promise<SerpResult[]> {
   const login = process.env["DATAFORSEO_LOGIN"];
   const password = process.env["DATAFORSEO_PASSWORD"];

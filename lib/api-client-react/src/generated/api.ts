@@ -26,6 +26,7 @@ import type {
   AuditReport,
   AuthSession,
   AuthoritySnapshot,
+  ClusterRun,
   ContentAuditTextInput,
   ContentEntitiesAudit,
   ContentNgramsAudit,
@@ -82,6 +83,7 @@ import type {
   JobStatus,
   KbDocument,
   KbDocumentInput,
+  KeywordCluster,
   KeywordReport,
   KnowledgeGraph,
   LinkGraph,
@@ -106,6 +108,7 @@ import type {
   PageTargetKeyword,
   PruningReport,
   QueryInsights,
+  StartClusterRunInput,
   StructuralSuggestInput,
   StructuralSuggestResult,
   StructuralTargets,
@@ -2340,7 +2343,309 @@ export function useGetKeywordReport<TData = Awaited<ReturnType<typeof getKeyword
 
 
 
-export const getRunJobUrl = (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest',) => {
+export const getStartClusterRunUrl = () => {
+
+
+
+
+  return `/api/clustering/runs`
+}
+
+/**
+ * @summary Start a keyword clustering run (paid DataForSEO SERP scrape)
+ */
+export const startClusterRun = async (startClusterRunInput: StartClusterRunInput, options?: RequestInit): Promise<ClusterRun> => {
+
+  return customFetch<ClusterRun>(getStartClusterRunUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      startClusterRunInput,)
+  }
+);}
+
+
+
+
+export const getStartClusterRunMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startClusterRun>>, TError,{data: BodyType<StartClusterRunInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startClusterRun>>, TError,{data: BodyType<StartClusterRunInput>}, TContext> => {
+
+const mutationKey = ['startClusterRun'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startClusterRun>>, {data: BodyType<StartClusterRunInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  startClusterRun(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartClusterRunMutationResult = NonNullable<Awaited<ReturnType<typeof startClusterRun>>>
+    export type StartClusterRunMutationBody = BodyType<StartClusterRunInput>
+    export type StartClusterRunMutationError = ErrorType<void>
+
+    /**
+ * @summary Start a keyword clustering run (paid DataForSEO SERP scrape)
+ */
+export const useStartClusterRun = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startClusterRun>>, TError,{data: BodyType<StartClusterRunInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startClusterRun>>,
+        TError,
+        {data: BodyType<StartClusterRunInput>},
+        TContext
+      > => {
+      return useMutation(getStartClusterRunMutationOptions(options));
+    }
+
+export const getListClusterRunsUrl = () => {
+
+
+
+
+  return `/api/clustering/runs`
+}
+
+/**
+ * @summary List recent clustering runs (newest first)
+ */
+export const listClusterRuns = async ( options?: RequestInit): Promise<ClusterRun[]> => {
+
+  return customFetch<ClusterRun[]>(getListClusterRunsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListClusterRunsQueryKey = () => {
+    return [
+    `/api/clustering/runs`
+    ] as const;
+    }
+
+
+export const getListClusterRunsQueryOptions = <TData = Awaited<ReturnType<typeof listClusterRuns>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listClusterRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListClusterRunsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listClusterRuns>>> = ({ signal }) => listClusterRuns({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listClusterRuns>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListClusterRunsQueryResult = NonNullable<Awaited<ReturnType<typeof listClusterRuns>>>
+export type ListClusterRunsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List recent clustering runs (newest first)
+ */
+
+export function useListClusterRuns<TData = Awaited<ReturnType<typeof listClusterRuns>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listClusterRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListClusterRunsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetClusterRunUrl = (runId: number,) => {
+
+
+
+
+  return `/api/clustering/runs/${runId}`
+}
+
+/**
+ * @summary Get one clustering run (status, progress, stats)
+ */
+export const getClusterRun = async (runId: number, options?: RequestInit): Promise<ClusterRun> => {
+
+  return customFetch<ClusterRun>(getGetClusterRunUrl(runId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetClusterRunQueryKey = (runId: number,) => {
+    return [
+    `/api/clustering/runs/${runId}`
+    ] as const;
+    }
+
+
+export const getGetClusterRunQueryOptions = <TData = Awaited<ReturnType<typeof getClusterRun>>, TError = ErrorType<void>>(runId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getClusterRun>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetClusterRunQueryKey(runId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getClusterRun>>> = ({ signal }) => getClusterRun(runId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(runId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getClusterRun>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetClusterRunQueryResult = NonNullable<Awaited<ReturnType<typeof getClusterRun>>>
+export type GetClusterRunQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get one clustering run (status, progress, stats)
+ */
+
+export function useGetClusterRun<TData = Awaited<ReturnType<typeof getClusterRun>>, TError = ErrorType<void>>(
+ runId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getClusterRun>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetClusterRunQueryOptions(runId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListClusterRunClustersUrl = (runId: number,) => {
+
+
+
+
+  return `/api/clustering/runs/${runId}/clusters`
+}
+
+/**
+ * @summary Clusters produced by a run (sorted by impressions)
+ */
+export const listClusterRunClusters = async (runId: number, options?: RequestInit): Promise<KeywordCluster[]> => {
+
+  return customFetch<KeywordCluster[]>(getListClusterRunClustersUrl(runId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListClusterRunClustersQueryKey = (runId: number,) => {
+    return [
+    `/api/clustering/runs/${runId}/clusters`
+    ] as const;
+    }
+
+
+export const getListClusterRunClustersQueryOptions = <TData = Awaited<ReturnType<typeof listClusterRunClusters>>, TError = ErrorType<void>>(runId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listClusterRunClusters>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListClusterRunClustersQueryKey(runId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listClusterRunClusters>>> = ({ signal }) => listClusterRunClusters(runId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(runId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listClusterRunClusters>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListClusterRunClustersQueryResult = NonNullable<Awaited<ReturnType<typeof listClusterRunClusters>>>
+export type ListClusterRunClustersQueryError = ErrorType<void>
+
+
+/**
+ * @summary Clusters produced by a run (sorted by impressions)
+ */
+
+export function useListClusterRunClusters<TData = Awaited<ReturnType<typeof listClusterRunClusters>>, TError = ErrorType<void>>(
+ runId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listClusterRunClusters>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListClusterRunClustersQueryOptions(runId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getRunJobUrl = (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering',) => {
 
 
 
@@ -2351,7 +2656,7 @@ export const getRunJobUrl = (jobName: 'crawl_link_map' | 'gsc_inventory_and_lose
 /**
  * @summary Manually trigger a background job
  */
-export const runJob = async (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest', options?: RequestInit): Promise<JobRunResult> => {
+export const runJob = async (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering', options?: RequestInit): Promise<JobRunResult> => {
 
   return customFetch<JobRunResult>(getRunJobUrl(jobName),
   {
@@ -2366,8 +2671,8 @@ export const runJob = async (jobName: 'crawl_link_map' | 'gsc_inventory_and_lose
 
 
 export const getRunJobMutationOptions = <TError = ErrorType<JobRunResult>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest'}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest'}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering'}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering'}, TContext> => {
 
 const mutationKey = ['runJob'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -2379,7 +2684,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runJob>>, {jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest'}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runJob>>, {jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering'}> = (props) => {
           const {jobName} = props ?? {};
 
           return  runJob(jobName,requestOptions)
@@ -2400,11 +2705,11 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
  * @summary Manually trigger a background job
  */
 export const useRunJob = <TError = ErrorType<JobRunResult>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest'}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering'}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof runJob>>,
         TError,
-        {jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest'},
+        {jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering'},
         TContext
       > => {
       return useMutation(getRunJobMutationOptions(options));

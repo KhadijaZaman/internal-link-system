@@ -9,6 +9,7 @@ import { runAuditOrphans, runAuditOverLinked, runAuditBrokenLinks } from "./audi
 import { runFullPipeline } from "./runFullPipeline";
 import { runRecomputeActionQueue } from "../services/actionQueue";
 import { runWeeklyDigest } from "../services/digest";
+import { runKeywordClustering } from "./keywordClustering";
 import { logger } from "../lib/logger";
 
 export function setupJobs(): void {
@@ -30,6 +31,8 @@ export function setupJobs(): void {
   registerJob("recompute_action_queue", runRecomputeActionQueue);
   // Pure SQL weekly summary — no AI spend.
   registerJob("weekly_digest", runWeeklyDigest);
+  // Paid DataForSEO SERP scraping — on-demand only, NEVER on a cron.
+  registerJob("keyword_clustering", runKeywordClustering);
 }
 
 export function startScheduler(): void {

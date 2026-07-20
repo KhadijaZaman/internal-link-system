@@ -16,5 +16,5 @@
 - [Prod→dev DB copy technique](prod-db-copy-technique.md) — bulk-copy prod via read replica: base64 JSON reads + jsonb_populate_recordset, 128KB arg cap, skip vector cols.
 - [Publish DB copy sequence lag](publish-db-copy-sequences.md) — "Create production database" can leave serial sequences behind max(id) → duplicate-key on every INSERT; startup resync self-heals.
 - [Autoscale kills long jobs](autoscale-long-jobs.md) — instance recycles once polling stops; heartbeat + "interrupted" status + self-ping mitigate; Reserved VM is the real fix.
-- [Graph clustering: Louvain not LP](graph-clustering-louvain.md) — label propagation collapses the dense content-link graph into one blob; use the deterministic Louvain in the knowledge-graph route.
+- [Graph clustering: Louvain not LP](graph-clustering-louvain.md) — label propagation collapses the dense content-link graph into one blob; use the deterministic Louvain implementation.
 - [E2E testing auth bridge](e2e-test-auth-bridge.md) — testing subagent can't read ADMIN_PASSWORD; mint session via bash, pass cookie via addCookies url-form, logout after.

@@ -1791,6 +1791,125 @@ export interface KbDocumentInput {
   content: string;
 }
 
+export interface StartClusterRunInput {
+  /**
+     * @minimum 7
+     * @maximum 180
+     */
+  days?: number;
+  /**
+     * ISO 3166-1 alpha-3 GSC country filter; omit for worldwide
+     * @nullable
+     * @pattern ^[A-Za-z]{3}$
+     */
+  country?: string | null;
+  /**
+     * @minimum 10
+     * @maximum 1000
+     */
+  keywordLimit?: number;
+  /** DataForSEO SERP location_code (2840 = United States) */
+  locationCode?: number;
+  excludeBrand?: boolean;
+}
+
+export interface ClusterRunParams {
+  days: number;
+  /** @nullable */
+  country: string | null;
+  keywordLimit: number;
+  locationCode: number;
+  excludeBrand: boolean;
+}
+
+export type ClusterRunStatus = typeof ClusterRunStatus[keyof typeof ClusterRunStatus];
+
+
+export const ClusterRunStatus = {
+  queued: 'queued',
+  running: 'running',
+  complete: 'complete',
+  failed: 'failed',
+  interrupted: 'interrupted',
+} as const;
+
+export type ClusterRunStats = {[key: string]: number};
+
+export interface ClusterRun {
+  id: number;
+  status: ClusterRunStatus;
+  /** @nullable */
+  phase: string | null;
+  params: ClusterRunParams;
+  progressDone: number;
+  progressTotal: number;
+  stats: ClusterRunStats;
+  /** @nullable */
+  error: string | null;
+  createdAt: string;
+  /** @nullable */
+  startedAt: string | null;
+  /** @nullable */
+  finishedAt: string | null;
+}
+
+export interface ClusterSerpUrl {
+  url: string;
+  position: number;
+}
+
+export interface ClusterKeyword {
+  query: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  serpUrls: ClusterSerpUrl[];
+}
+
+export interface ClusterUrl {
+  url: string;
+  domain: string;
+  keywordCount: number;
+  /** @nullable */
+  bestPosition: number | null;
+  /** @nullable */
+  avgPosition: number | null;
+}
+
+/**
+ * @nullable
+ */
+export type KeywordClusterQuadrant = typeof KeywordClusterQuadrant[keyof typeof KeywordClusterQuadrant] | null;
+
+
+export const KeywordClusterQuadrant = {
+  opportunities: 'opportunities',
+  stars: 'stars',
+  niche: 'niche',
+  underperformers: 'underperformers',
+} as const;
+
+export interface KeywordCluster {
+  id: number;
+  /** Sequential cluster number; -1 = unclustered keywords */
+  clusterKey: number;
+  topic: string;
+  /** @nullable */
+  quadrant: KeywordClusterQuadrant;
+  isOutlier: boolean;
+  keywordCount: number;
+  totalClicks: number;
+  totalImpressions: number;
+  /** Blended CTR as a percentage */
+  blendedCtr: number;
+  /** @nullable */
+  avgPosition: number | null;
+  keywords: ClusterKeyword[];
+  ownUrls: ClusterUrl[];
+  competitorUrls: ClusterUrl[];
+}
+
 export type StartDateParameter = string;
 
 export type EndDateParameter = string;
