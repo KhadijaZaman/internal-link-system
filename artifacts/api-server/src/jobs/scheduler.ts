@@ -13,6 +13,7 @@ import { runKeywordClustering } from "./keywordClustering";
 import { runMigrateUrlHygiene } from "./migrateUrlHygiene";
 import { runSyncGa4Pages } from "./syncGa4Pages";
 import { runEmbedKbChunks } from "./embedKbChunks";
+import { runSyncKeywordSheet } from "./syncKeywordSheet";
 import { logger } from "../lib/logger";
 
 export function setupJobs(): void {
@@ -43,6 +44,9 @@ export function setupJobs(): void {
   // Drains NULL-embedding KB chunks; triggered by KB uploads + a 10-min
   // sweep cron (no-ops when nothing is pending/partial).
   registerJob("embed_kb_chunks", runEmbedKbChunks);
+  // Daily refresh of the persistent Target Keyword Daily Movement sheet —
+  // GSC + Sheets only, no paid spend.
+  registerJob("sync_keyword_sheet", runSyncKeywordSheet);
 }
 
 export function startScheduler(): void {
@@ -77,6 +81,9 @@ export function startScheduler(): void {
   cron.schedule("0 1 1 * *", () => void runJob("reembed_wordpress"), { timezone: "UTC" });
   // Sitemap crawl kept as fallback weekly cross-check, Saturday 02:00 UTC
   cron.schedule("0 2 * * 6", () => void runJob("crawl_link_map"), { timezone: "UTC" });
+  // Daily 06:00 UTC — refresh the persistent keyword-movement Google Sheet
+  // (GSC daily data through today-2 is settled by then).
+  cron.schedule("0 6 * * *", () => void runJob("sync_keyword_sheet"), { timezone: "UTC" });
   // Friday 10:00 UTC — weekly digest (after Thursday's audits have refreshed signals)
   cron.schedule("0 10 * * 5", () => void runJob("weekly_digest"), { timezone: "UTC" });
   logger.info(

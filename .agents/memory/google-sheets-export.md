@@ -19,8 +19,16 @@ user asks for a file.
 `connectors.proxy("google-sheet", path)`, which handles identity + token refresh in both dev and
 deployments (`REPL_IDENTITY` → `WEB_REPL_RENEWAL` fallback). Reuse it for any new server-side
 sheet work instead of re-deriving the raw credential-proxy approach. The "Target Keyword Daily
-Movement" workbook template lives as code in `services/keywordMovementSheet.ts` (exported via
-POST /api/tracked-submissions/export-sheet + the My Submissions "Export to Sheets" button).
+Movement" workbook is PERSISTENT: its spreadsheet id is stored in `app_state`
+(`keyword_movement_sheet_id`) and every export / daily `sync_keyword_sheet` job run rewrites the
+SAME sheet — never create per-run snapshot spreadsheets for it again (that was a user complaint).
+
+**In-place tab replacement pattern (Sheets v4):** one atomic `:batchUpdate` — rename all old tabs
+to `__old_<sheetId>` (avoids title collisions), `addSheet` the new tabs with fresh sheetIds
+(max old id + 1..n) and sized grids, `deleteSheet` the old ids, `updateSpreadsheetProperties`
+title. Add-before-delete keeps the doc from ever having zero sheets. Only fall back to creating a
+new spreadsheet on 403/404 of the stored id (deleted from Drive) — rethrow other errors or a
+transient failure spawns duplicates.
 
 **How to create/write a sheet (one-off from the sandbox, no app wiring or npm install):**
 - In the `code_execution` sandbox: `const c = (await listConnections('google-sheet'))[0]`.

@@ -8,7 +8,13 @@
 //     Position / Position change (+ = moved up), with one column per day.
 //
 // Data source is Search Console only — no crawling, no paid fetches, no AI.
-import { db, trackedSubmissionsTable } from "@workspace/db";
+//
+// The spreadsheet is PERSISTENT: the first export creates it and stores its id
+// in app_state; every later export (and the daily sync_keyword_sheet job)
+// rewrites the SAME spreadsheet in place, so the operator's bookmarked sheet
+// rolls forward every day instead of going stale.
+import { db, trackedSubmissionsTable, appStateTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import {
   queryGscDimension,
   pageVariantsRegex,
@@ -245,6 +251,50 @@ export class NoTrackedKeywordsError extends Error {
   }
 }
 
+const SHEET_ID_STATE_KEY = "keyword_movement_sheet_id";
+
+async function loadStoredSheetId(): Promise<string | null> {
+  const [row] = await db
+    .select()
+    .from(appStateTable)
+    .where(eq(appStateTable.key, SHEET_ID_STATE_KEY))
+    .limit(1);
+  return row?.value ?? null;
+}
+
+async function storeSheetId(id: string): Promise<void> {
+  await db
+    .insert(appStateTable)
+    .values({ key: SHEET_ID_STATE_KEY, value: id, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: appStateTable.key,
+      set: { value: id, updatedAt: new Date() },
+    });
+}
+
+interface ExistingSheetMeta {
+  spreadsheetUrl?: string;
+  sheets?: Array<{ properties?: { sheetId?: number; title?: string } }>;
+}
+
+/**
+ * Fetch the stored spreadsheet's tab metadata. Returns null when the sheet is
+ * gone or inaccessible (deleted from Drive / permission lost) so the caller
+ * can create a fresh one; any other failure (network, 5xx) is rethrown so a
+ * transient error never silently spawns a duplicate spreadsheet.
+ */
+async function fetchExistingSheet(id: string): Promise<ExistingSheetMeta | null> {
+  try {
+    return await sheetsRequest<ExistingSheetMeta>(
+      `/v4/spreadsheets/${id}?fields=spreadsheetUrl,sheets.properties(sheetId,title)`,
+    );
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/failed \((403|404)\)/.test(msg)) return null;
+    throw e;
+  }
+}
+
 export async function exportKeywordMovementSheet(days: number): Promise<{
   url: string;
   title: string;
@@ -304,69 +354,140 @@ export async function exportKeywordMovementSheet(days: number): Promise<{
     sortedSeries.map((s) => sanitizeTabTitle(s.keyword)),
   );
 
-  // Size grids up front — writing beyond a tab's grid 400s.
-  const created = await sheetsRequest<{
-    spreadsheetId: string;
-    spreadsheetUrl: string;
-  }>("/v4/spreadsheets", {
+  const summaryGrid = {
+    rowCount: sortedSummaries.length + 5,
+    columnCount: 11,
+    frozenRowCount: 1,
+  };
+  const keywordGrid = {
+    rowCount: 12,
+    columnCount: dates.length + 2,
+    frozenColumnCount: 1,
+  };
+
+  // ---- Create the spreadsheet, or rewrite the stored one in place ----
+  const storedId = await loadStoredSheetId();
+  const existing = storedId ? await fetchExistingSheet(storedId) : null;
+
+  let spreadsheetId: string;
+  let spreadsheetUrl: string | undefined;
+  let summarySheetId: number;
+  let keywordSheetIds: number[];
+
+  if (storedId && existing) {
+    // Rewrite in place with one atomic batchUpdate: rename the old tabs out
+    // of the way (title conflicts), add the new set, delete the old set,
+    // refresh the doc title. Requests apply in order; add-before-delete keeps
+    // the spreadsheet from ever having zero sheets.
+    spreadsheetId = storedId;
+    spreadsheetUrl = existing.spreadsheetUrl;
+    const oldSheets = (existing.sheets ?? [])
+      .map((s) => s.properties?.sheetId)
+      .filter((id): id is number => typeof id === "number");
+    const maxOldId = oldSheets.reduce((m, id) => Math.max(m, id), 0);
+    summarySheetId = maxOldId + 1;
+    keywordSheetIds = tabTitles.map((_, i) => maxOldId + 2 + i);
+
+    await sheetsRequest(`/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+      method: "POST",
+      body: {
+        requests: [
+          ...oldSheets.map((sheetId) => ({
+            updateSheetProperties: {
+              properties: { sheetId, title: `__old_${sheetId}` },
+              fields: "title",
+            },
+          })),
+          {
+            addSheet: {
+              properties: {
+                sheetId: summarySheetId,
+                title: "Keyword summary",
+                index: 0,
+                gridProperties: summaryGrid,
+              },
+            },
+          },
+          ...tabTitles.map((tabTitle, i) => ({
+            addSheet: {
+              properties: {
+                sheetId: keywordSheetIds[i]!,
+                title: tabTitle,
+                index: i + 1,
+                gridProperties: keywordGrid,
+              },
+            },
+          })),
+          ...oldSheets.map((sheetId) => ({ deleteSheet: { sheetId } })),
+          {
+            updateSpreadsheetProperties: {
+              properties: { title },
+              fields: "title",
+            },
+          },
+        ],
+      },
+    });
+  } else {
+    // First export ever, or the stored sheet was deleted from Drive.
+    // Size grids up front — writing beyond a tab's grid 400s.
+    summarySheetId = 0;
+    keywordSheetIds = tabTitles.map((_, i) => 1000 + i);
+    const created = await sheetsRequest<{
+      spreadsheetId: string;
+      spreadsheetUrl: string;
+    }>("/v4/spreadsheets", {
+      method: "POST",
+      body: {
+        properties: { title },
+        sheets: [
+          {
+            properties: {
+              sheetId: summarySheetId,
+              title: "Keyword summary",
+              gridProperties: summaryGrid,
+            },
+          },
+          ...tabTitles.map((tabTitle, i) => ({
+            properties: {
+              sheetId: keywordSheetIds[i]!,
+              title: tabTitle,
+              gridProperties: keywordGrid,
+            },
+          })),
+        ],
+      },
+    });
+    spreadsheetId = created.spreadsheetId;
+    spreadsheetUrl = created.spreadsheetUrl;
+    await storeSheetId(spreadsheetId);
+  }
+
+  await sheetsRequest(`/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
     method: "POST",
     body: {
-      properties: { title },
-      sheets: [
+      valueInputOption: "RAW",
+      data: [
         {
-          properties: {
-            sheetId: 0,
-            title: "Keyword summary",
-            gridProperties: {
-              rowCount: sortedSummaries.length + 5,
-              columnCount: 11,
-              frozenRowCount: 1,
-            },
-          },
+          range: "'Keyword summary'!A1",
+          values: summaryValues(sortedSummaries, rangeLabel),
         },
-        ...tabTitles.map((tabTitle, i) => ({
-          properties: {
-            sheetId: 1000 + i,
-            title: tabTitle,
-            gridProperties: {
-              rowCount: 12,
-              columnCount: dates.length + 2,
-              frozenColumnCount: 1,
-            },
-          },
+        ...sortedSeries.map((s, i) => ({
+          range: `'${tabTitles[i]!.replace(/'/g, "''")}'!A1`,
+          values: keywordTabValues(s, dates),
         })),
       ],
     },
   });
 
-  await sheetsRequest(
-    `/v4/spreadsheets/${created.spreadsheetId}/values:batchUpdate`,
-    {
-      method: "POST",
-      body: {
-        valueInputOption: "RAW",
-        data: [
-          {
-            range: "'Keyword summary'!A1",
-            values: summaryValues(sortedSummaries, rangeLabel),
-          },
-          ...sortedSeries.map((s, i) => ({
-            range: `'${tabTitles[i]!.replace(/'/g, "''")}'!A1`,
-            values: keywordTabValues(s, dates),
-          })),
-        ],
-      },
-    },
-  );
-
   // Bold headers: summary header row + label column on each keyword tab.
-  await sheetsRequest(`/v4/spreadsheets/${created.spreadsheetId}:batchUpdate`, {
+  await sheetsRequest(`/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
     method: "POST",
     body: {
       requests: [
         {
           repeatCell: {
-            range: { sheetId: 0, startRowIndex: 0, endRowIndex: 1 },
+            range: { sheetId: summarySheetId, startRowIndex: 0, endRowIndex: 1 },
             cell: { userEnteredFormat: { textFormat: { bold: true } } },
             fields: "userEnteredFormat.textFormat.bold",
           },
@@ -374,17 +495,17 @@ export async function exportKeywordMovementSheet(days: number): Promise<{
         {
           autoResizeDimensions: {
             dimensions: {
-              sheetId: 0,
+              sheetId: summarySheetId,
               dimension: "COLUMNS",
               startIndex: 0,
               endIndex: 11,
             },
           },
         },
-        ...tabTitles.map((_, i) => ({
+        ...keywordSheetIds.map((sheetId) => ({
           repeatCell: {
             range: {
-              sheetId: 1000 + i,
+              sheetId,
               startColumnIndex: 0,
               endColumnIndex: 1,
             },
@@ -397,9 +518,9 @@ export async function exportKeywordMovementSheet(days: number): Promise<{
   });
 
   // Strip the account-specific ?ouid=... param — hand back a clean /edit URL.
-  const cleanUrl = created.spreadsheetUrl
-    ? created.spreadsheetUrl.split("?")[0]!
-    : `https://docs.google.com/spreadsheets/d/${created.spreadsheetId}/edit`;
+  const cleanUrl = spreadsheetUrl
+    ? spreadsheetUrl.split("?")[0]!
+    : `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
 
   return { url: cleanUrl, title, keywordCount: tracked.length };
 }

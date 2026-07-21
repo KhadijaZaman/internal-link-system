@@ -90,6 +90,12 @@ const JOB_LABELS: Record<string, JobLabel> = {
     route: "/report/pages",
     routeLabel: "Open Page Report",
   },
+  sync_keyword_sheet: {
+    title: "Refresh Keyword Movement Sheet",
+    description: "Updates the persistent Target Keyword Daily Movement Google Sheet with the latest Search Console data (through 2 days ago — Google's data lag). Runs daily at 06:00 UTC; the My Submissions export button updates the same sheet.",
+    route: "/submissions",
+    routeLabel: "Open My Submissions",
+  },
 };
 
 export function getJobLabel(name: string): JobLabel {

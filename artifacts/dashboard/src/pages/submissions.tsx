@@ -320,7 +320,7 @@ export default function Submissions() {
         onSuccess: (result) => {
           window.open(result.url, "_blank", "noopener,noreferrer");
           toast({
-            title: "Google Sheet created",
+            title: "Google Sheet updated",
             description: (
               <a
                 href={result.url}
