@@ -16,6 +16,7 @@ import { runEmbedKbChunks } from "./embedKbChunks";
 import { runSyncKeywordSheet } from "./syncKeywordSheet";
 import { runAnalyzeSimilarity } from "./analyzeSimilarity";
 import { runSyncBingPages } from "./syncBingPages";
+import { runGenerateTopicalMap } from "./generateTopicalMap";
 import { logger } from "../lib/logger";
 
 export function setupJobs(): void {
@@ -54,6 +55,9 @@ export function setupJobs(): void {
   registerJob("analyze_similarity", runAnalyzeSimilarity);
   // Bing Webmaster API page/query stats → bing_* tables + pages rollups.
   registerJob("sync_bing_pages", runSyncBingPages);
+  // Topical Authority Map generation — triggered by POST /topical-map/generate,
+  // never on a cron (Claude + OpenAI embedding spend).
+  registerJob("generate_topical_map", runGenerateTopicalMap);
 }
 
 export function startScheduler(): void {

@@ -1051,6 +1051,259 @@ export const GetSimilarityRunResponse = zod.object({
 
 
 /**
+ * @summary Create a new topical authority map run from a source-context charter and start generation
+ */
+export const generateTopicalMapBodySourceContextMin = 20;
+export const generateTopicalMapBodySourceContextMax = 4000;
+
+export const generateTopicalMapBodyCentralEntityMin = 2;
+export const generateTopicalMapBodyCentralEntityMax = 200;
+
+export const generateTopicalMapBodyEntitySynonymsItemMax = 200;
+
+export const generateTopicalMapBodyEntitySynonymsMax = 20;
+
+export const generateTopicalMapBodyCentralSearchIntentMin = 10;
+export const generateTopicalMapBodyCentralSearchIntentMax = 600;
+
+export const generateTopicalMapBodyBordersWillItemMax = 300;
+
+export const generateTopicalMapBodyBordersWillMax = 40;
+
+export const generateTopicalMapBodyBordersWillNotItemMax = 300;
+
+export const generateTopicalMapBodyBordersWillNotMax = 40;
+
+
+
+export const GenerateTopicalMapBody = zod.object({
+  "sourceContext": zod.string().min(generateTopicalMapBodySourceContextMin).max(generateTopicalMapBodySourceContextMax).describe('One-paragraph charter — who the business is, what it sells, monetization bridge'),
+  "centralEntity": zod.string().min(generateTopicalMapBodyCentralEntityMin).max(generateTopicalMapBodyCentralEntityMax),
+  "entitySynonyms": zod.array(zod.string().max(generateTopicalMapBodyEntitySynonymsItemMax)).max(generateTopicalMapBodyEntitySynonymsMax).optional(),
+  "centralSearchIntent": zod.string().min(generateTopicalMapBodyCentralSearchIntentMin).max(generateTopicalMapBodyCentralSearchIntentMax).describe('One sentence with predicates (know\/compare\/buy…)'),
+  "bordersWill": zod.array(zod.string().max(generateTopicalMapBodyBordersWillItemMax)).max(generateTopicalMapBodyBordersWillMax).optional(),
+  "bordersWillNot": zod.array(zod.string().max(generateTopicalMapBodyBordersWillNotItemMax)).max(generateTopicalMapBodyBordersWillNotMax).optional()
+})
+
+
+/**
+ * @summary List recent topical map runs (newest first, no nodes)
+ */
+export const ListTopicalMapRunsResponseItem = zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['queued', 'running', 'complete', 'failed', 'interrupted']),
+  "phase": zod.string().nullable(),
+  "progressDone": zod.number(),
+  "progressTotal": zod.number(),
+  "error": zod.string().nullable(),
+  "sourceContext": zod.string(),
+  "centralEntity": zod.string(),
+  "entitySynonyms": zod.array(zod.string()),
+  "centralSearchIntent": zod.string(),
+  "bordersWill": zod.array(zod.string()),
+  "bordersWillNot": zod.array(zod.string()),
+  "stats": zod.record(zod.string(), zod.number()),
+  "createdAt": zod.string(),
+  "startedAt": zod.string().nullable(),
+  "finishedAt": zod.string().nullable()
+})
+export const ListTopicalMapRunsResponse = zod.array(ListTopicalMapRunsResponseItem)
+
+
+/**
+ * @summary Get one topical map run with its full node tree, bridges, and coverage rollup
+ */
+export const GetTopicalMapRunParams = zod.object({
+  "mapId": zod.coerce.number()
+})
+
+export const GetTopicalMapRunResponse = zod.object({
+  "map": zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['queued', 'running', 'complete', 'failed', 'interrupted']),
+  "phase": zod.string().nullable(),
+  "progressDone": zod.number(),
+  "progressTotal": zod.number(),
+  "error": zod.string().nullable(),
+  "sourceContext": zod.string(),
+  "centralEntity": zod.string(),
+  "entitySynonyms": zod.array(zod.string()),
+  "centralSearchIntent": zod.string(),
+  "bordersWill": zod.array(zod.string()),
+  "bordersWillNot": zod.array(zod.string()),
+  "stats": zod.record(zod.string(), zod.number()),
+  "createdAt": zod.string(),
+  "startedAt": zod.string().nullable(),
+  "finishedAt": zod.string().nullable()
+}),
+  "nodes": zod.array(zod.object({
+  "id": zod.number(),
+  "mapId": zod.number(),
+  "parentId": zod.number().nullable(),
+  "level": zod.enum(['pillar', 'core_topic', 'supporting', 'subtopic']),
+  "section": zod.enum(['core', 'outer']),
+  "title": zod.string(),
+  "canonicalQuery": zod.string(),
+  "attributeOwned": zod.string(),
+  "intent": zod.string(),
+  "predicate": zod.string(),
+  "funnelStage": zod.enum(['tofu', 'mofu', 'bofu', 'retention']),
+  "pageType": zod.string(),
+  "suggestedSlug": zod.string(),
+  "suggestedTitle": zod.string(),
+  "informationGain": zod.string().nullable(),
+  "borderNote": zod.string().nullable(),
+  "priority": zod.enum(['high', 'medium', 'low']),
+  "status": zod.enum(['published', 'gap', 'ignored']),
+  "matchedPagePath": zod.string().nullable(),
+  "matchSource": zod.union([zod.literal('exact_slug'),zod.literal('top_query'),zod.literal('embedding'),zod.literal(null)]).nullable(),
+  "matchConfidence": zod.number().nullable(),
+  "sortOrder": zod.number(),
+  "pageTitle": zod.string().nullable().describe('Title of the matched page (joined at read time)'),
+  "gscClicks": zod.number().nullable(),
+  "gscImpressions": zod.number().nullable(),
+  "gscPosition": zod.number().nullable()
+})),
+  "bridges": zod.array(zod.object({
+  "id": zod.number(),
+  "sourceNodeId": zod.number(),
+  "targetNodeId": zod.number(),
+  "bridgeConcept": zod.string()
+})),
+  "coverage": zod.object({
+  "totalNodes": zod.number(),
+  "publishedNodes": zod.number(),
+  "gapNodes": zod.number(),
+  "ignoredNodes": zod.number(),
+  "coveragePct": zod.number().describe('published \/ (published + gap) × 100, ignored excluded'),
+  "perPillar": zod.array(zod.object({
+  "nodeId": zod.number(),
+  "title": zod.string(),
+  "section": zod.enum(['core', 'outer']),
+  "total": zod.number().describe('Non-ignored nodes in this pillar\'s subtree (including the pillar)'),
+  "published": zod.number(),
+  "coveragePct": zod.number()
+}))
+})
+})
+
+
+/**
+ * @summary Get the newest complete topical map with nodes, bridges, and coverage
+ */
+export const GetLatestTopicalMapResponse = zod.object({
+  "map": zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['queued', 'running', 'complete', 'failed', 'interrupted']),
+  "phase": zod.string().nullable(),
+  "progressDone": zod.number(),
+  "progressTotal": zod.number(),
+  "error": zod.string().nullable(),
+  "sourceContext": zod.string(),
+  "centralEntity": zod.string(),
+  "entitySynonyms": zod.array(zod.string()),
+  "centralSearchIntent": zod.string(),
+  "bordersWill": zod.array(zod.string()),
+  "bordersWillNot": zod.array(zod.string()),
+  "stats": zod.record(zod.string(), zod.number()),
+  "createdAt": zod.string(),
+  "startedAt": zod.string().nullable(),
+  "finishedAt": zod.string().nullable()
+}),
+  "nodes": zod.array(zod.object({
+  "id": zod.number(),
+  "mapId": zod.number(),
+  "parentId": zod.number().nullable(),
+  "level": zod.enum(['pillar', 'core_topic', 'supporting', 'subtopic']),
+  "section": zod.enum(['core', 'outer']),
+  "title": zod.string(),
+  "canonicalQuery": zod.string(),
+  "attributeOwned": zod.string(),
+  "intent": zod.string(),
+  "predicate": zod.string(),
+  "funnelStage": zod.enum(['tofu', 'mofu', 'bofu', 'retention']),
+  "pageType": zod.string(),
+  "suggestedSlug": zod.string(),
+  "suggestedTitle": zod.string(),
+  "informationGain": zod.string().nullable(),
+  "borderNote": zod.string().nullable(),
+  "priority": zod.enum(['high', 'medium', 'low']),
+  "status": zod.enum(['published', 'gap', 'ignored']),
+  "matchedPagePath": zod.string().nullable(),
+  "matchSource": zod.union([zod.literal('exact_slug'),zod.literal('top_query'),zod.literal('embedding'),zod.literal(null)]).nullable(),
+  "matchConfidence": zod.number().nullable(),
+  "sortOrder": zod.number(),
+  "pageTitle": zod.string().nullable().describe('Title of the matched page (joined at read time)'),
+  "gscClicks": zod.number().nullable(),
+  "gscImpressions": zod.number().nullable(),
+  "gscPosition": zod.number().nullable()
+})),
+  "bridges": zod.array(zod.object({
+  "id": zod.number(),
+  "sourceNodeId": zod.number(),
+  "targetNodeId": zod.number(),
+  "bridgeConcept": zod.string()
+})),
+  "coverage": zod.object({
+  "totalNodes": zod.number(),
+  "publishedNodes": zod.number(),
+  "gapNodes": zod.number(),
+  "ignoredNodes": zod.number(),
+  "coveragePct": zod.number().describe('published \/ (published + gap) × 100, ignored excluded'),
+  "perPillar": zod.array(zod.object({
+  "nodeId": zod.number(),
+  "title": zod.string(),
+  "section": zod.enum(['core', 'outer']),
+  "total": zod.number().describe('Non-ignored nodes in this pillar\'s subtree (including the pillar)'),
+  "published": zod.number(),
+  "coveragePct": zod.number()
+}))
+})
+})
+
+
+/**
+ * @summary Dismiss a gap node (ignored) or restore it (gap)
+ */
+export const UpdateTopicalMapNodeParams = zod.object({
+  "nodeId": zod.coerce.number()
+})
+
+export const UpdateTopicalMapNodeBody = zod.object({
+  "status": zod.enum(['gap', 'ignored'])
+})
+
+export const UpdateTopicalMapNodeResponse = zod.object({
+  "id": zod.number(),
+  "mapId": zod.number(),
+  "parentId": zod.number().nullable(),
+  "level": zod.enum(['pillar', 'core_topic', 'supporting', 'subtopic']),
+  "section": zod.enum(['core', 'outer']),
+  "title": zod.string(),
+  "canonicalQuery": zod.string(),
+  "attributeOwned": zod.string(),
+  "intent": zod.string(),
+  "predicate": zod.string(),
+  "funnelStage": zod.enum(['tofu', 'mofu', 'bofu', 'retention']),
+  "pageType": zod.string(),
+  "suggestedSlug": zod.string(),
+  "suggestedTitle": zod.string(),
+  "informationGain": zod.string().nullable(),
+  "borderNote": zod.string().nullable(),
+  "priority": zod.enum(['high', 'medium', 'low']),
+  "status": zod.enum(['published', 'gap', 'ignored']),
+  "matchedPagePath": zod.string().nullable(),
+  "matchSource": zod.union([zod.literal('exact_slug'),zod.literal('top_query'),zod.literal('embedding'),zod.literal(null)]).nullable(),
+  "matchConfidence": zod.number().nullable(),
+  "sortOrder": zod.number(),
+  "pageTitle": zod.string().nullable().describe('Title of the matched page (joined at read time)'),
+  "gscClicks": zod.number().nullable(),
+  "gscImpressions": zod.number().nullable(),
+  "gscPosition": zod.number().nullable()
+})
+
+
+/**
  * @summary Per-page mapping of GSC vs Bing vs AI citations vs GA4 AI sessions
  */
 export const GetBingPagesResponse = zod.object({
@@ -1119,7 +1372,7 @@ export const ListAiCitationUploadsResponse = zod.array(ListAiCitationUploadsResp
  * @summary Manually trigger a background job
  */
 export const RunJobParams = zod.object({
-  "jobName": zod.enum(['crawl_link_map', 'gsc_inventory_and_losers', 'optimize_queued_urls', 'crawl_wordpress', 'reembed_wordpress', 'semantic_linking', 'audit_orphans', 'audit_over_linked', 'audit_broken_links', 'run_full_pipeline', 'recompute_action_queue', 'weekly_digest', 'keyword_clustering', 'migrate_url_hygiene', 'sync_ga4_pages', 'embed_kb_chunks', 'sync_keyword_sheet', 'analyze_similarity', 'sync_bing_pages'])
+  "jobName": zod.enum(['crawl_link_map', 'gsc_inventory_and_losers', 'optimize_queued_urls', 'crawl_wordpress', 'reembed_wordpress', 'semantic_linking', 'audit_orphans', 'audit_over_linked', 'audit_broken_links', 'run_full_pipeline', 'recompute_action_queue', 'weekly_digest', 'keyword_clustering', 'migrate_url_hygiene', 'sync_ga4_pages', 'embed_kb_chunks', 'sync_keyword_sheet', 'analyze_similarity', 'sync_bing_pages', 'generate_topical_map'])
 })
 
 

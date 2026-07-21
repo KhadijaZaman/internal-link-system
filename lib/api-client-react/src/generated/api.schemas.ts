@@ -2171,6 +2171,222 @@ export interface BingPagesReport {
   totals: BingPagesReportTotals;
 }
 
+export interface GenerateTopicalMapInput {
+  /**
+     * One-paragraph charter — who the business is, what it sells, monetization bridge
+     * @minLength 20
+     * @maxLength 4000
+     */
+  sourceContext: string;
+  /**
+     * @minLength 2
+     * @maxLength 200
+     */
+  centralEntity: string;
+  /** @maxItems 20 */
+  entitySynonyms?: string[];
+  /**
+     * One sentence with predicates (know/compare/buy…)
+     * @minLength 10
+     * @maxLength 600
+     */
+  centralSearchIntent: string;
+  /** @maxItems 40 */
+  bordersWill?: string[];
+  /** @maxItems 40 */
+  bordersWillNot?: string[];
+}
+
+export type TopicalMapSummaryStatus = typeof TopicalMapSummaryStatus[keyof typeof TopicalMapSummaryStatus];
+
+
+export const TopicalMapSummaryStatus = {
+  queued: 'queued',
+  running: 'running',
+  complete: 'complete',
+  failed: 'failed',
+  interrupted: 'interrupted',
+} as const;
+
+export type TopicalMapSummaryStats = {[key: string]: number};
+
+export interface TopicalMapSummary {
+  id: number;
+  status: TopicalMapSummaryStatus;
+  /** @nullable */
+  phase: string | null;
+  progressDone: number;
+  progressTotal: number;
+  /** @nullable */
+  error: string | null;
+  sourceContext: string;
+  centralEntity: string;
+  entitySynonyms: string[];
+  centralSearchIntent: string;
+  bordersWill: string[];
+  bordersWillNot: string[];
+  stats: TopicalMapSummaryStats;
+  createdAt: string;
+  /** @nullable */
+  startedAt: string | null;
+  /** @nullable */
+  finishedAt: string | null;
+}
+
+export type TopicalMapNodeLevel = typeof TopicalMapNodeLevel[keyof typeof TopicalMapNodeLevel];
+
+
+export const TopicalMapNodeLevel = {
+  pillar: 'pillar',
+  core_topic: 'core_topic',
+  supporting: 'supporting',
+  subtopic: 'subtopic',
+} as const;
+
+export type TopicalMapNodeSection = typeof TopicalMapNodeSection[keyof typeof TopicalMapNodeSection];
+
+
+export const TopicalMapNodeSection = {
+  core: 'core',
+  outer: 'outer',
+} as const;
+
+export type TopicalMapNodeFunnelStage = typeof TopicalMapNodeFunnelStage[keyof typeof TopicalMapNodeFunnelStage];
+
+
+export const TopicalMapNodeFunnelStage = {
+  tofu: 'tofu',
+  mofu: 'mofu',
+  bofu: 'bofu',
+  retention: 'retention',
+} as const;
+
+export type TopicalMapNodePriority = typeof TopicalMapNodePriority[keyof typeof TopicalMapNodePriority];
+
+
+export const TopicalMapNodePriority = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+export type TopicalMapNodeStatus = typeof TopicalMapNodeStatus[keyof typeof TopicalMapNodeStatus];
+
+
+export const TopicalMapNodeStatus = {
+  published: 'published',
+  gap: 'gap',
+  ignored: 'ignored',
+} as const;
+
+/**
+ * @nullable
+ */
+export type TopicalMapNodeMatchSource = typeof TopicalMapNodeMatchSource[keyof typeof TopicalMapNodeMatchSource] | null;
+
+
+export const TopicalMapNodeMatchSource = {
+  exact_slug: 'exact_slug',
+  top_query: 'top_query',
+  embedding: 'embedding',
+} as const;
+
+export interface TopicalMapNode {
+  id: number;
+  mapId: number;
+  /** @nullable */
+  parentId: number | null;
+  level: TopicalMapNodeLevel;
+  section: TopicalMapNodeSection;
+  title: string;
+  canonicalQuery: string;
+  attributeOwned: string;
+  intent: string;
+  predicate: string;
+  funnelStage: TopicalMapNodeFunnelStage;
+  pageType: string;
+  suggestedSlug: string;
+  suggestedTitle: string;
+  /** @nullable */
+  informationGain: string | null;
+  /** @nullable */
+  borderNote: string | null;
+  priority: TopicalMapNodePriority;
+  status: TopicalMapNodeStatus;
+  /** @nullable */
+  matchedPagePath: string | null;
+  /** @nullable */
+  matchSource: TopicalMapNodeMatchSource;
+  /** @nullable */
+  matchConfidence: number | null;
+  sortOrder: number;
+  /**
+     * Title of the matched page (joined at read time)
+     * @nullable
+     */
+  pageTitle: string | null;
+  /** @nullable */
+  gscClicks: number | null;
+  /** @nullable */
+  gscImpressions: number | null;
+  /** @nullable */
+  gscPosition: number | null;
+}
+
+export interface TopicalMapBridge {
+  id: number;
+  sourceNodeId: number;
+  targetNodeId: number;
+  bridgeConcept: string;
+}
+
+export type TopicalMapPillarCoverageSection = typeof TopicalMapPillarCoverageSection[keyof typeof TopicalMapPillarCoverageSection];
+
+
+export const TopicalMapPillarCoverageSection = {
+  core: 'core',
+  outer: 'outer',
+} as const;
+
+export interface TopicalMapPillarCoverage {
+  nodeId: number;
+  title: string;
+  section: TopicalMapPillarCoverageSection;
+  /** Non-ignored nodes in this pillar's subtree (including the pillar) */
+  total: number;
+  published: number;
+  coveragePct: number;
+}
+
+export interface TopicalMapCoverage {
+  totalNodes: number;
+  publishedNodes: number;
+  gapNodes: number;
+  ignoredNodes: number;
+  /** published / (published + gap) × 100, ignored excluded */
+  coveragePct: number;
+  perPillar: TopicalMapPillarCoverage[];
+}
+
+export interface TopicalMapDetail {
+  map: TopicalMapSummary;
+  nodes: TopicalMapNode[];
+  bridges: TopicalMapBridge[];
+  coverage: TopicalMapCoverage;
+}
+
+export type UpdateTopicalMapNodeInputStatus = typeof UpdateTopicalMapNodeInputStatus[keyof typeof UpdateTopicalMapNodeInputStatus];
+
+
+export const UpdateTopicalMapNodeInputStatus = {
+  gap: 'gap',
+  ignored: 'ignored',
+} as const;
+
+export interface UpdateTopicalMapNodeInput {
+  status: UpdateTopicalMapNodeInputStatus;
+}
+
 export type StartDateParameter = string;
 
 export type EndDateParameter = string;

@@ -22,7 +22,8 @@ export type JobName =
   | "embed_kb_chunks"
   | "sync_keyword_sheet"
   | "analyze_similarity"
-  | "sync_bing_pages";
+  | "sync_bing_pages"
+  | "generate_topical_map";
 
 export const ALL_JOBS: JobName[] = [
   "crawl_link_map",
@@ -44,6 +45,7 @@ export const ALL_JOBS: JobName[] = [
   "sync_keyword_sheet",
   "analyze_similarity",
   "sync_bing_pages",
+  "generate_topical_map",
 ];
 
 type JobFn = () => Promise<void>;

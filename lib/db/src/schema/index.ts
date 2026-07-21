@@ -30,3 +30,4 @@ export * from "./bingStats";
 export * from "./aiCitations";
 export * from "./appState";
 export * from "./similarityRuns";
+export * from "./topicalMaps";

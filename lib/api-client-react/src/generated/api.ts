@@ -46,6 +46,7 @@ import type {
   DashboardUrlList,
   DigestList,
   Ga4PagesResponse,
+  GenerateTopicalMapInput,
   GetAuthoritySnapshotParams,
   GetDailyActivityParams,
   GetGa4PagesParams,
@@ -121,10 +122,14 @@ import type {
   SubmissionsSheetExportInput,
   SubmissionsSheetExportResult,
   SuggestionActionInput,
+  TopicalMapDetail,
+  TopicalMapNode,
+  TopicalMapSummary,
   TrackedPerformance,
   TrackedSubmission,
   TrackedSubmissionCreate,
   TrackedSubmissionUpdate,
+  UpdateTopicalMapNodeInput,
   UrlLinkBreakdown,
   WatchlistInput,
   WatchlistQuery,
@@ -3019,6 +3024,380 @@ export function useGetSimilarityRun<TData = Awaited<ReturnType<typeof getSimilar
 
 
 
+export const getGenerateTopicalMapUrl = () => {
+
+
+
+
+  return `/api/topical-map/generate`
+}
+
+/**
+ * @summary Create a new topical authority map run from a source-context charter and start generation
+ */
+export const generateTopicalMap = async (generateTopicalMapInput: GenerateTopicalMapInput, options?: RequestInit): Promise<TopicalMapSummary> => {
+
+  return customFetch<TopicalMapSummary>(getGenerateTopicalMapUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      generateTopicalMapInput,)
+  }
+);}
+
+
+
+
+export const getGenerateTopicalMapMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateTopicalMap>>, TError,{data: BodyType<GenerateTopicalMapInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateTopicalMap>>, TError,{data: BodyType<GenerateTopicalMapInput>}, TContext> => {
+
+const mutationKey = ['generateTopicalMap'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateTopicalMap>>, {data: BodyType<GenerateTopicalMapInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  generateTopicalMap(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateTopicalMapMutationResult = NonNullable<Awaited<ReturnType<typeof generateTopicalMap>>>
+    export type GenerateTopicalMapMutationBody = BodyType<GenerateTopicalMapInput>
+    export type GenerateTopicalMapMutationError = ErrorType<void>
+
+    /**
+ * @summary Create a new topical authority map run from a source-context charter and start generation
+ */
+export const useGenerateTopicalMap = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateTopicalMap>>, TError,{data: BodyType<GenerateTopicalMapInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateTopicalMap>>,
+        TError,
+        {data: BodyType<GenerateTopicalMapInput>},
+        TContext
+      > => {
+      return useMutation(getGenerateTopicalMapMutationOptions(options));
+    }
+
+export const getListTopicalMapRunsUrl = () => {
+
+
+
+
+  return `/api/topical-map/runs`
+}
+
+/**
+ * @summary List recent topical map runs (newest first, no nodes)
+ */
+export const listTopicalMapRuns = async ( options?: RequestInit): Promise<TopicalMapSummary[]> => {
+
+  return customFetch<TopicalMapSummary[]>(getListTopicalMapRunsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListTopicalMapRunsQueryKey = () => {
+    return [
+    `/api/topical-map/runs`
+    ] as const;
+    }
+
+
+export const getListTopicalMapRunsQueryOptions = <TData = Awaited<ReturnType<typeof listTopicalMapRuns>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTopicalMapRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListTopicalMapRunsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listTopicalMapRuns>>> = ({ signal }) => listTopicalMapRuns({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listTopicalMapRuns>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListTopicalMapRunsQueryResult = NonNullable<Awaited<ReturnType<typeof listTopicalMapRuns>>>
+export type ListTopicalMapRunsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List recent topical map runs (newest first, no nodes)
+ */
+
+export function useListTopicalMapRuns<TData = Awaited<ReturnType<typeof listTopicalMapRuns>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTopicalMapRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListTopicalMapRunsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetTopicalMapRunUrl = (mapId: number,) => {
+
+
+
+
+  return `/api/topical-map/runs/${mapId}`
+}
+
+/**
+ * @summary Get one topical map run with its full node tree, bridges, and coverage rollup
+ */
+export const getTopicalMapRun = async (mapId: number, options?: RequestInit): Promise<TopicalMapDetail> => {
+
+  return customFetch<TopicalMapDetail>(getGetTopicalMapRunUrl(mapId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTopicalMapRunQueryKey = (mapId: number,) => {
+    return [
+    `/api/topical-map/runs/${mapId}`
+    ] as const;
+    }
+
+
+export const getGetTopicalMapRunQueryOptions = <TData = Awaited<ReturnType<typeof getTopicalMapRun>>, TError = ErrorType<void>>(mapId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTopicalMapRun>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTopicalMapRunQueryKey(mapId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTopicalMapRun>>> = ({ signal }) => getTopicalMapRun(mapId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(mapId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTopicalMapRun>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTopicalMapRunQueryResult = NonNullable<Awaited<ReturnType<typeof getTopicalMapRun>>>
+export type GetTopicalMapRunQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get one topical map run with its full node tree, bridges, and coverage rollup
+ */
+
+export function useGetTopicalMapRun<TData = Awaited<ReturnType<typeof getTopicalMapRun>>, TError = ErrorType<void>>(
+ mapId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTopicalMapRun>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTopicalMapRunQueryOptions(mapId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetLatestTopicalMapUrl = () => {
+
+
+
+
+  return `/api/topical-map/latest`
+}
+
+/**
+ * @summary Get the newest complete topical map with nodes, bridges, and coverage
+ */
+export const getLatestTopicalMap = async ( options?: RequestInit): Promise<TopicalMapDetail> => {
+
+  return customFetch<TopicalMapDetail>(getGetLatestTopicalMapUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLatestTopicalMapQueryKey = () => {
+    return [
+    `/api/topical-map/latest`
+    ] as const;
+    }
+
+
+export const getGetLatestTopicalMapQueryOptions = <TData = Awaited<ReturnType<typeof getLatestTopicalMap>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLatestTopicalMap>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLatestTopicalMapQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLatestTopicalMap>>> = ({ signal }) => getLatestTopicalMap({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLatestTopicalMap>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLatestTopicalMapQueryResult = NonNullable<Awaited<ReturnType<typeof getLatestTopicalMap>>>
+export type GetLatestTopicalMapQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the newest complete topical map with nodes, bridges, and coverage
+ */
+
+export function useGetLatestTopicalMap<TData = Awaited<ReturnType<typeof getLatestTopicalMap>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLatestTopicalMap>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLatestTopicalMapQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateTopicalMapNodeUrl = (nodeId: number,) => {
+
+
+
+
+  return `/api/topical-map/nodes/${nodeId}`
+}
+
+/**
+ * @summary Dismiss a gap node (ignored) or restore it (gap)
+ */
+export const updateTopicalMapNode = async (nodeId: number,
+    updateTopicalMapNodeInput: UpdateTopicalMapNodeInput, options?: RequestInit): Promise<TopicalMapNode> => {
+
+  return customFetch<TopicalMapNode>(getUpdateTopicalMapNodeUrl(nodeId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateTopicalMapNodeInput,)
+  }
+);}
+
+
+
+
+export const getUpdateTopicalMapNodeMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTopicalMapNode>>, TError,{nodeId: number;data: BodyType<UpdateTopicalMapNodeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateTopicalMapNode>>, TError,{nodeId: number;data: BodyType<UpdateTopicalMapNodeInput>}, TContext> => {
+
+const mutationKey = ['updateTopicalMapNode'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateTopicalMapNode>>, {nodeId: number;data: BodyType<UpdateTopicalMapNodeInput>}> = (props) => {
+          const {nodeId,data} = props ?? {};
+
+          return  updateTopicalMapNode(nodeId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateTopicalMapNodeMutationResult = NonNullable<Awaited<ReturnType<typeof updateTopicalMapNode>>>
+    export type UpdateTopicalMapNodeMutationBody = BodyType<UpdateTopicalMapNodeInput>
+    export type UpdateTopicalMapNodeMutationError = ErrorType<void>
+
+    /**
+ * @summary Dismiss a gap node (ignored) or restore it (gap)
+ */
+export const useUpdateTopicalMapNode = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTopicalMapNode>>, TError,{nodeId: number;data: BodyType<UpdateTopicalMapNodeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateTopicalMapNode>>,
+        TError,
+        {nodeId: number;data: BodyType<UpdateTopicalMapNodeInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateTopicalMapNodeMutationOptions(options));
+    }
+
 export const getGetBingPagesUrl = () => {
 
 
@@ -3244,7 +3623,7 @@ export function useListAiCitationUploads<TData = Awaited<ReturnType<typeof listA
 
 
 
-export const getRunJobUrl = (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages',) => {
+export const getRunJobUrl = (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map',) => {
 
 
 
@@ -3255,7 +3634,7 @@ export const getRunJobUrl = (jobName: 'crawl_link_map' | 'gsc_inventory_and_lose
 /**
  * @summary Manually trigger a background job
  */
-export const runJob = async (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages', options?: RequestInit): Promise<JobRunResult> => {
+export const runJob = async (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map', options?: RequestInit): Promise<JobRunResult> => {
 
   return customFetch<JobRunResult>(getRunJobUrl(jobName),
   {
@@ -3270,8 +3649,8 @@ export const runJob = async (jobName: 'crawl_link_map' | 'gsc_inventory_and_lose
 
 
 export const getRunJobMutationOptions = <TError = ErrorType<JobRunResult>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages'}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages'}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map'}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map'}, TContext> => {
 
 const mutationKey = ['runJob'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -3283,7 +3662,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runJob>>, {jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages'}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runJob>>, {jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map'}> = (props) => {
           const {jobName} = props ?? {};
 
           return  runJob(jobName,requestOptions)
@@ -3304,11 +3683,11 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
  * @summary Manually trigger a background job
  */
 export const useRunJob = <TError = ErrorType<JobRunResult>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages'}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map'}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof runJob>>,
         TError,
-        {jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages'},
+        {jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map'},
         TContext
       > => {
       return useMutation(getRunJobMutationOptions(options));

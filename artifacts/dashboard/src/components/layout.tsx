@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useLogout } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Network, TrendingDown, Settings2, LogOut, LineChart, FileText, Ban, PenLine, Link2, Compass, BookOpen, ClipboardList, Bot, Gauge, Table2, ListTodo, Newspaper, Waypoints, SearchCheck, Boxes, GitCompareArrows, Sparkles } from "lucide-react";
+import { LayoutDashboard, Network, TrendingDown, Settings2, LogOut, LineChart, FileText, Ban, PenLine, Link2, Compass, BookOpen, ClipboardList, Bot, Gauge, Table2, ListTodo, Newspaper, Waypoints, SearchCheck, Boxes, GitCompareArrows, Sparkles, Map } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface NavItem {
@@ -52,6 +52,7 @@ const navSections: NavSection[] = [
       { href: "/optimize", label: "Optimizer", icon: Settings2 },
       { href: "/content/writer", label: "Content Writer", icon: PenLine },
       { href: "/similarity", label: "Similarity Explorer", icon: GitCompareArrows },
+      { href: "/topical-map", label: "Topical Map", icon: Map },
       { href: "/knowledge-base", label: "Knowledge Base", icon: BookOpen },
       { href: "/submissions", label: "My Submissions", icon: ClipboardList },
     ],

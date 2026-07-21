@@ -35,6 +35,7 @@ import digestsRouter from "./digests";
 import clusteringRouter from "./clustering";
 import similarityRouter from "./similarity";
 import bingRouter from "./bing";
+import topicalMapRouter from "./topicalMap";
 
 const router: IRouter = Router();
 
@@ -74,5 +75,6 @@ router.use(digestsRouter);
 router.use(clusteringRouter);
 router.use(similarityRouter);
 router.use(bingRouter);
+router.use(topicalMapRouter);
 
 export default router;

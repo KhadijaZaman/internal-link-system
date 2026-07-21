@@ -740,6 +740,102 @@ paths:
                 $ref: "#/components/schemas/SimilarityRun"
         "404":
           description: Not found
+  /topical-map/generate:
+    post:
+      operationId: generateTopicalMap
+      tags: [topicalMap]
+      summary: Create a new topical authority map run from a source-context charter and start generation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateTopicalMapInput"
+      responses:
+        "202":
+          description: Map run queued and job started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopicalMapSummary"
+        "400":
+          description: Invalid charter input
+        "409":
+          description: A map generation is already in progress
+  /topical-map/runs:
+    get:
+      operationId: listTopicalMapRuns
+      tags: [topicalMap]
+      summary: List recent topical map runs (newest first, no nodes)
+      responses:
+        "200":
+          description: Recent runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TopicalMapSummary"
+  /topical-map/runs/{mapId}:
+    get:
+      operationId: getTopicalMapRun
+      tags: [topicalMap]
+      summary: Get one topical map run with its full node tree, bridges, and coverage rollup
+      parameters:
+        - in: path
+          name: mapId
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Map detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopicalMapDetail"
+        "404":
+          description: Not found
+  /topical-map/latest:
+    get:
+      operationId: getLatestTopicalMap
+      tags: [topicalMap]
+      summary: Get the newest complete topical map with nodes, bridges, and coverage
+      responses:
+        "200":
+          description: Latest complete map
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopicalMapDetail"
+        "404":
+          description: No complete map exists yet
+  /topical-map/nodes/{nodeId}:
+    patch:
+      operationId: updateTopicalMapNode
+      tags: [topicalMap]
+      summary: Dismiss a gap node (ignored) or restore it (gap)
+      parameters:
+        - in: path
+          name: nodeId
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTopicalMapNodeInput"
+      responses:
+        "200":
+          description: Updated node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopicalMapNode"
+        "400":
+          description: Invalid transition (published nodes cannot be dismissed)
+        "404":
+          description: Not found
   /bing/pages:
     get:
       operationId: getBingPages
@@ -796,7 +892,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [crawl_link_map, gsc_inventory_and_losers, optimize_queued_urls, crawl_wordpress, reembed_wordpress, semantic_linking, audit_orphans, audit_over_linked, audit_broken_links, run_full_pipeline, recompute_action_queue, weekly_digest, keyword_clustering, migrate_url_hygiene, sync_ga4_pages, embed_kb_chunks, sync_keyword_sheet, analyze_similarity, sync_bing_pages]
+            enum: [crawl_link_map, gsc_inventory_and_losers, optimize_queued_urls, crawl_wordpress, reembed_wordpress, semantic_linking, audit_orphans, audit_over_linked, audit_broken_links, run_full_pipeline, recompute_action_queue, weekly_digest, keyword_clustering, migrate_url_hygiene, sync_ga4_pages, embed_kb_chunks, sync_keyword_sheet, analyze_similarity, sync_bing_pages, generate_topical_map]
       responses:
         "202":
           description: Job started
@@ -3885,3 +3981,167 @@ components:
             bingClicks: { type: integer }
             aiCitations: { type: integer }
             aiSessions: { type: integer }
+    GenerateTopicalMapInput:
+      type: object
+      required: [sourceContext, centralEntity, centralSearchIntent]
+      properties:
+        sourceContext:
+          type: string
+          minLength: 20
+          maxLength: 4000
+          description: One-paragraph charter — who the business is, what it sells, monetization bridge
+        centralEntity:
+          type: string
+          minLength: 2
+          maxLength: 200
+        entitySynonyms:
+          type: array
+          maxItems: 20
+          items: { type: string, maxLength: 200 }
+        centralSearchIntent:
+          type: string
+          minLength: 10
+          maxLength: 600
+          description: One sentence with predicates (know/compare/buy…)
+        bordersWill:
+          type: array
+          maxItems: 40
+          items: { type: string, maxLength: 300 }
+        bordersWillNot:
+          type: array
+          maxItems: 40
+          items: { type: string, maxLength: 300 }
+    TopicalMapSummary:
+      type: object
+      required: [id, status, phase, progressDone, progressTotal, error, sourceContext, centralEntity, entitySynonyms, centralSearchIntent, bordersWill, bordersWillNot, stats, createdAt, startedAt, finishedAt]
+      properties:
+        id: { type: integer }
+        status:
+          type: string
+          enum: [queued, running, complete, failed, interrupted]
+        phase: { type: ["string", "null"] }
+        progressDone: { type: integer }
+        progressTotal: { type: integer }
+        error: { type: ["string", "null"] }
+        sourceContext: { type: string }
+        centralEntity: { type: string }
+        entitySynonyms:
+          type: array
+          items: { type: string }
+        centralSearchIntent: { type: string }
+        bordersWill:
+          type: array
+          items: { type: string }
+        bordersWillNot:
+          type: array
+          items: { type: string }
+        stats:
+          type: object
+          additionalProperties: { type: number }
+        createdAt: { type: string }
+        startedAt: { type: ["string", "null"] }
+        finishedAt: { type: ["string", "null"] }
+    TopicalMapNode:
+      type: object
+      required: [id, mapId, parentId, level, section, title, canonicalQuery, attributeOwned, intent, predicate, funnelStage, pageType, suggestedSlug, suggestedTitle, informationGain, borderNote, priority, status, matchedPagePath, matchSource, matchConfidence, sortOrder, pageTitle, gscClicks, gscImpressions, gscPosition]
+      properties:
+        id: { type: integer }
+        mapId: { type: integer }
+        parentId: { type: ["integer", "null"] }
+        level:
+          type: string
+          enum: [pillar, core_topic, supporting, subtopic]
+        section:
+          type: string
+          enum: [core, outer]
+        title: { type: string }
+        canonicalQuery: { type: string }
+        attributeOwned: { type: string }
+        intent: { type: string }
+        predicate: { type: string }
+        funnelStage:
+          type: string
+          enum: [tofu, mofu, bofu, retention]
+        pageType: { type: string }
+        suggestedSlug: { type: string }
+        suggestedTitle: { type: string }
+        informationGain: { type: ["string", "null"] }
+        borderNote: { type: ["string", "null"] }
+        priority:
+          type: string
+          enum: [high, medium, low]
+        status:
+          type: string
+          enum: [published, gap, ignored]
+        matchedPagePath: { type: ["string", "null"] }
+        matchSource:
+          type: ["string", "null"]
+          enum: [exact_slug, top_query, embedding, null]
+        matchConfidence: { type: ["number", "null"] }
+        sortOrder: { type: integer }
+        pageTitle:
+          type: ["string", "null"]
+          description: Title of the matched page (joined at read time)
+        gscClicks: { type: ["integer", "null"] }
+        gscImpressions: { type: ["integer", "null"] }
+        gscPosition: { type: ["number", "null"] }
+    TopicalMapBridge:
+      type: object
+      required: [id, sourceNodeId, targetNodeId, bridgeConcept]
+      properties:
+        id: { type: integer }
+        sourceNodeId: { type: integer }
+        targetNodeId: { type: integer }
+        bridgeConcept: { type: string }
+    TopicalMapPillarCoverage:
+      type: object
+      required: [nodeId, title, section, total, published, coveragePct]
+      properties:
+        nodeId: { type: integer }
+        title: { type: string }
+        section:
+          type: string
+          enum: [core, outer]
+        total:
+          type: integer
+          description: Non-ignored nodes in this pillar's subtree (including the pillar)
+        published: { type: integer }
+        coveragePct: { type: number }
+    TopicalMapCoverage:
+      type: object
+      required: [totalNodes, publishedNodes, gapNodes, ignoredNodes, coveragePct, perPillar]
+      properties:
+        totalNodes: { type: integer }
+        publishedNodes: { type: integer }
+        gapNodes: { type: integer }
+        ignoredNodes: { type: integer }
+        coveragePct:
+          type: number
+          description: published / (published + gap) × 100, ignored excluded
+        perPillar:
+          type: array
+          items:
+            $ref: "#/components/schemas/TopicalMapPillarCoverage"
+    TopicalMapDetail:
+      type: object
+      required: [map, nodes, bridges, coverage]
+      properties:
+        map:
+          $ref: "#/components/schemas/TopicalMapSummary"
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/TopicalMapNode"
+        bridges:
+          type: array
+          items:
+            $ref: "#/components/schemas/TopicalMapBridge"
+        coverage:
+          $ref: "#/components/schemas/TopicalMapCoverage"
+    UpdateTopicalMapNodeInput:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [gap, ignored]

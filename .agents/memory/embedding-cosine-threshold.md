@@ -23,3 +23,20 @@ absolute numbers are just shifted down vs. what you'd expect from other models.
 text-embedding-3-small. Sample real pairs first, then pick a threshold in the gap
 between the clusters. The same compression affects other gates (semantic linking
 relevance scoring) — calibrate against real data, not intuition.
+
+# Coverage/"already covered" claims need a much HIGHER bar (~0.65)
+
+The 0.42 rule is for splitting related vs unrelated. A stronger claim — "this
+existing page already covers this topic, no new page needed" — fails badly at
+low thresholds: at 0.5, a topical-map run marked 305/316 topics as published
+against only 46 site pages (median cosine 0.61; one benchmarking post "covered"
+61 distinct topics), destroying the gap analysis.
+
+**Rule:** for topic→page coverage matching, require ≥0.65 cosine.
+
+**Why:** everything on a single-niche site sits at 0.5–0.6 to everything else;
+only genuinely dedicated pages reach 0.65+. Validated on the Wellows topical map
+(coverage dropped from a meaningless 96.5% to a sane 29.4%).
+
+**How to apply:** pick the threshold by the claim strength, not one global
+number: ~0.42 = "related/on-core", ~0.65 = "this page IS about this topic".

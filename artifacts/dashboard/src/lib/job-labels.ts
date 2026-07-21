@@ -108,6 +108,12 @@ const JOB_LABELS: Record<string, JobLabel> = {
     route: "/bing",
     routeLabel: "Open Bing & AI Citations",
   },
+  generate_topical_map: {
+    title: "Generate Topical Authority Map",
+    description: "Builds a Koray-framework topical authority map from your source-context charter: pillars, core/outer sections, topic tree, contextual bridges, and coverage vs existing pages. Starts from the Topical Map page; uses Claude + embedding spend.",
+    route: "/topical-map",
+    routeLabel: "Open Topical Map",
+  },
 };
 
 export function getJobLabel(name: string): JobLabel {
