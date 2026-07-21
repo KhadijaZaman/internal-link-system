@@ -40,6 +40,8 @@ import {
   RotateCcw,
   X,
 } from "lucide-react";
+import { HowThisWorks } from "@/components/how-this-works";
+import { InfoTip } from "@/components/info-tip";
 import * as d3 from "d3";
 
 const STATUS_COLOR: Record<TopicalMapNode["status"], string> = {
@@ -464,6 +466,51 @@ export default function TopicalMapPage() {
         </p>
       </div>
 
+      <HowThisWorks
+        summary="An AI-built map of every topic your site should cover to become the go-to authority — showing what you've already written and what's still missing."
+        steps={[
+          {
+            title: "Fill in the charter",
+            body: "Tell the AI about your business: your main subject, what searchers want, and the topics you will and won't cover.",
+          },
+          {
+            title: "Generate the map",
+            body: "The AI designs a tree of topics (big themes broken down into sub-topics) and checks each one against pages you've already published.",
+          },
+          {
+            title: "Read the colors",
+            body: "Green dots are topics you already cover, amber dots are gaps you haven't written yet, and grey dots are ones you've dismissed.",
+          },
+          {
+            title: "Work the gaps",
+            body: "Open the Content gaps list and write the high-priority amber topics first to close the biggest holes in your coverage.",
+          },
+        ]}
+        faqs={[
+          {
+            title: "What is a 'topical map'?",
+            body: "A plan of all the related topics around your main subject. Covering them thoroughly signals to Google that you're an authority, which helps everything you publish rank better.",
+          },
+          {
+            title: "What are pillars and bridges?",
+            body: "Pillars are the big themes your site is built on. Bridges (dashed purple lines) connect related topics that sit under different pillars.",
+          },
+          {
+            title: "What does 'coverage' mean?",
+            body: "The share of mapped topics you've already published a page for. Higher coverage means fewer gaps left to fill.",
+          },
+          {
+            title: "Can I hide topics I don't want?",
+            body: "Yes — open a topic and choose Dismiss. It turns grey and stops counting as a gap. You can restore it later.",
+          },
+        ]}
+        tips={[
+          "Scroll to zoom and drag to pan the map; click any dot to see its brief.",
+          "Start with high-priority gaps — they usually give the most impact for the least effort.",
+          "Topics with a dark ring are 'outer section' — supporting content that rounds out a pillar.",
+        ]}
+      />
+
       <Collapsible open={formOpen} onOpenChange={setFormOpen}>
         <Card>
           <CollapsibleTrigger asChild>
@@ -644,7 +691,13 @@ export default function TopicalMapPage() {
           <Card data-testid="card-coverage-overall">
             <CardContent className="pt-6">
               <p className="text-3xl font-semibold tabular-nums">{coverage.coveragePct}%</p>
-              <p className="text-xs text-muted-foreground mt-1">Topical coverage</p>
+              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
+                Topical coverage
+                <InfoTip>
+                  The share of mapped topics you've already published a page for. Higher is
+                  better — it means fewer gaps left to fill.
+                </InfoTip>
+              </p>
             </CardContent>
           </Card>
           <Card>
@@ -652,7 +705,12 @@ export default function TopicalMapPage() {
               <p className="text-3xl font-semibold tabular-nums text-emerald-600">
                 {coverage.publishedNodes}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">Topics covered</p>
+              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
+                Topics covered
+                <InfoTip>
+                  Green topics that already match a page on your site — nothing to do here.
+                </InfoTip>
+              </p>
             </CardContent>
           </Card>
           <Card>
@@ -660,7 +718,13 @@ export default function TopicalMapPage() {
               <p className="text-3xl font-semibold tabular-nums text-amber-600">
                 {coverage.gapNodes}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">Content gaps</p>
+              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
+                Content gaps
+                <InfoTip>
+                  Amber topics with no page yet — these are what to write next to grow your
+                  coverage.
+                </InfoTip>
+              </p>
             </CardContent>
           </Card>
           <Card>
@@ -668,7 +732,13 @@ export default function TopicalMapPage() {
               <p className="text-3xl font-semibold tabular-nums text-slate-500">
                 {coverage.ignoredNodes}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">Dismissed</p>
+              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
+                Dismissed
+                <InfoTip>
+                  Topics you chose to skip. They turn grey and don't count toward your
+                  coverage score.
+                </InfoTip>
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -679,7 +749,14 @@ export default function TopicalMapPage() {
           <Card data-testid="card-map-canvas">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <CardTitle className="text-base">Map — {detail.map.centralEntity}</CardTitle>
+                <CardTitle className="text-base flex items-center gap-1.5">
+                  Map — {detail.map.centralEntity}
+                  <InfoTip>
+                    Each dot is a topic. The center is your main subject; dots branch out into
+                    pillars (big themes) and their sub-topics. Color shows whether you've
+                    covered it yet.
+                  </InfoTip>
+                </CardTitle>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
                     <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 inline-block" />
@@ -751,11 +828,22 @@ export default function TopicalMapPage() {
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground">Canonical query</p>
+                    <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                      Canonical query
+                      <InfoTip>
+                        The main search phrase this page should aim to rank for.
+                      </InfoTip>
+                    </p>
                     <p>{selectedNode.canonicalQuery}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground">Attribute owned</p>
+                    <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                      Attribute owned
+                      <InfoTip>
+                        The specific angle or fact this page is meant to "own" so it stands out
+                        from competitors covering the same topic.
+                      </InfoTip>
+                    </p>
                     <p>{selectedNode.attributeOwned}</p>
                   </div>
                   <div>
@@ -771,8 +859,12 @@ export default function TopicalMapPage() {
                   </div>
                   {selectedNode.informationGain && (
                     <div>
-                      <p className="text-xs font-medium text-muted-foreground">
+                      <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
                         Information gain angle
+                        <InfoTip>
+                          Something new or unique this page can add that competing articles
+                          don't already cover — a reason for it to exist.
+                        </InfoTip>
                       </p>
                       <p>{selectedNode.informationGain}</p>
                     </div>
@@ -858,7 +950,13 @@ export default function TopicalMapPage() {
             {coverage && (
               <Card data-testid="card-pillar-coverage">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Coverage by pillar</CardTitle>
+                  <CardTitle className="text-sm flex items-center gap-1.5">
+                    Coverage by pillar
+                    <InfoTip>
+                      How much of each big theme (pillar) you've covered so far. A short bar
+                      means lots of gaps still to write in that theme.
+                    </InfoTip>
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {coverage.perPillar.map((p) => (
@@ -896,8 +994,12 @@ export default function TopicalMapPage() {
       {detail && (
         <Card data-testid="card-gap-list">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">
+            <CardTitle className="text-base flex items-center gap-1.5">
               Content gaps ({detail.nodes.filter((n) => n.status === "gap").length})
+              <InfoTip>
+                Mapped topics with no page yet, ordered by priority. Write these — starting at
+                the top — to grow your coverage. Click any row to see its brief.
+              </InfoTip>
             </CardTitle>
             <p className="text-xs text-muted-foreground">
               Topics in the map with no matching page yet — sorted by priority.

@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { HowThisWorks } from "@/components/how-this-works";
+import { InfoTip } from "@/components/info-tip";
 import { Loader2, Sparkles, Copy } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -111,6 +113,50 @@ export default function ContentWriter() {
         </p>
       </div>
 
+      <HowThisWorks
+        summary="Give the AI a keyword and a few competitor links, and it writes a full, SEO-ready article draft for you to review and edit."
+        steps={[
+          {
+            title: "Enter your keyword",
+            body: "Type the main phrase you want the article to rank for, like \"how to build an internal linking strategy\".",
+          },
+          {
+            title: "Add competitor links (optional)",
+            body: "Paste a few web addresses of top-ranking articles on the same topic. The AI reads them to learn what to cover.",
+          },
+          {
+            title: "Choose mode and length",
+            body: "Pick how deep the research goes and roughly how many words you want, then click Generate article.",
+          },
+          {
+            title: "Review the draft and scores",
+            body: "Read the article, check the quality scores and any flagged issues, then copy the markdown to use it.",
+          },
+        ]}
+        faqs={[
+          {
+            title: "What's the difference between Quick and Express?",
+            body: "Quick only reads the competitor pages you paste. Express does deeper research (key concepts, related keywords, grammar) for a more thorough draft, but takes longer.",
+          },
+          {
+            title: "What is the quality gate score?",
+            body: "An automatic rating out of 30 across 6 writing checks. Higher is better — it flags weak spots so you can fix them before publishing.",
+          },
+          {
+            title: "What are 'entities' and 'n-grams'?",
+            body: "Entities are the people, places, and concepts a topic should mention. N-grams are common word phrases competitors use (e.g. 2-word or 3-word combos). Both hint at what to include.",
+          },
+          {
+            title: "Is the draft ready to publish?",
+            body: "Treat it as a strong first draft. Always fact-check, edit it into your own voice, and add real examples before publishing.",
+          },
+        ]}
+        tips={[
+          "Add 3–5 strong competitor URLs for the best research — only the first 5 are used.",
+          "Use the Editorial notes box to steer tone, angle, or things to include or avoid.",
+        ]}
+      />
+
       <Card className="border-border/50">
         <CardHeader>
           <CardTitle className="text-lg">Brief</CardTitle>
@@ -119,11 +165,20 @@ export default function ContentWriter() {
           <form onSubmit={handleGenerate} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-[2fr,1fr,1fr] gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Primary keyword</label>
+                <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  Primary keyword
+                  <InfoTip>The main search phrase you want this article to rank for on Google.</InfoTip>
+                </label>
                 <Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="e.g. how to build internal linking strategy" required />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Mode</label>
+                <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  Mode
+                  <InfoTip>
+                    Quick reads only the competitor pages you paste. Express does deeper
+                    research for a richer draft, but takes longer.
+                  </InfoTip>
+                </label>
                 <Select value={mode} onValueChange={(v) => setMode(v as ContentWriteInputMode)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -133,17 +188,32 @@ export default function ContentWriter() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Word target</label>
+                <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  Word target
+                  <InfoTip>Roughly how long you want the article, in words. The AI aims for this length.</InfoTip>
+                </label>
                 <Input type="number" min={300} max={6000} step={100} value={wordCount} onChange={(e) => setWordCount(Number(e.target.value))} />
               </div>
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Competitor URLs (one per line, max 5 used)</label>
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                Competitor URLs (one per line, max 5 used)
+                <InfoTip>
+                  Links to top-ranking articles on the same topic. The AI reads them to see
+                  what to cover, so the draft matches or beats what's already out there.
+                </InfoTip>
+              </label>
               <Textarea rows={3} value={competitorUrlsRaw} onChange={(e) => setCompetitorUrlsRaw(e.target.value)} placeholder="https://example.com/article-1&#10;https://example.com/article-2" />
               <p className="text-[11px] text-muted-foreground">Entities, NLP keywords and n-grams are extracted from these pages' HTML and shown after generation.</p>
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Editorial notes (optional)</label>
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                Editorial notes (optional)
+                <InfoTip>
+                  Free-text instructions to steer the AI — tone, angle, audience, and anything
+                  to be sure to include or avoid.
+                </InfoTip>
+              </label>
               <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Tone, angle, audience, things to include or avoid" />
             </div>
             <div className="flex justify-end">
@@ -181,7 +251,13 @@ export default function ContentWriter() {
               </article>
               <aside className="space-y-4">
                 <div>
-                  <h3 className="text-sm font-medium mb-2">Quality scores</h3>
+                  <h3 className="text-sm font-medium mb-2 flex items-center gap-1.5">
+                    Quality scores
+                    <InfoTip>
+                      Automatic ratings out of 5 for each writing check. Higher means the draft
+                      is stronger on that dimension — low scores show where to edit.
+                    </InfoTip>
+                  </h3>
                   <table className="text-xs w-full">
                     <tbody>
                       {Object.entries(result.qualityGate.scores).map(([k, v]) => (
@@ -215,7 +291,14 @@ export default function ContentWriter() {
       {research && (
         <Card className="border-border/50">
           <CardHeader>
-            <CardTitle className="text-lg">Competitor research</CardTitle>
+            <CardTitle className="text-lg flex items-center gap-1.5">
+              Competitor research
+              <InfoTip>
+                What the AI learned from the competitor pages you provided — the topics,
+                phrases, and structure they use. Use it as a checklist of what your article
+                should cover.
+              </InfoTip>
+            </CardTitle>
             <p className="text-xs text-muted-foreground">Pulled from {research.competitorOutlines.length} competitor HTML page{research.competitorOutlines.length === 1 ? "" : "s"}.</p>
           </CardHeader>
           <CardContent>
@@ -230,7 +313,14 @@ export default function ContentWriter() {
 
               <TabsContent value="entities" className="space-y-4 mt-4">
                 <div>
-                  <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">Combined ({combinedEntities.length})</h4>
+                  <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
+                    Combined ({combinedEntities.length})
+                    <InfoTip>
+                      Entities are the key people, places, brands, and concepts a thorough
+                      article on this topic should mention. Try to work the relevant ones into
+                      your draft.
+                    </InfoTip>
+                  </h4>
                   <BadgeCloud items={combinedEntities} tone="primary" />
                 </div>
                 <div className="grid md:grid-cols-2 gap-4">
@@ -247,7 +337,14 @@ export default function ContentWriter() {
 
               <TabsContent value="nlp" className="space-y-4 mt-4">
                 <div>
-                  <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">NLP / LSI keywords ({research.nlpKeywords.length})</h4>
+                  <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
+                    NLP / LSI keywords ({research.nlpKeywords.length})
+                    <InfoTip>
+                      Related words and phrases that naturally go with your topic (NLP / LSI
+                      just means "words search engines expect to see together"). Sprinkling
+                      them in makes your article read as more complete.
+                    </InfoTip>
+                  </h4>
                   <BadgeCloud items={research.nlpKeywords} tone="primary" />
                 </div>
                 <div>

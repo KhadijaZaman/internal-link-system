@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { useLocation } from "wouter";
+import { ToastAction } from "@/components/ui/toast";
 import {
   useGetLoserWeeks,
   useGetLoserPages,
@@ -362,6 +364,7 @@ function PageQueryRow({ q, onInspect, active }: PageQueryRowProps) {
 export default function LosersRollup() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [week, setWeek] = useState<string>("");
   const [selected, setSelected] = useState<LoserPage | null>(null);
   const [inspectQuery, setInspectQuery] = useState<string>("");
@@ -398,7 +401,16 @@ export default function LosersRollup() {
     addOptimize.mutate(
       { data: { url: p.url, priority, notes } },
       {
-        onSuccess: () => toast({ title: "Sent to Optimizer", description: p.url }),
+        onSuccess: () =>
+          toast({
+            title: "Sent to Optimizer",
+            description: p.url,
+            action: (
+              <ToastAction altText="Open Optimizer" onClick={() => setLocation("/optimize")}>
+                Open Optimizer
+              </ToastAction>
+            ),
+          }),
         onError: () => toast({ variant: "destructive", title: "Failed to send to Optimizer" }),
       },
     );

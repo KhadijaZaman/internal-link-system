@@ -30,6 +30,8 @@ import {
   Play,
   Sparkles,
 } from "lucide-react";
+import { HowThisWorks } from "@/components/how-this-works";
+import { InfoTip } from "@/components/info-tip";
 
 const MAX_URLS = 100;
 
@@ -175,9 +177,55 @@ export default function SimilarityExplorer() {
         </p>
       </div>
 
+      <HowThisWorks
+        summary="Paste a list of article web addresses and the AI reads each one, then scores how alike they are — so you can spot pages that overlap and compete with each other."
+        steps={[
+          {
+            title: "Paste your URLs",
+            body: `Add up to ${MAX_URLS} article web addresses, one per line — the pages you want to compare against each other.`,
+          },
+          {
+            title: "Click Analyze",
+            body: "The AI fetches each page, reads what it's about, and works out how similar every pair of articles is.",
+          },
+          {
+            title: "Read the clusters",
+            body: "Articles about the same thing are grouped into colored clusters. Several pages in one cluster is a sign they cover the same ground.",
+          },
+          {
+            title: "Fix the overlaps",
+            body: "Where two pages are very similar, decide whether to merge them, link one to the other, or give each a distinct angle — otherwise they compete for the same searches.",
+          },
+        ]}
+        faqs={[
+          {
+            title: "What does the % score mean?",
+            body: "It's a similarity score from 0% to 100% (technically 'cosine similarity' — a 0-to-100 measure of how alike two articles are). Higher means the two pages talk about more of the same things.",
+          },
+          {
+            title: "What is 'content cannibalization'?",
+            body: "When two of your own pages target the same topic, Google can't tell which to rank, so they split traffic and both do worse. This tool helps you find those clashes.",
+          },
+          {
+            title: "Why did some URLs fail?",
+            body: "A page might be blocked, moved, or empty. Failed URLs are listed on their own and simply skipped from the comparison.",
+          },
+        ]}
+        tips={[
+          "Add at least 2 URLs — you need a pair to compare.",
+          "Green bars (60%+) are the strongest overlaps and usually the first ones worth fixing.",
+        ]}
+      />
+
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Analyze URLs</CardTitle>
+          <CardTitle className="text-base flex items-center gap-1.5">
+            Analyze URLs
+            <InfoTip>
+              Paste the web addresses of the articles you want to compare — one per line, up
+              to {MAX_URLS}.
+            </InfoTip>
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <Textarea
@@ -283,6 +331,10 @@ export default function SimilarityExplorer() {
               <CardTitle className="text-base flex items-center gap-2">
                 <Sparkles className="h-4 w-4" />
                 Topic Clusters
+                <InfoTip>
+                  Groups of articles the AI decided are about the same subject. Several pages
+                  in one cluster can mean overlapping content that competes with itself.
+                </InfoTip>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -405,7 +457,14 @@ export default function SimilarityExplorer() {
                       </p>
                     )}
                     <div>
-                      <p className="text-xs font-medium mb-1.5">Similar articles</p>
+                      <p className="text-xs font-medium mb-1.5 flex items-center gap-1.5">
+                        Similar articles
+                        <InfoTip>
+                          Other pages from your list that overlap with this one, each with a
+                          match score from 0–100%. High scores flag pages that may compete for
+                          the same searches.
+                        </InfoTip>
+                      </p>
                       {a.similar.length === 0 ? (
                         <p className="text-xs text-muted-foreground">
                           No similar articles above 35%.

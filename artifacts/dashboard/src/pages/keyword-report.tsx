@@ -23,6 +23,8 @@ import {
   RANGE_OPTIONS,
   COUNTRY_OPTIONS,
 } from "@/components/perf-blocks";
+import { HowThisWorks } from "@/components/how-this-works";
+import { InfoTip } from "@/components/info-tip";
 import { Globe, Search, SearchCheck } from "lucide-react";
 
 function normalizeUrl(raw: string): string {
@@ -109,14 +111,58 @@ export default function KeywordReport() {
         </p>
       </div>
 
+      <HowThisWorks
+        summary="Look up exactly how one page performs for one specific keyword in Google — daily clicks, impressions, and ranking position, straight from Search Console."
+        steps={[
+          {
+            title: "Enter a page and keyword",
+            body: "Paste the full page URL and type the exact keyword you want to check for that page.",
+          },
+          {
+            title: "Set the range (optional)",
+            body: "Choose a country and time window, then press Get report.",
+          },
+          {
+            title: "Read the totals",
+            body: "The three cards show the keyword's numbers for the range: Clicks = visits from that search, Impressions = how many times it appeared in results, and Avg position = your typical Google rank (lower is better). Each card also shows the change versus the previous period.",
+          },
+          {
+            title: "Study the daily trend",
+            body: "The table and chart break performance down day by day, so you can see exactly when a keyword rose or fell.",
+          },
+        ]}
+        faqs={[
+          {
+            title: "Does this change anything?",
+            body: "No. It's a read-only lookup — nothing is crawled, saved, or edited on your site.",
+          },
+          {
+            title: "Why are the numbers zero?",
+            body: "Google recorded no searches for that exact keyword on that page in the range. Check the spelling and that the URL matches your Search Console property.",
+          },
+          {
+            title: "Why is the last day or two missing or low?",
+            body: "Search Console data lags about 2 days, so the most recent days are usually incomplete.",
+          },
+        ]}
+        tips={[
+          "Use the exact URL as it appears in Google, including https:// and any trailing slash.",
+          "Average position is an average across the range — lower is better, with 1 being the very top of Google.",
+        ]}
+      />
+
       <form
         onSubmit={onSubmit}
         className="rounded-lg border border-border/60 bg-card p-4 space-y-3"
       >
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <label className="text-xs font-medium text-muted-foreground" htmlFor="kr-url">
+            <label
+              className="text-xs font-medium text-muted-foreground inline-flex items-center gap-1"
+              htmlFor="kr-url"
+            >
               Page URL
+              <InfoTip>The exact web address of the page you want to check, e.g. https://wellows.com/features/prompt-tracking/.</InfoTip>
             </label>
             <Input
               id="kr-url"
@@ -128,10 +174,11 @@ export default function KeywordReport() {
           </div>
           <div>
             <label
-              className="text-xs font-medium text-muted-foreground"
+              className="text-xs font-medium text-muted-foreground inline-flex items-center gap-1"
               htmlFor="kr-keyword"
             >
               Keyword
+              <InfoTip>The exact search term you want to measure this page for, e.g. prompt tracking.</InfoTip>
             </label>
             <Input
               id="kr-keyword"
@@ -235,9 +282,10 @@ export default function KeywordReport() {
           </div>
 
           {keywordShare != null && (
-            <div className="text-xs text-muted-foreground">
+            <div className="text-xs text-muted-foreground inline-flex items-center gap-1">
               This keyword accounts for {keywordShare.toFixed(1)}% of the page's
               impressions in this range.
+              <InfoTip>How big a slice of this page's total views comes from this one keyword. A high share means the page depends heavily on it.</InfoTip>
             </div>
           )}
 

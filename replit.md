@@ -45,6 +45,7 @@ _Replace the heading above with the project's name, and this line with one sente
 - `artifacts/api-server/src/jobs/generateTopicalMap.ts` — `generate_topical_map` job (manual-only): LLM phases → node persist (MAX_NODES cap) → 3-tier match vs existing pages (exact_slug, top_query, embedding ≥0.65) → stats; one active run enforced via 409 in route
 - `artifacts/api-server/src/routes/topicalMap.ts` — 5 endpoints under `/api/topical-map` (runs list/detail, latest, POST generate, PATCH node status gap↔ignored only)
 - `artifacts/dashboard/src/pages/topical-map.tsx` — `/topical-map` page: charter form, radial d3 tree on canvas (zoom/pan/click), coverage cards + per-pillar bars, node detail panel, gap list
+- `artifacts/dashboard/src/components/data-narrative.tsx` — shared plain-English narrative block (DataNarrative + Num); callers compute the numbers client-side (bing.tsx aggregates rows with null-position exclusion; gsc/overview.tsx uses server totals/deltaPct). Every dashboard page carries HowThisWorks + InfoTip help (`@/components/how-this-works`, `@/components/info-tip`)
 - `artifacts/api-server/src/jobs/analyzeSimilarity.ts` — Content Similarity Explorer job (`analyze_similarity`, manual-only): fetches pasted URLs via SSRF-guarded `fetchPageInHouse`, embeds + gpt-4o-mini topics/theme per article (fail-soft per URL), pairwise cosine (≥0.35 display, top-10), Louvain clusters on ≥0.45 edges; UI at `/similarity`, routes in `routes/similarity.ts`
 
 ## Architecture decisions

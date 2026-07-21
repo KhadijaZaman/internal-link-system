@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { Link } from "wouter";
 import {
   useGetBingPages,
   useListAiCitationUploads,
@@ -16,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { SortableHeader, type SortState } from "@/components/gsc/sortable-header";
 import { InfoTip } from "@/components/info-tip";
 import { HowThisWorks } from "@/components/how-this-works";
+import { DataNarrative, Num, type NarrativeInsight } from "@/components/data-narrative";
 import { CopyButton } from "@/components/copy-button";
 import { rowsToTsv } from "@/lib/clipboard";
 import { useToast } from "@/hooks/use-toast";
@@ -153,6 +155,116 @@ export default function BingPage() {
 
   const groundingUploads = (uploadsQ.data ?? []).filter((u) => u.kind === "grounding_queries");
 
+  const narrative = useMemo(() => {
+    if (!data || data.rows.length === 0) return null;
+    let gscImp = 0;
+    let bingImp = 0;
+    let gPosW = 0;
+    let gPosImp = 0;
+    let bPosW = 0;
+    let bPosImp = 0;
+    for (const r of data.rows) {
+      const gi = r.gscImpressions ?? 0;
+      const bi = r.bingImpressions ?? 0;
+      gscImp += gi;
+      bingImp += bi;
+      if (r.gscPosition != null && r.gscPosition > 0 && gi > 0) {
+        gPosW += r.gscPosition * gi;
+        gPosImp += gi;
+      }
+      if (r.bingPosition != null && r.bingPosition > 0 && bi > 0) {
+        bPosW += r.bingPosition * bi;
+        bPosImp += bi;
+      }
+    }
+    const gPos = gPosImp > 0 ? gPosW / gPosImp : null;
+    const bPos = bPosImp > 0 ? bPosW / bPosImp : null;
+    const t = data.totals;
+    const hasCitations = t.aiCitations > 0;
+
+    const paragraphs: React.ReactNode[] = [
+      <>
+        Your pages appeared <Num>{gscImp.toLocaleString()} times</Num> in Google search results and{" "}
+        <Num>{bingImp.toLocaleString()} times</Num> in Bing (those are &quot;impressions&quot; — being
+        shown, whether or not anyone clicked). Note the windows differ: Google numbers cover the latest
+        GSC sync (~28 days), while Bing&apos;s cover roughly the last 6 months — so don&apos;t compare
+        them head-to-head.
+        {gPos !== null || bPos !== null ? (
+          <>
+            {" "}
+            When shown, you ranked around{" "}
+            {gPos !== null ? <Num>#{gPos.toFixed(1)} on Google</Num> : null}
+            {gPos !== null && bPos !== null ? " and " : null}
+            {bPos !== null ? <Num>#{bPos.toFixed(1)} on Bing</Num> : null} on average — lower means
+            closer to the top of the page.
+          </>
+        ) : null}
+      </>,
+      <>
+        Those appearances turned into <Num>{t.gscClicks.toLocaleString()} Google clicks</Num> and{" "}
+        <Num>{t.bingClicks.toLocaleString()} Bing clicks</Num> — real people choosing your result over
+        everything else on the page.
+      </>,
+      hasCitations ? (
+        <>
+          Beyond classic search, AI answers (Copilot / Bing AI) quoted your pages as a source{" "}
+          <Num>{t.aiCitations.toLocaleString()} times</Num>, and AI assistants like ChatGPT and
+          Perplexity sent <Num>{t.aiSessions.toLocaleString()} actual visits</Num> in the last 28 days.
+          Being cited builds brand visibility even when there is no click to count.
+        </>
+      ) : (
+        <>
+          No AI-citation data yet — upload the AI Performance export from Bing Webmaster Tools (button
+          above) to see how often AI answers quote your pages as a source.
+        </>
+      ),
+    ];
+
+    const insights: NarrativeInsight[] = [];
+    const topCited = data.rows
+      .filter((r) => (r.aiCitations ?? 0) > 0)
+      .sort((a, b) => (b.aiCitations ?? 0) - (a.aiCitations ?? 0))[0];
+    if (topCited) {
+      insights.push({
+        tone: "good",
+        text: (
+          <>
+            AI&apos;s favorite source on your site is <Num>{topCited.path}</Num> — cited{" "}
+            <Num>{(topCited.aiCitations ?? 0).toLocaleString()} times</Num>.
+          </>
+        ),
+      });
+    }
+    const hiddenGems = data.rows.filter(
+      (r) => (r.aiCitations ?? 0) >= 5 && (r.gscClicks ?? 0) < 10,
+    ).length;
+    if (hiddenGems > 0) {
+      insights.push({
+        tone: "warn",
+        text: (
+          <>
+            <Num>{hiddenGems} page{hiddenGems === 1 ? "" : "s"}</Num> are quoted often by AI but get
+            almost no Google clicks — AI values them more than Google currently rewards them. Sort the
+            table by AI citations to find them.
+          </>
+        ),
+      });
+    }
+    if (t.gscClicks > 0 && t.bingClicks > 0) {
+      const per100 = Math.round((t.bingClicks / t.gscClicks) * 100);
+      insights.push({
+        tone: "neutral",
+        text: (
+          <>
+            For every <Num>100 Google clicks</Num>, Bing brings roughly <Num>{per100}</Num> — keep in
+            mind the Bing window is ~6 months while GSC reflects the latest sync.
+          </>
+        ),
+      });
+    }
+    return { paragraphs, insights };
+  }, [data]);
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-start gap-4">
@@ -248,6 +360,10 @@ export default function BingPage() {
             <StatCard label="AI sessions" value={data.totals.aiSessions.toLocaleString()} hint="GA4, 28-day window" />
           </div>
 
+          {narrative ? (
+            <DataNarrative paragraphs={narrative.paragraphs} insights={narrative.insights} />
+          ) : null}
+
           {data.totals.bingClicks === 0 && data.bingSyncedAt === null ? (
             <div className="border rounded-lg p-4 bg-muted/30 text-sm text-muted-foreground">
               Bing stats haven't been synced yet — click <span className="font-medium">Sync Bing now</span> to
@@ -267,6 +383,12 @@ export default function BingPage() {
               className="max-w-md h-9"
             />
             <div className="text-xs text-muted-foreground ml-auto">{rows.length} pages</div>
+            <Link
+              href="/report"
+              className="text-xs font-medium text-primary hover:underline whitespace-nowrap"
+            >
+              Full per-page picture → Page Report
+            </Link>
             <CopyButton
               disabled={rows.length === 0}
               getText={() =>

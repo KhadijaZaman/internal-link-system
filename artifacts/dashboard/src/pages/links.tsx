@@ -1,6 +1,7 @@
 import { useLocation, Link } from "wouter";
 import { Inbox, Sparkles, Unplug } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { HowThisWorks } from "@/components/how-this-works";
 import SemanticLinks from "@/pages/semantic-links";
 import LinkLookups from "@/pages/link-lookups";
 import StructuralFixes from "@/pages/structural-fixes";
@@ -36,6 +37,42 @@ export default function LinksHub() {
 
   return (
     <div className="flex flex-col h-full">
+      <HowThisWorks
+        className="flex-none mb-5"
+        summary="Your internal-linking control center — one place to review link suggestions, get new link ideas for any page, and fix pages that are cut off from the rest of your site."
+        steps={[
+          {
+            title: "Semantic Links",
+            body: "Review the internal-link recommendations the system generated and approve or reject each one. Approved links are ready for you to add to your pages.",
+          },
+          {
+            title: "Suggest Links",
+            body: "Paste any published page (or many at once) to get fresh ideas for pages it should link to, and pages that should link to it.",
+          },
+          {
+            title: "Structural Fixes",
+            body: "Find and repair “orphan” pages (nothing links to them) and “dead-end” pages (they link to nothing) — both are hard for Google to find and rank.",
+          },
+        ]}
+        faqs={[
+          {
+            title: "What is an internal link?",
+            body: "A link from one page on your own site to another. Internal links help visitors and Google move around your site and share ranking strength between pages.",
+          },
+          {
+            title: "Do these tools change my site automatically?",
+            body: "No. They only suggest links. You review and approve them, then add the links to your pages yourself (or through your CMS).",
+          },
+          {
+            title: "Which tab should I start with?",
+            body: "Start in Semantic Links to clear the suggestions already waiting, then use Structural Fixes to catch pages that are isolated.",
+          },
+        ]}
+        tips={[
+          "Switch tabs using the buttons below — each tab has its own detailed “How this works” panel.",
+          "Approving a suggestion doesn't publish it; you still add the link to your content.",
+        ]}
+      />
       <div className="flex-none mb-5 flex items-center gap-1 border-b border-border/60">
         {TABS.map((tab) => {
           const isActive = tab.href === active.href;

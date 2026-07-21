@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { HowThisWorks } from "@/components/how-this-works";
+import { InfoTip } from "@/components/info-tip";
 import {
   Newspaper,
   RefreshCw,
@@ -93,6 +95,7 @@ function DigestBody({ payload }: { payload: DigestPayload }) {
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-500" />
             New issues found ({payload.newIssues.total})
+            <InfoTip>Brand-new problems the system spotted this week — such as pages slipping in Google or pages missing internal links.</InfoTip>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -127,6 +130,7 @@ function DigestBody({ payload }: { payload: DigestPayload }) {
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 text-emerald-500" />
             Work completed ({payload.completed.total})
+            <InfoTip>Tasks that were finished this week — either automatically by the system or by a person.</InfoTip>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -162,6 +166,7 @@ function DigestBody({ payload }: { payload: DigestPayload }) {
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Trophy className="h-4 w-4 text-primary" />
             Impact wins
+            <InfoTip>Pages that measurably gained clicks or impressions after work was done. Measured about 2 weeks later so Google has time to react.</InfoTip>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -201,6 +206,7 @@ function DigestBody({ payload }: { payload: DigestPayload }) {
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <ListTodo className="h-4 w-4 text-muted-foreground" />
             Still open
+            <InfoTip>Tasks still waiting in your queue to be worked on.</InfoTip>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -301,16 +307,62 @@ export default function DigestPage() {
             automatically every Friday at 10:00 UTC.
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={handleGenerate}
-          disabled={runJob.isPending || generating}
-          data-testid="button-generate-digest"
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${runJob.isPending || generating ? "animate-spin" : ""}`} />
-          {generating ? "Refreshing…" : "Refresh this week"}
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <InfoTip side="left">
+            Digests are created automatically every Friday. Use this to re-generate the current
+            week right now instead of waiting.
+          </InfoTip>
+          <Button
+            variant="outline"
+            onClick={handleGenerate}
+            disabled={runJob.isPending || generating}
+            data-testid="button-generate-digest"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${runJob.isPending || generating ? "animate-spin" : ""}`} />
+            {generating ? "Refreshing…" : "Refresh this week"}
+          </Button>
+        </div>
       </div>
+
+      <HowThisWorks
+        summary="A once-a-week recap of what broke, what got fixed, what improved, and how healthy your SEO is overall — created automatically every Friday."
+        steps={[
+          {
+            title: "Open the latest week",
+            body: "The newest week is expanded by default. Click any week heading to expand or collapse it.",
+          },
+          {
+            title: "Scan the four cards",
+            body: "Each week shows new problems found, work completed, measured wins, and how many tasks are still open.",
+          },
+          {
+            title: "Check the health score",
+            body: "The big number next to each week is your overall SEO health, along with how much it moved since the previous snapshot.",
+          },
+          {
+            title: "Act on what's open",
+            body: "Use “Open Action Queue” to jump to the tasks still waiting to be worked on.",
+          },
+        ]}
+        faqs={[
+          {
+            title: "Do I need to press Refresh?",
+            body: "No. A new digest is created automatically every Friday at 10:00 UTC. “Refresh this week” just re-generates the current week on demand.",
+          },
+          {
+            title: "Why do wins take a while to show?",
+            body: "Wins are measured about two weeks after work is completed, so Google has time to react. Recently finished work shows as “Measuring” first.",
+          },
+          {
+            title: "What counts as a “new issue”?",
+            body: "Any new task the system found this week — for example, a page losing rankings or a page that needs internal links.",
+          },
+        ]}
+        tips={[
+          "“Auto-resolved” means the system detected a problem fixed itself; “Manual” means a person completed it.",
+          "A health number that rises week over week is the goal — a drop is worth investigating.",
+        ]}
+      />
 
       {digests.isLoading ? (
         <div className="space-y-4">

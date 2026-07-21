@@ -9,6 +9,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/info-tip";
 import { HowThisWorks } from "@/components/how-this-works";
+import { DataNarrative, Num, type NarrativeInsight } from "@/components/data-narrative";
 import { CopyButton } from "@/components/copy-button";
 import { rowsToTsv } from "@/lib/clipboard";
 
@@ -85,6 +86,58 @@ function OverviewBody() {
   const d = data.deltaPct;
   const reversed = series.slice().reverse();
 
+  const pct = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
+  const narrativeParagraphs: React.ReactNode[] = [
+    <>
+      In this period your site appeared <Num>{t.impressions.toLocaleString()} times</Num> in Google
+      search results (impressions), ranking around <Num>#{t.position.toFixed(1)}</Num> on average —
+      lower is better, and anything under ~10 means you&apos;re typically on page one.
+    </>,
+    <>
+      Of those appearances, <Num>{t.clicks.toLocaleString()} people clicked through</Num> — a
+      click-through rate of <Num>{(t.ctr * 100).toFixed(2)}%</Num>. Impressions show you&apos;re
+      visible; clicks show your titles and descriptions convinced people to choose you.
+    </>,
+  ];
+  const narrativeInsights: NarrativeInsight[] = [];
+  if (d) {
+    if (d.clicks !== null && Math.abs(d.clicks) >= 1) {
+      narrativeInsights.push({
+        tone: d.clicks >= 0 ? "good" : "warn",
+        text: (
+          <>
+            Clicks are <Num>{pct(d.clicks)}</Num> vs the previous period of the same length.
+          </>
+        ),
+      });
+    }
+    if (d.position !== null && Math.abs(d.position) >= 1) {
+      narrativeInsights.push({
+        tone: d.position <= 0 ? "good" : "warn",
+        text: (
+          <>
+            Average ranking moved <Num>{pct(d.position)}</Num> —{" "}
+            {d.position <= 0
+              ? "you climbed closer to the top of the results."
+              : "you slipped further down the results page."}
+          </>
+        ),
+      });
+    }
+    if (d.impressions !== null && d.clicks !== null && d.impressions > 5 && d.clicks < 0) {
+      narrativeInsights.push({
+        tone: "warn",
+        text: (
+          <>
+            You&apos;re being shown more (<Num>{pct(d.impressions)}</Num> impressions) but clicked
+            less (<Num>{pct(d.clicks)}</Num>) — your titles and descriptions may need a refresh to win
+            the click.
+          </>
+        ),
+      });
+    }
+  }
+
   return (
     <div className="space-y-6">
       <HowThisWorks
@@ -111,6 +164,8 @@ function OverviewBody() {
           <MetricCard label="Avg Position" value={t.position} format="decimal" deltaPct={d?.position ?? null} inverted />
         </div>
       </div>
+
+      <DataNarrative paragraphs={narrativeParagraphs} insights={narrativeInsights} />
 
       <div className="flex items-center gap-2">
         <span className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">

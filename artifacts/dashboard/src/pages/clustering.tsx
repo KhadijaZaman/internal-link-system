@@ -32,6 +32,8 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { COUNTRY_OPTIONS } from "@/components/perf-blocks";
+import { HowThisWorks } from "@/components/how-this-works";
+import { InfoTip } from "@/components/info-tip";
 import {
   Boxes,
   ChevronDown,
@@ -310,6 +312,50 @@ export default function Clustering() {
         </p>
       </div>
 
+      <HowThisWorks
+        summary="Groups your Google Search Console keywords into topic clusters based on which pages actually show up in Google for them — so you can see your real competitors and content gaps per topic."
+        steps={[
+          {
+            title: "Start a run",
+            body: "Choose how far back to pull keywords, how many to include, and which country's Google results to check, then press Start clustering. A fresh run scrapes live Google results and uses paid search credits (roughly the cost shown next to the button).",
+          },
+          {
+            title: "Wait a few minutes",
+            body: "The page tracks progress automatically as it pulls your queries, checks Google, and groups them. Every run stays saved here so you can revisit it later.",
+          },
+          {
+            title: "Read the map",
+            body: "The four colored boxes and the chart sort clusters by how many people see them (impressions) versus how often they click (CTR). Click a box to filter the table below to just that group.",
+          },
+          {
+            title: "Open a cluster",
+            body: "Expand any row to see the exact keywords inside it, which of your pages already rank, and which competitor pages are winning the clicks — that's your to-do list.",
+          },
+          {
+            title: "Improve names for free",
+            body: "Use “Improve cluster names” to re-group and rename an existing run from data already stored — no new scraping cost.",
+          },
+        ]}
+        faqs={[
+          {
+            title: "Does running this cost money?",
+            body: "Yes — a fresh run scrapes one live Google results page per keyword and uses paid SERP credits (SERP = the search results page; the dollar estimate is shown by the Start button). Rebuilding or renaming an existing run is free.",
+          },
+          {
+            title: "Why are some keywords “unclustered”?",
+            body: "Two keywords only join the same cluster when they share at least 3 of the same ranking pages in Google. Keywords too unique to match anything are left out.",
+          },
+          {
+            title: "What do “Opportunities” and “Stars” mean?",
+            body: "They sort each topic by attention versus clicks: Stars get seen and clicked (protect them), Opportunities get seen but few clicks (improve titles/pages), Niche get clicks from few views (expand), and Underperformers get little of either.",
+          },
+        ]}
+        tips={[
+          "Turn on “Exclude brand keywords” so searches for your own name don't crowd out real topic opportunities.",
+          "Start with a smaller keyword count to keep the cost low, then run bigger once you trust the results.",
+        ]}
+      />
+
       {/* Run form */}
       <Card>
         <CardHeader className="pb-3">
@@ -318,7 +364,10 @@ export default function Clustering() {
         <CardContent className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <label className="text-xs font-medium text-muted-foreground">GSC range</label>
+              <label className="text-xs font-medium text-muted-foreground inline-flex items-center gap-1">
+                GSC range
+                <InfoTip>How far back to pull your top keywords from Search Console. Longer ranges include more keywords but blend in older trends.</InfoTip>
+              </label>
               <Select value={days} onValueChange={setDays}>
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -329,7 +378,10 @@ export default function Clustering() {
               </Select>
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">GSC country</label>
+              <label className="text-xs font-medium text-muted-foreground inline-flex items-center gap-1">
+                GSC country
+                <InfoTip>Optionally limit the keywords to searches coming from one country in Search Console.</InfoTip>
+              </label>
               <Select value={country} onValueChange={setCountry}>
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -340,8 +392,9 @@ export default function Clustering() {
               </Select>
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">
+              <label className="text-xs font-medium text-muted-foreground inline-flex items-center gap-1">
                 Keywords to cluster (top by impressions)
+                <InfoTip>How many of your most-seen keywords to group. More keywords give a fuller map but cost more to scrape (one paid Google lookup each).</InfoTip>
               </label>
               <Input
                 className="mt-1"
@@ -353,8 +406,9 @@ export default function Clustering() {
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">
+              <label className="text-xs font-medium text-muted-foreground inline-flex items-center gap-1">
                 Google results location
+                <InfoTip>Which country's Google results to check when grouping keywords. Pick the market you care about most.</InfoTip>
               </label>
               <Select value={locationCode} onValueChange={setLocationCode}>
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
@@ -375,10 +429,12 @@ export default function Clustering() {
                 onChange={(e) => setExcludeBrand(e.target.checked)}
               />
               Exclude brand keywords
+              <InfoTip>Leaves out searches for your own brand name so they don't crowd out real topic opportunities.</InfoTip>
             </label>
             <div className="flex items-center gap-3">
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
                 Scrapes one live Google page per keyword (~${estCost} per run)
+                <InfoTip>Each keyword uses one paid Google-results lookup (a SERP credit). The dollar figure is the estimated cost for this run — bigger keyword counts cost more.</InfoTip>
               </span>
               <Button
                 onClick={handleStart}
@@ -523,7 +579,10 @@ export default function Clustering() {
               {/* Scatter */}
               <Card>
                 <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
-                  <CardTitle className="text-base">Impressions vs CTR</CardTitle>
+                  <CardTitle className="text-base flex items-center gap-1.5">
+                    Impressions vs CTR
+                    <InfoTip>Each bubble is a topic cluster. Left–right = how often it's seen (impressions); up–down = click-through rate; bubble size = how many keywords it holds. The dashed lines mark the middle (median) so you can see which quadrant each cluster falls in.</InfoTip>
+                  </CardTitle>
                   <label className="flex items-center gap-2 text-xs text-muted-foreground">
                     <input
                       type="checkbox"
@@ -532,6 +591,7 @@ export default function Clustering() {
                       onChange={(e) => setShowOutliers(e.target.checked)}
                     />
                     Show outliers
+                    <InfoTip>Outliers are unusual clusters (for example, one giant catch-all topic) hidden by default so they don't distort the chart. Tick this to include them.</InfoTip>
                   </label>
                 </CardHeader>
                 <CardContent>
@@ -622,13 +682,48 @@ export default function Clustering() {
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-8" />
-                        <TableHead>Cluster topic</TableHead>
-                        <TableHead>Group</TableHead>
-                        <TableHead className="text-right">Keywords</TableHead>
-                        <TableHead className="text-right">Impressions</TableHead>
-                        <TableHead className="text-right">Clicks</TableHead>
-                        <TableHead className="text-right">CTR</TableHead>
-                        <TableHead className="text-right">Avg pos</TableHead>
+                        <TableHead>
+                          <span className="inline-flex items-center gap-1">
+                            Cluster topic
+                            <InfoTip>An AI-picked name for this group of related keywords, based on the searches inside it.</InfoTip>
+                          </span>
+                        </TableHead>
+                        <TableHead>
+                          <span className="inline-flex items-center gap-1">
+                            Group
+                            <InfoTip>Which quadrant this cluster falls in — Stars, Opportunities, Niche, or Underperformers — based on views versus clicks.</InfoTip>
+                          </span>
+                        </TableHead>
+                        <TableHead className="text-right">
+                          <span className="inline-flex items-center gap-1">
+                            Keywords
+                            <InfoTip>How many individual search terms were grouped into this cluster.</InfoTip>
+                          </span>
+                        </TableHead>
+                        <TableHead className="text-right">
+                          <span className="inline-flex items-center gap-1">
+                            Impressions
+                            <InfoTip>How many times your pages appeared in Google results for these keywords, even if nobody clicked.</InfoTip>
+                          </span>
+                        </TableHead>
+                        <TableHead className="text-right">
+                          <span className="inline-flex items-center gap-1">
+                            Clicks
+                            <InfoTip>How many times someone actually clicked through to your site from these searches.</InfoTip>
+                          </span>
+                        </TableHead>
+                        <TableHead className="text-right">
+                          <span className="inline-flex items-center gap-1">
+                            CTR
+                            <InfoTip>Click-through rate — clicks divided by impressions. High views with low CTR means people see you but don't click, so titles or snippets may need work.</InfoTip>
+                          </span>
+                        </TableHead>
+                        <TableHead className="text-right">
+                          <span className="inline-flex items-center gap-1">
+                            Avg pos
+                            <InfoTip>Average position — where your pages typically rank in Google for these keywords. Lower is better (1 is the top result).</InfoTip>
+                          </span>
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
