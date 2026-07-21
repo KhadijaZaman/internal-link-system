@@ -59,6 +59,7 @@ export default function KnowledgeGraphPage() {
   const [edgeFilter, setEdgeFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -176,6 +177,20 @@ export default function KnowledgeGraphPage() {
     );
   }, [debouncedSearch, view]);
 
+  // Top matches for the results dropdown — most authoritative pages first.
+  const searchResults = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase();
+    if (!q || !view) return [];
+    return view.nodes
+      .filter(
+        (n) =>
+          n.id.toLowerCase().includes(q) ||
+          (n.title ?? "").toLowerCase().includes(q),
+      )
+      .sort((a, b) => b.pagerank - a.pagerank)
+      .slice(0, 10);
+  }, [debouncedSearch, view]);
+
   const selected = useMemo(
     () => data?.nodes.find((n) => n.id === selectedId) ?? null,
     [data, selectedId],
@@ -216,6 +231,7 @@ export default function KnowledgeGraphPage() {
   const hoverRef = useRef<string | null>(null);
   const searchRef = useRef<Set<string>>(new Set());
   const drawRef = useRef<() => void>(() => {});
+  const focusNodeRef = useRef<(id: string) => void>(() => {});
 
   selectedRef.current = selectedId;
   searchRef.current = searchMatches;
@@ -365,6 +381,18 @@ export default function KnowledgeGraphPage() {
     const selCanvas = d3.select(canvas);
     selCanvas.call(zoom);
 
+    // Smoothly pan/zoom the camera to center a node (used by search results).
+    focusNodeRef.current = (id: string) => {
+      const n = nodeById.get(id);
+      if (!n || n.x == null || n.y == null) return;
+      const k = Math.min(Math.max(transformRef.current.k, 1.6), 3);
+      const target = d3.zoomIdentity
+        .translate(width / 2, height / 2)
+        .scale(k)
+        .translate(-n.x, -n.y);
+      selCanvas.transition().duration(600).call(zoom.transform, target);
+    };
+
     const findNode = (mx: number, my: number): SimNode | undefined => {
       const t = transformRef.current;
       const [x, y] = t.invert([mx, my]);
@@ -396,6 +424,8 @@ export default function KnowledgeGraphPage() {
     return () => {
       sim.stop();
       selCanvas.on(".zoom", null);
+      selCanvas.interrupt();
+      focusNodeRef.current = () => {};
       canvas.removeEventListener("click", onClick);
       canvas.removeEventListener("mousemove", onMove);
     };
@@ -527,11 +557,89 @@ export default function KnowledgeGraphPage() {
         <div className="relative flex-1 min-w-[220px] max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Highlight pages by title or URL…"
+            placeholder="Find a page by title or URL…"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-8"
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setSearchFocused(true);
+            }}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && searchResults[0]) {
+                setSelectedId(searchResults[0].id);
+                focusNodeRef.current(searchResults[0].id);
+                setSearchFocused(false);
+                e.currentTarget.blur();
+              } else if (e.key === "Escape") {
+                setSearchFocused(false);
+                e.currentTarget.blur();
+              }
+            }}
+            className="pl-8 pr-8"
           />
+          {searchQuery && (
+            <button
+              className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                setSearchQuery("");
+                setDebouncedSearch("");
+              }}
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+          {searchFocused && debouncedSearch.trim() && (
+            <div
+              className="absolute z-20 top-full mt-1 w-full rounded-md border bg-popover shadow-md max-h-80 overflow-y-auto"
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              {searchResults.length === 0 ? (
+                <p className="px-3 py-2.5 text-xs text-muted-foreground">
+                  No pages match "{debouncedSearch.trim()}"
+                  {groupFilter !== "all" &&
+                    " in the current cluster filter — try switching back to all clusters"}
+                  .
+                </p>
+              ) : (
+                <>
+                  {searchResults.map((n) => (
+                    <button
+                      key={n.id}
+                      onClick={() => {
+                        setSelectedId(n.id);
+                        focusNodeRef.current(n.id);
+                        setSearchFocused(false);
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-muted flex items-center gap-2"
+                    >
+                      <span
+                        className="h-2.5 w-2.5 rounded-full shrink-0"
+                        style={{
+                          backgroundColor: groupColor(groupIdOf(n)),
+                        }}
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-xs font-medium truncate">
+                          {n.title ?? pathOf(n.id)}
+                        </span>
+                        <span className="block text-[11px] text-muted-foreground truncate">
+                          {pathOf(n.id)}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                  {searchMatches.size > searchResults.length && (
+                    <p className="px-3 py-2 text-[11px] text-muted-foreground border-t">
+                      +{searchMatches.size - searchResults.length} more — all
+                      matches are highlighted on the map.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
         <Select
           value={colorMode}
