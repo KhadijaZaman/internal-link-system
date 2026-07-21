@@ -34,6 +34,7 @@ import healthScoreRouter from "./healthScore";
 import digestsRouter from "./digests";
 import clusteringRouter from "./clustering";
 import similarityRouter from "./similarity";
+import bingRouter from "./bing";
 
 const router: IRouter = Router();
 
@@ -72,5 +73,6 @@ router.use(healthScoreRouter);
 router.use(digestsRouter);
 router.use(clusteringRouter);
 router.use(similarityRouter);
+router.use(bingRouter);
 
 export default router;

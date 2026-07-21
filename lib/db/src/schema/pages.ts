@@ -36,6 +36,14 @@ export const pagesTable = pgTable(
     keyEvents: integer("key_events"),
     aiSessions: integer("ai_sessions"),
     ga4SyncedAt: timestamp("ga4_synced_at", { withTimezone: true }),
+    // Bing rollups (~6-month window summed, latest sync_bing_pages run).
+    bingClicks: integer("bing_clicks"),
+    bingImpressions: integer("bing_impressions"),
+    bingPosition: doublePrecision("bing_position"),
+    bingSyncedAt: timestamp("bing_synced_at", { withTimezone: true }),
+    // AI citation rollup from the NEWEST "pages"-kind AI Performance upload.
+    aiCitations: integer("ai_citations"),
+    aiCitationsAt: timestamp("ai_citations_at", { withTimezone: true }),
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },

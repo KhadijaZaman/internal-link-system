@@ -740,6 +740,51 @@ paths:
                 $ref: "#/components/schemas/SimilarityRun"
         "404":
           description: Not found
+  /bing/pages:
+    get:
+      operationId: getBingPages
+      tags: [bing]
+      summary: Per-page mapping of GSC vs Bing vs AI citations vs GA4 AI sessions
+      responses:
+        "200":
+          description: Mapping rows plus sync/upload freshness
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BingPagesReport"
+  /bing/ai-citations/uploads:
+    post:
+      operationId: uploadAiCitations
+      tags: [bing]
+      summary: Upload a Bing AI Performance export (CSV text) and map it against the page registry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiCitationUploadInput"
+      responses:
+        "201":
+          description: Upload parsed and stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiCitationUploadResult"
+        "400":
+          description: File could not be parsed (unrecognized headers or no usable rows)
+    get:
+      operationId: listAiCitationUploads
+      tags: [bing]
+      summary: List AI citation uploads (newest first)
+      responses:
+        "200":
+          description: Uploads
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiCitationUpload"
   /jobs/{jobName}/run:
     post:
       operationId: runJob
@@ -751,7 +796,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [crawl_link_map, gsc_inventory_and_losers, optimize_queued_urls, crawl_wordpress, reembed_wordpress, semantic_linking, audit_orphans, audit_over_linked, audit_broken_links, run_full_pipeline, recompute_action_queue, weekly_digest, keyword_clustering, migrate_url_hygiene, sync_ga4_pages, embed_kb_chunks, sync_keyword_sheet, analyze_similarity]
+            enum: [crawl_link_map, gsc_inventory_and_losers, optimize_queued_urls, crawl_wordpress, reembed_wordpress, semantic_linking, audit_orphans, audit_over_linked, audit_broken_links, run_full_pipeline, recompute_action_queue, weekly_digest, keyword_clustering, migrate_url_hygiene, sync_ga4_pages, embed_kb_chunks, sync_keyword_sheet, analyze_similarity, sync_bing_pages]
       responses:
         "202":
           description: Job started
@@ -3761,3 +3806,82 @@ components:
         createdAt: { type: string }
         startedAt: { type: ["string", "null"] }
         finishedAt: { type: ["string", "null"] }
+    AiCitationUploadInput:
+      type: object
+      required: [content]
+      properties:
+        label:
+          type: string
+          maxLength: 200
+          description: Optional label (defaults to a timestamped name)
+        content:
+          type: string
+          minLength: 1
+          maxLength: 1500000
+          description: Raw CSV text of the Bing AI Performance export
+    AiCitationUpload:
+      type: object
+      required: [id, label, kind, rowCount, unmatchedCount, uploadedAt]
+      properties:
+        id: { type: integer }
+        label: { type: string }
+        kind:
+          type: string
+          enum: [pages, grounding_queries]
+        rowCount: { type: integer }
+        unmatchedCount: { type: integer }
+        uploadedAt: { type: string }
+    AiCitationUploadResult:
+      type: object
+      required: [upload, matchedPages, totalCitations, warnings]
+      properties:
+        upload:
+          $ref: "#/components/schemas/AiCitationUpload"
+        matchedPages:
+          type: integer
+          description: Rows whose URL mapped onto the canonical page registry (pages kind)
+        totalCitations: { type: integer }
+        warnings:
+          type: array
+          items: { type: string }
+    BingPageMapRow:
+      type: object
+      required: [path, title, section, gscClicks, gscImpressions, gscPosition, bingClicks, bingImpressions, bingPosition, aiCitations, aiSessions]
+      properties:
+        path: { type: string }
+        title: { type: ["string", "null"] }
+        section: { type: ["string", "null"] }
+        gscClicks: { type: ["integer", "null"] }
+        gscImpressions: { type: ["integer", "null"] }
+        gscPosition: { type: ["number", "null"] }
+        bingClicks: { type: ["integer", "null"] }
+        bingImpressions: { type: ["integer", "null"] }
+        bingPosition: { type: ["number", "null"] }
+        aiCitations: { type: ["integer", "null"] }
+        aiSessions: { type: ["integer", "null"] }
+    BingPagesReport:
+      type: object
+      required: [rows, bingSyncedAt, aiCitationsAt, latestUpload, totals]
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/BingPageMapRow"
+        bingSyncedAt:
+          type: ["string", "null"]
+          description: When the Bing API sync last ran (null = never)
+        aiCitationsAt:
+          type: ["string", "null"]
+          description: When the AI citation rollup was last applied (null = never)
+        latestUpload:
+          oneOf:
+            - $ref: "#/components/schemas/AiCitationUpload"
+            - type: "null"
+        totals:
+          type: object
+          required: [gscClicks, bingClicks, aiCitations, aiSessions]
+          properties:
+            gscClicks: { type: integer }
+            bingClicks: { type: integer }
+            aiCitations: { type: integer }
+            aiSessions: { type: integer }

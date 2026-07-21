@@ -15,6 +15,7 @@ import { runSyncGa4Pages } from "./syncGa4Pages";
 import { runEmbedKbChunks } from "./embedKbChunks";
 import { runSyncKeywordSheet } from "./syncKeywordSheet";
 import { runAnalyzeSimilarity } from "./analyzeSimilarity";
+import { runSyncBingPages } from "./syncBingPages";
 import { logger } from "../lib/logger";
 
 export function setupJobs(): void {
@@ -51,6 +52,8 @@ export function setupJobs(): void {
   // Content Similarity Explorer runs — triggered by POST /similarity/runs,
   // never on a cron (fetches arbitrary user-supplied URLs + OpenAI spend).
   registerJob("analyze_similarity", runAnalyzeSimilarity);
+  // Bing Webmaster API page/query stats → bing_* tables + pages rollups.
+  registerJob("sync_bing_pages", runSyncBingPages);
 }
 
 export function startScheduler(): void {
@@ -90,6 +93,9 @@ export function startScheduler(): void {
   cron.schedule("0 6 * * *", () => void runJob("sync_keyword_sheet"), { timezone: "UTC" });
   // Friday 10:00 UTC — weekly digest (after Thursday's audits have refreshed signals)
   cron.schedule("0 10 * * 5", () => void runJob("weekly_digest"), { timezone: "UTC" });
+  // Daily 04:00 UTC — Bing Webmaster stats (free API, one key; full-window
+  // delete+reinsert so daily cadence just keeps the rolling window fresh).
+  cron.schedule("0 4 * * *", () => void runJob("sync_bing_pages"), { timezone: "UTC" });
   logger.info(
     "Cron schedules registered (UTC: Sun02 WP crawl, Mon03 GSC, Tue06 semantic_linking, " +
       "Thu07/08/09 audits (orphans/over_linked/broken_links), Sat02 sitemap, monthly-01 reembed). " +

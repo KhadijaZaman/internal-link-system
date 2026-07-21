@@ -1051,10 +1051,75 @@ export const GetSimilarityRunResponse = zod.object({
 
 
 /**
+ * @summary Per-page mapping of GSC vs Bing vs AI citations vs GA4 AI sessions
+ */
+export const GetBingPagesResponse = zod.object({
+  "rows": zod.array(zod.object({
+  "path": zod.string(),
+  "title": zod.string().nullable(),
+  "section": zod.string().nullable(),
+  "gscClicks": zod.number().nullable(),
+  "gscImpressions": zod.number().nullable(),
+  "gscPosition": zod.number().nullable(),
+  "bingClicks": zod.number().nullable(),
+  "bingImpressions": zod.number().nullable(),
+  "bingPosition": zod.number().nullable(),
+  "aiCitations": zod.number().nullable(),
+  "aiSessions": zod.number().nullable()
+})),
+  "bingSyncedAt": zod.string().nullable().describe('When the Bing API sync last ran (null = never)'),
+  "aiCitationsAt": zod.string().nullable().describe('When the AI citation rollup was last applied (null = never)'),
+  "latestUpload": zod.union([zod.object({
+  "id": zod.number(),
+  "label": zod.string(),
+  "kind": zod.enum(['pages', 'grounding_queries']),
+  "rowCount": zod.number(),
+  "unmatchedCount": zod.number(),
+  "uploadedAt": zod.string()
+}),zod.null()]),
+  "totals": zod.object({
+  "gscClicks": zod.number(),
+  "bingClicks": zod.number(),
+  "aiCitations": zod.number(),
+  "aiSessions": zod.number()
+})
+})
+
+
+/**
+ * @summary Upload a Bing AI Performance export (CSV text) and map it against the page registry
+ */
+export const uploadAiCitationsBodyLabelMax = 200;
+
+export const uploadAiCitationsBodyContentMax = 1500000;
+
+
+
+export const UploadAiCitationsBody = zod.object({
+  "label": zod.string().max(uploadAiCitationsBodyLabelMax).optional().describe('Optional label (defaults to a timestamped name)'),
+  "content": zod.string().min(1).max(uploadAiCitationsBodyContentMax).describe('Raw CSV text of the Bing AI Performance export')
+})
+
+
+/**
+ * @summary List AI citation uploads (newest first)
+ */
+export const ListAiCitationUploadsResponseItem = zod.object({
+  "id": zod.number(),
+  "label": zod.string(),
+  "kind": zod.enum(['pages', 'grounding_queries']),
+  "rowCount": zod.number(),
+  "unmatchedCount": zod.number(),
+  "uploadedAt": zod.string()
+})
+export const ListAiCitationUploadsResponse = zod.array(ListAiCitationUploadsResponseItem)
+
+
+/**
  * @summary Manually trigger a background job
  */
 export const RunJobParams = zod.object({
-  "jobName": zod.enum(['crawl_link_map', 'gsc_inventory_and_losers', 'optimize_queued_urls', 'crawl_wordpress', 'reembed_wordpress', 'semantic_linking', 'audit_orphans', 'audit_over_linked', 'audit_broken_links', 'run_full_pipeline', 'recompute_action_queue', 'weekly_digest', 'keyword_clustering', 'migrate_url_hygiene', 'sync_ga4_pages', 'embed_kb_chunks', 'sync_keyword_sheet', 'analyze_similarity'])
+  "jobName": zod.enum(['crawl_link_map', 'gsc_inventory_and_losers', 'optimize_queued_urls', 'crawl_wordpress', 'reembed_wordpress', 'semantic_linking', 'audit_orphans', 'audit_over_linked', 'audit_broken_links', 'run_full_pipeline', 'recompute_action_queue', 'weekly_digest', 'keyword_clustering', 'migrate_url_hygiene', 'sync_ga4_pages', 'embed_kb_chunks', 'sync_keyword_sheet', 'analyze_similarity', 'sync_bing_pages'])
 })
 
 

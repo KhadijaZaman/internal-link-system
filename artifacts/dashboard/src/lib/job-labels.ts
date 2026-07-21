@@ -102,6 +102,12 @@ const JOB_LABELS: Record<string, JobLabel> = {
     route: "/similarity",
     routeLabel: "Open Similarity Explorer",
   },
+  sync_bing_pages: {
+    title: "Sync Bing Search Stats",
+    description: "Pulls the Bing Webmaster API's rolling ~6-month window of page and query stats (clicks, impressions, position) and rolls page totals onto the page registry. Runs daily at 04:00 UTC; free API, no paid spend.",
+    route: "/bing",
+    routeLabel: "Open Bing & AI Citations",
+  },
 };
 
 export function getJobLabel(name: string): JobLabel {

@@ -23,9 +23,13 @@ import type {
   ActionItem,
   ActionQueue,
   ActionStatusInput,
+  AiCitationUpload,
+  AiCitationUploadInput,
+  AiCitationUploadResult,
   AuditReport,
   AuthSession,
   AuthoritySnapshot,
+  BingPagesReport,
   ClusterRun,
   ContentAuditTextInput,
   ContentEntitiesAudit,
@@ -3015,7 +3019,232 @@ export function useGetSimilarityRun<TData = Awaited<ReturnType<typeof getSimilar
 
 
 
-export const getRunJobUrl = (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity',) => {
+export const getGetBingPagesUrl = () => {
+
+
+
+
+  return `/api/bing/pages`
+}
+
+/**
+ * @summary Per-page mapping of GSC vs Bing vs AI citations vs GA4 AI sessions
+ */
+export const getBingPages = async ( options?: RequestInit): Promise<BingPagesReport> => {
+
+  return customFetch<BingPagesReport>(getGetBingPagesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBingPagesQueryKey = () => {
+    return [
+    `/api/bing/pages`
+    ] as const;
+    }
+
+
+export const getGetBingPagesQueryOptions = <TData = Awaited<ReturnType<typeof getBingPages>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBingPages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBingPagesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBingPages>>> = ({ signal }) => getBingPages({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBingPages>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBingPagesQueryResult = NonNullable<Awaited<ReturnType<typeof getBingPages>>>
+export type GetBingPagesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Per-page mapping of GSC vs Bing vs AI citations vs GA4 AI sessions
+ */
+
+export function useGetBingPages<TData = Awaited<ReturnType<typeof getBingPages>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBingPages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBingPagesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUploadAiCitationsUrl = () => {
+
+
+
+
+  return `/api/bing/ai-citations/uploads`
+}
+
+/**
+ * @summary Upload a Bing AI Performance export (CSV text) and map it against the page registry
+ */
+export const uploadAiCitations = async (aiCitationUploadInput: AiCitationUploadInput, options?: RequestInit): Promise<AiCitationUploadResult> => {
+
+  return customFetch<AiCitationUploadResult>(getUploadAiCitationsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      aiCitationUploadInput,)
+  }
+);}
+
+
+
+
+export const getUploadAiCitationsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadAiCitations>>, TError,{data: BodyType<AiCitationUploadInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof uploadAiCitations>>, TError,{data: BodyType<AiCitationUploadInput>}, TContext> => {
+
+const mutationKey = ['uploadAiCitations'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof uploadAiCitations>>, {data: BodyType<AiCitationUploadInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  uploadAiCitations(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UploadAiCitationsMutationResult = NonNullable<Awaited<ReturnType<typeof uploadAiCitations>>>
+    export type UploadAiCitationsMutationBody = BodyType<AiCitationUploadInput>
+    export type UploadAiCitationsMutationError = ErrorType<void>
+
+    /**
+ * @summary Upload a Bing AI Performance export (CSV text) and map it against the page registry
+ */
+export const useUploadAiCitations = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadAiCitations>>, TError,{data: BodyType<AiCitationUploadInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof uploadAiCitations>>,
+        TError,
+        {data: BodyType<AiCitationUploadInput>},
+        TContext
+      > => {
+      return useMutation(getUploadAiCitationsMutationOptions(options));
+    }
+
+export const getListAiCitationUploadsUrl = () => {
+
+
+
+
+  return `/api/bing/ai-citations/uploads`
+}
+
+/**
+ * @summary List AI citation uploads (newest first)
+ */
+export const listAiCitationUploads = async ( options?: RequestInit): Promise<AiCitationUpload[]> => {
+
+  return customFetch<AiCitationUpload[]>(getListAiCitationUploadsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAiCitationUploadsQueryKey = () => {
+    return [
+    `/api/bing/ai-citations/uploads`
+    ] as const;
+    }
+
+
+export const getListAiCitationUploadsQueryOptions = <TData = Awaited<ReturnType<typeof listAiCitationUploads>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAiCitationUploads>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAiCitationUploadsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAiCitationUploads>>> = ({ signal }) => listAiCitationUploads({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAiCitationUploads>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAiCitationUploadsQueryResult = NonNullable<Awaited<ReturnType<typeof listAiCitationUploads>>>
+export type ListAiCitationUploadsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List AI citation uploads (newest first)
+ */
+
+export function useListAiCitationUploads<TData = Awaited<ReturnType<typeof listAiCitationUploads>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAiCitationUploads>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAiCitationUploadsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getRunJobUrl = (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages',) => {
 
 
 
@@ -3026,7 +3255,7 @@ export const getRunJobUrl = (jobName: 'crawl_link_map' | 'gsc_inventory_and_lose
 /**
  * @summary Manually trigger a background job
  */
-export const runJob = async (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity', options?: RequestInit): Promise<JobRunResult> => {
+export const runJob = async (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages', options?: RequestInit): Promise<JobRunResult> => {
 
   return customFetch<JobRunResult>(getRunJobUrl(jobName),
   {
@@ -3041,8 +3270,8 @@ export const runJob = async (jobName: 'crawl_link_map' | 'gsc_inventory_and_lose
 
 
 export const getRunJobMutationOptions = <TError = ErrorType<JobRunResult>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity'}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity'}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages'}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages'}, TContext> => {
 
 const mutationKey = ['runJob'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -3054,7 +3283,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runJob>>, {jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity'}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runJob>>, {jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages'}> = (props) => {
           const {jobName} = props ?? {};
 
           return  runJob(jobName,requestOptions)
@@ -3075,11 +3304,11 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
  * @summary Manually trigger a background job
  */
 export const useRunJob = <TError = ErrorType<JobRunResult>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity'}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages'}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof runJob>>,
         TError,
-        {jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity'},
+        {jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages'},
         TContext
       > => {
       return useMutation(getRunJobMutationOptions(options));

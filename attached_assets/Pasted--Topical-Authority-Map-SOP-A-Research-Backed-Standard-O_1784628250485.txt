@@ -1,0 +1,778 @@
+# Topical Authority Map SOP
+## A Research-Backed Standard Operating Procedure for Building Topical Authority on Any Website
+
+**Version 1.0 · July 2026**
+
+---
+
+## How to read this document
+
+Every claim in this SOP is tagged with one of four evidence tiers, so facts are never confused with opinions:
+
+| Tag | Meaning | Example sources |
+|---|---|---|
+| **[FACT]** | Documented by Google (Search Central, Quality Rater Guidelines, official statements) | Google Search Central, QRG |
+| **[PATENT]** | Described in Google patents or research papers — indicates capability, not confirmed deployment | Bill Slawski / SEO by the Sea archive, Topical TrustRank paper |
+| **[BEST PRACTICE]** | Widely accepted across major SEO sources with converging evidence | Ahrefs, Semrush, Moz, Search Engine Land, Search Engine Journal |
+| **[FRAMEWORK]** | A named expert's methodology — coherent, results-backed, but proprietary interpretation | Koray Tuğberk GÜBÜR (Holistic/Semantic SEO), HubSpot (pillar-cluster) |
+
+Where a technique is debated or experimental, it is explicitly flagged as **[DEBATED]**.
+
+---
+
+# 1. What Topical Authority Is (and How Google Likely Understands It)
+
+## 1.1 Definition
+
+**Topical authority is a ranking state, not a content style.** A site has topical authority when search engines treat it as a trusted, comprehensive source for a subject area, and rank its pages for queries in that area with less dependence on page-level link signals.
+
+The most precise working definition comes from Koray Tuğberk GÜBÜR **[FRAMEWORK]**:
+
+> Topical Authority = **Topical Coverage × Historical Data**
+
+- **Topical Coverage** = complete, structured, *connected* information processing. If you didn't define X, you didn't cover it. If you didn't connect X to Y, you didn't cover it. More pages ≠ more coverage.
+- **Historical Data** = the quality of user engagement with your content over time — not domain age. This signal lags roughly six months: today's rankings reflect actions taken at least half a year ago.
+
+## 1.2 Why it matters
+
+1. **[FACT]** Google evaluates site-level signals, not just page-level ones. Google's documentation on its helpful content signals states that sitewide classifiers assess whether a site produces people-first content, and the Quality Rater Guidelines instruct raters to assess E-E-A-T (Experience, Expertise, Authoritativeness, Trustworthiness) partly at the site and author level.
+2. **[FACT]** Google representatives have publicly stated that Google understands "authority of content and the notion of topics" — a site with a history of publishing authoritative content on a topic can be seen as an authority in that area.
+3. **[BEST PRACTICE]** Topical authority reduces per-page link dependence. Ahrefs, Semrush, and Moz all document cases where lower-DR sites outrank higher-DR sites for niche queries because their topic-level coverage is deeper. Semrush surveys report that the overwhelming majority of SEOs treat topical authority as a core part of content strategy.
+4. **AI search amplifies it.** Generative engines (ChatGPT, Perplexity, Google AI Overviews/AI Mode) retrieve and cite sources at the passage and entity level. Sites with dense, consistent, well-connected coverage of an entity get retrieved more often. **[BEST PRACTICE — increasingly documented by AI-visibility research, still an evolving area]**
+
+## 1.3 How Google likely understands topical authority
+
+No single "topical authority score" is documented. The evidence converges from several directions:
+
+| Mechanism | Evidence tier | What it suggests |
+|---|---|---|
+| **Semantic/entity-based search** (Hummingbird 2013 →, Knowledge Graph, BERT, MUM) | **[FACT]** these systems exist | Google resolves queries and documents to *entities and relationships*, not just keywords. Covering an entity's attributes comprehensively maps directly to how the index is organized. |
+| **Topical TrustRank** (research paper cited in Google's updated PageRank patent) | **[PATENT]** | The web is partitioned into topical "shards"; trusted seed sites are chosen *per topic*, so even a small niche can contain an authority site. Link distance from topic-trusted seeds matters more than raw link volume. |
+| **Categorical quality scores** (patents analyzed by Bill Slawski) | **[PATENT]** | Google may compute quality scores for site sections/categories of content — i.e., quality is assessed at topic level, not only page or domain level. |
+| **Phrase-based indexing** (Slawski's patent analyses) | **[PATENT]** | Documents are scored partly on the presence of *related phrases* that co-occur in expert documents on a topic — a direct algorithmic analogue of "covering the topic the way experts do." |
+| **Reasonable Surfer model** | **[PATENT]** | Link value flows with click probability and context — contextual internal links in main content carry more weight than boilerplate links. |
+| **Helpful content / site-level classifiers** | **[FACT]** | Sitewide signals can suppress or lift entire sites, confirming that Google models sites, not just pages. |
+| **E-E-A-T in the Quality Rater Guidelines** | **[FACT]** (as an evaluation rubric, not a direct ranking factor) | Raters assess whether the *site and author* are recognized sources for the topic. QRG data trains and validates ranking systems. |
+
+**Synthesis [BEST PRACTICE]:** Google most plausibly models topical authority as the intersection of (a) entity-level coverage breadth and depth, (b) consistency and factual alignment across a site's documents, (c) engagement/historical signals for the topic, and (d) topic-relevant link/citation proximity. A topical authority map is the planning artifact that maximizes (a) and (b) deliberately, so that (c) and (d) can accumulate.
+
+## 1.4 Entities, semantics, context, and coverage — how they relate
+
+- An **entity** is a distinct thing (person, product, concept) with **attributes** (properties) and **relationships** to other entities. Search engines resolve queries to entities and attributes ("mobile phone" + "battery life").
+- **Semantics** is how meaning is constructed — lexical relations (synonyms, hypernyms), query semantics (search language ≠ natural language), and frame semantics (predicates like *buy, compare, fix* determine context).
+- **Context** is the specific angle from which an entity is processed. The same entity produces entirely different topical maps for different **source contexts**: "glasses" for an eye doctor vs. a fashion stylist vs. a manufacturer **[FRAMEWORK — Koray]**. This is the single most-ignored principle in topical mapping.
+- **Topical coverage** is the degree to which your site processes the entity's attributes, related entities, and query networks *from your source context* — completely, consistently, and with everything connected.
+
+**The causal chain:** Source context → central entity → attributes → query networks → pages → internal links → coverage → (over time, with engagement) → authority.
+
+---
+
+# 2. Planning Framework
+
+Before any research, five planning decisions must be made in order. Skipping these produces the generic keyword-cluster spreadsheets that fail.
+
+## 2.1 Define the source context (who you are, how you make money)
+
+**[FRAMEWORK — Koray; converges with Google's "people-first content" self-assessment questions, which ask whether content serves your site's primary purpose and existing audience [FACT]]**
+
+Answer in one paragraph:
+- What does the business sell, and to whom?
+- What is the monetization model (SaaS subscription, affiliate, e-commerce, leads, ads)?
+- What is the logical bridge between the content and the money?
+
+*Everything downstream depends on this.* A topic that is "high volume" but disconnected from the monetization bridge belongs in the outer section or nowhere.
+
+## 2.2 Identify the primary topical entity (central entity)
+
+The central entity is the single entity that will appear across every piece of content in the network. Tests for choosing it correctly:
+
+- It must be specific enough to own ("AI visibility," not "marketing").
+- It must be broad enough to support a full query network (hundreds of entity-attribute pairs).
+- Every product/service you sell must be expressible as an attribute, sub-entity, or outcome of it.
+- List its synonyms and alternate names now — they belong in the map.
+
+## 2.3 Determine topical relevance (what counts as "on-topic")
+
+A candidate topic is relevant if it passes the three-filter test, applied **in this order** **[FRAMEWORK — Koray's attribute filtering]**:
+
+1. **Relevant** — to the central entity AND your source context (how you make money).
+2. **Prominent** — appears in titles, People Also Ask, and featured snippets of top-ranking content. Litmus test: *can the entity be defined without this attribute?* (Population is prominent for a country; a football league is not.)
+3. **Popular** — has sufficient search demand (checked last, never first).
+
+Most teams filter by popularity first. That is backwards: it optimizes for volume, not authority.
+
+## 2.4 Define content scope via topical borders
+
+**[FRAMEWORK — Koray]** Write two explicit lists: **WILL cover** and **WILL NOT cover**. Borders are determined by user behaviors, entities in queries, and query context — not by what competitors happen to publish. Two consequences:
+
+- When competitors expand their borders, your *relative* coverage shrinks even if your content is unchanged. Monitor and respond by **deepening** inside your borders, not by widening into their space.
+- Generic "101" content that every site in the niche has already covered usually dilutes rather than builds authority for a specialized site. **[BEST PRACTICE — supported by Google's "information gain" patent [PATENT] and by helpful-content guidance discouraging content made to seem comprehensive without adding value [FACT]]**
+
+## 2.5 Create the topical hierarchy
+
+Structure the map in two macro-sections plus a spine:
+
+| Layer | Role | Predicates | Monetization |
+|---|---|---|---|
+| **Core Section** | The central entity's main attributes + central search intent + source context | know, use, compare, buy | Direct — drives revenue |
+| **Outer Section** | Connected query networks outside the core | know | Indirect — builds historical data and topical relevance |
+| **Central Search Intent** | The one sentence unifying the whole map (e.g., "find and compare the best X") | — | The spine connecting both |
+
+Within each section: **Pillar → Core topics → Supporting topics → Subtopics** (detailed in §5).
+
+---
+
+# 3. Research Process (Repeatable, With Tools)
+
+Run these eight research workstreams in order. Each produces a concrete artifact that feeds the SOP in §4.
+
+## 3.1 Competitor analysis (authority source reverse-engineering)
+
+**Goal:** Identify the sites Google already classifies as authorities for your topic, and understand *why* — so your site can be classified alongside them during Broad Core Algorithm Updates. **[FRAMEWORK — Koray; converges with Topical TrustRank's per-topic seed logic [PATENT]]**
+
+**Process:**
+1. Identify the 3–5 sites with the most topical coverage + organic traffic in your borders (not the biggest domains — the deepest *topical* ones).
+2. Pick ONE main authority source to reverse-engineer.
+3. Export their sitemap URLs, page titles, H1–H6, and internal anchor texts (Screaming Frog or any SEO crawler).
+4. Export their full organic keyword profile and top pages with top keyword + volume (Ahrefs Site Explorer / Semrush Organic Research).
+5. Extract n-grams from titles/headings to reveal their query templates and attribute patterns.
+
+**Tools:** Ahrefs Site Explorer + Batch Analysis, Semrush Organic Research, Screaming Frog, Sitebulb.
+
+## 3.2 SERP analysis
+
+**Goal:** Extract what Google itself reveals about the query space.
+
+Extract, per seed query: autocomplete suggestions, related searches, People Also Ask, search refinement tabs (including image search tabs), knowledge panels, "Things to know," ranking page titles and meta descriptions, bolded terms in snippets, and — for AI-era coverage — AI Overview presence and cited sources.
+
+**Tools:** Manual SERP review, Ahrefs SERP Overview, Semrush SERP Features report, AlsoAsked (PAA trees), Thruuu or Screaming Frog SERP scraping, DataForSEO SERP API for scale.
+
+## 3.3 Entity extraction
+
+**Goal:** Build the entity inventory — the central entity's attributes, sub-entities, and related entities.
+
+**Process:**
+1. Analyze the Wikipedia article for the central entity: table of contents, internal links, categories, references. Cross-check Wikidata properties. **[BEST PRACTICE — Wikipedia's structure approximates consensus entity-attribute organization]**
+2. Prompt LLMs: *"List all the entities/nouns/relationships related to [entity]"* and *"List all the lexical relations of [entity]."* Treat outputs as candidates, never facts — validate against SERPs.
+3. Run competitor top pages through an entity-recognition tool.
+4. Classify each attribute as **root** (appears in nearly all instances of the entity type), **rare** (some instances), or **unique** (one instance). Priority for relevance: **unique > root > rare** **[FRAMEWORK — Koray]**.
+
+**Tools:** Wikipedia/Wikidata, Google Cloud Natural Language API, InLinks, WordLift, TextRazor, any frontier LLM (with validation).
+
+## 3.4 Keyword clustering
+
+**Goal:** Group the compiled query data so that one page = one canonical query cluster.
+
+**Process:**
+1. Compile all queries from GSC (filter: query contains entity; page contains entity), SERP extraction, competitor exports, and keyword tools (Ahrefs Matching Terms, Semrush Broad Match).
+2. Separate **query data** from **query templates** ("best [X] under [price]", "how to fix [issue] on [device]") — templates generate coverage systematically across entity instances.
+3. Cluster by **SERP overlap** (queries whose top-10 results share 3+ URLs belong on one page) supplemented by semantic similarity. SERP-based clustering is the ground truth; embedding-based clustering is the scale assist. **[BEST PRACTICE]**
+4. Deduplicate. Assign each cluster a single **canonical query** — the query the page will "own."
+
+**Tools:** Keyword Insights, Cluster AI, Semrush Keyword Manager, Ahrefs (parent topic), custom embeddings + SERP-overlap scripts.
+
+## 3.5 Search intent mapping
+
+**Goal:** Tag every cluster with intent and funnel stage.
+
+- Intent types: informational / commercial investigation / transactional / navigational.
+- Express intent through **predicates** (know, learn, compare, buy, fix, go) — predicates determine context more precisely than the four-way taxonomy. **[FRAMEWORK — Koray's frame semantics]**
+- Verify against the live SERP: the ranking page *types* (guides vs. category pages vs. product pages) are Google's declaration of the dominant intent. **[BEST PRACTICE]**
+- Map clusters to journey stages (see §5.9).
+
+**Tools:** Manual SERP inspection (non-negotiable), Semrush intent labels (assist only), Keyword Insights intent classification.
+
+## 3.6 Topic gap analysis
+
+**Goal:** Find what authorities cover that you don't — and what nobody covers well.
+
+1. Content gap: your domain vs. 3–5 authority sources (Ahrefs Content Gap / Semrush Keyword Gap).
+2. Coverage gap: attributes present in your entity inventory but absent from *everyone's* content → **information gain opportunities** (see §6.7).
+3. Question gap: PAA and forum questions (Reddit, Quora, niche communities) with no dedicated answer in the SERP.
+
+**Tools:** Ahrefs Content Gap, Semrush Keyword Gap, AlsoAsked, manual forum mining, GSC (queries with impressions but no dedicated page).
+
+## 3.7 Semantic relationship analysis
+
+**Goal:** Decide how topics connect — which pages are parents, siblings, and bridges.
+
+1. Classify topics by **local proximity** (how users group them behaviorally), not dictionary taxonomy. **[FRAMEWORK — Koray]**
+2. Identify **contextual bridges**: the sub-topic where two pages logically hand off to each other (this becomes the internal link placement).
+3. Verify each planned connection has a real semantic justification. *A contextless link is a worthless link.*
+
+**Tools:** Your entity map + clustering sheet; InLinks knowledge graph view; manual editorial judgment.
+
+## 3.8 Internal linking opportunity analysis
+
+**Goal:** Plan the link graph before writing.
+
+1. From the hierarchy: every child links up to its parent; parents link down to children; siblings link where a contextual bridge exists.
+2. Anchor text rule: anchors must match (or be lemmatized versions of) the target page's title/H1. **[FRAMEWORK — Koray; converges with Google's documented recommendation to use descriptive anchor text [FACT]]**
+3. Link placement: after the linked concept has been defined and its related question answered — never on the first words of a page. **[FRAMEWORK]**
+4. For existing sites: crawl to find orphan pages, over-linked boilerplate, and pages whose strongest semantic sibling isn't linked.
+
+**Tools:** Screaming Frog (crawl + link graph), Sitebulb, Ahrefs Internal Link Opportunities report, InLinks.
+
+### Research workstream → tool summary
+
+| Workstream | Primary tools | Output artifact |
+|---|---|---|
+| Competitor analysis | Ahrefs, Semrush, Screaming Frog | Authority source coverage export |
+| SERP analysis | Manual + AlsoAsked + SERP APIs | SERP extraction sheet |
+| Entity extraction | Wikipedia/Wikidata, NLP APIs, LLMs | Entity map (Template B) |
+| Keyword clustering | Keyword Insights, SERP overlap | Keyword cluster sheet (Template C) |
+| Intent mapping | Manual SERP inspection | Intent + funnel tags on clusters |
+| Gap analysis | Ahrefs/Semrush gap tools, forums | Gap list with information-gain flags |
+| Semantic relationships | Entity map + judgment | Bridge/connection list |
+| Internal linking | Screaming Frog, Sitebulb | Internal linking plan (Template F) |
+
+---
+
+# 4. The SOP — Step by Step
+
+Ten steps, start to finish. Time estimates assume one experienced operator; a junior SEO should budget 1.5–2×.
+
+---
+
+## Step 1 — Pin the Source Context & Central Entity
+
+- **Objective:** Lock the foundation every later decision inherits.
+- **Inputs:** Business model docs, product/pricing pages, sales conversations, existing audience data.
+- **Actions:**
+  1. Write the one-paragraph source context (who, what's sold, to whom, monetization bridge).
+  2. Choose the central entity; list all synonyms and alternate names.
+  3. Write the central search intent as one sentence with predicates (e.g., "[Audience] wants to **know** how X works, **compare** options, and **buy** Y").
+  4. Draft topical borders v0 (WILL / WILL NOT cover).
+- **Expected output:** A one-page Source Context Charter, signed off by whoever owns revenue.
+- **Quality checks:** Can every product be expressed as an attribute/outcome of the central entity? Would a different business plausibly write the same charter? (If yes, it's too generic.)
+- **Common mistakes:** Choosing an entity so broad it can't be owned; letting "SEO-attractive" topics define the entity instead of the business.
+- **Best practices:** Get commercial stakeholders to veto the borders now — it prevents the "why are we writing about this?" conversation six months in.
+
+## Step 2 — Model the Ontology, Personas & Journey
+
+- **Objective:** Understand the entity's structure and the humans searching for it before touching keyword tools.
+- **Inputs:** Source Context Charter; customer research; sales/support transcripts.
+- **Actions:**
+  1. Build the ontology: entity types, attributes, relationships, hierarchies (LLM-assisted, human-validated).
+  2. Define 2–4 personas in priority order, each with jobs-to-be-done and the questions they ask at each journey stage.
+  3. Map the buyer's journey stages you will serve (see §5.9). Content chosen for "topical authority" without a journey mapping produces coverage that never converts — a failure mode called out by practitioners analyzing Google's people-first guidance. **[BEST PRACTICE]**
+- **Expected output:** Ontology diagram + persona/journey one-pager.
+- **Quality checks:** Every persona maps to at least one monetized (core section) topic area.
+- **Common mistakes:** Skipping personas because "we know our audience"; ontologies copied from Wikipedia without source-context filtering.
+- **Best practices:** Interview sales/support — the vocabulary customers actually use becomes query-template input.
+
+## Step 3 — Identify & Reverse-Engineer Authority Sources
+
+- **Objective:** Learn how the sites Google already trusts structure the topic.
+- **Inputs:** Borders v0; access to Ahrefs/Semrush + a crawler.
+- **Actions:** Run §3.1 in full. Produce, for the main authority source: full URL inventory, title/heading n-grams, organic query export, top pages with volumes.
+- **Expected output:** Authority Source Analysis workbook.
+- **Quality checks:** The chosen authority is topical (deep in your borders), not just big. Their coverage patterns are documented as reusable templates, not just admired.
+- **Common mistakes:** Reverse-engineering a general-news domain because its DR is high; copying their site structure wholesale (their source context differs from yours).
+- **Best practices:** Note what they *don't* cover — that's your information-gain shortlist.
+
+## Step 4 — Gather All Query & Entity Data
+
+- **Objective:** Compile the raw material — every query, entity, and attribute in scope.
+- **Inputs:** Outputs of Steps 1–3; GSC access (for existing sites).
+- **Actions:** Run §3.2–3.3 and compile into one Initial Data Sheet with columns: Query | Volume | Competing URLs | Technique (authority hacking / lexical semantics / historical data / query semantics) | Source (GSC, Ahrefs, SERP, LLM, competitor X).
+- **Expected output:** Initial Data Sheet (typically 2,000–20,000 rows depending on niche).
+- **Quality checks:** ≥4 independent data sources represented; GSC data included for existing sites; every LLM-sourced entity validated against at least one SERP.
+- **Common mistakes:** Single-tool dependence (each keyword database has blind spots); treating LLM output as ground truth.
+- **Best practices:** Keep provenance columns — six months later you'll want to know where a topic came from.
+
+## Step 5 — Cluster, Filter & Prioritize
+
+- **Objective:** Turn raw data into a deduplicated topic list where one topic = one page = one canonical query.
+- **Inputs:** Initial Data Sheet.
+- **Actions:**
+  1. Cluster by SERP overlap + semantic similarity (§3.4).
+  2. Apply the three filters **in order**: Relevant → Prominent → Popular. Drop what fails.
+  3. Assign priority: core feature + foundational → HIGH; core function + high interest → HIGH; emerging trend aligned with brand → MEDIUM; popular but unrelated to brand → LOW; legacy tactic off-positioning → LOW.
+  4. Sequence for momentum: challenging important topics first, not easy wins first. **[FRAMEWORK — Koray; DEBATED — many practitioners sequence quick wins first for stakeholder buy-in; choose based on runway]**
+- **Expected output:** Filtered, prioritized topic list with canonical queries.
+- **Quality checks:** No two topics share a canonical query; every HIGH topic traces to source context; cluster count is defensible (spot-check 10 clusters against live SERPs).
+- **Common mistakes:** Filtering by volume first; splitting one intent across multiple thin pages (cannibalization by design).
+- **Best practices:** Write a one-line border rule per cluster ("this page covers X; defers Y to [other page]") — it becomes the brief's topical border section.
+
+## Step 6 — Build the Topical Authority Map
+
+- **Objective:** Assemble the full map: hierarchy, sections, metadata, connections.
+- **Inputs:** Prioritized topic list; ontology; borders.
+- **Actions:**
+  1. Assign every topic to Core or Outer section.
+  2. Arrange the hierarchy: Pillar → Core topics → Supporting topics → Subtopics (§5).
+  3. Add macro-semantic metadata per node: title tag, URL slug, meta description, page type, content format, funnel stage, attribute owned.
+  4. Plan internal link targets and anchor text per node (anchors = target's title/H1, lemmatized).
+  5. Write final topical borders (WILL / WILL NOT) at map level.
+- **Expected output:** The Topical Authority Map (Template A) — the master planning artifact.
+- **Quality checks:** Every node has exactly one canonical query and one attribute; URL structure mirrors hierarchy (root → seed → node, 1–2 words per segment, no stop words unless meaningful); no orphan nodes in the planned link graph.
+- **Common mistakes:** Nodes without owned attributes ("10 tips" pages); URL slugs that don't reflect hierarchy; forgetting the outer section entirely (all-commercial maps stall on historical data).
+- **Best practices:** Deliberately repeat key words across core-section titles — aggregated title vocabulary defines site topicality. **[FRAMEWORK]**
+
+## Step 7 — Write Content Briefs
+
+- **Objective:** Turn each map node into an unambiguous writing instruction.
+- **Inputs:** Map node + SERP/PAA data for its canonical query.
+- **Actions:** For each node produce (Template E): main content spec (central entity, macro context, attributes, contextual bridges), supplementary content spec (minor entities, micro contexts, question variations), the contextual vector (ordered headings with levels), per-section methodology (format, modality, evidence requirements), and the anchor/link plan.
+- **Expected output:** One brief per node, batched by cluster.
+- **Quality checks:** Heading vector is "straight" (every heading has a point and follows from the last); every declaration is followed by an implied question the next section answers; the brief specifies where each internal link is placed (after the concept is defined, never first words).
+- **Common mistakes:** Briefs that are just heading lists with word counts; supplementary content written as exhaustively as main content (it should be brief answers + links).
+- **Best practices:** Answer-first structure: the first sentence under any question heading answers it directly, reusing the question's words — this is both a featured-snippet tactic **[BEST PRACTICE]** and an inquisitive-semantics rule **[FRAMEWORK]**.
+
+## Step 8 — Produce & Publish With Momentum
+
+- **Objective:** Ship the map with consistent cadence and consistent facts.
+- **Inputs:** Briefs; writers/editors; style + fact glossary.
+- **Actions:**
+  1. Publish in cluster batches (a supporting cluster with its parent beats scattered singles).
+  2. Maintain publication frequency — search engines need consistent signals; vary exact days/times within a steady cadence. **[FRAMEWORK; DEBATED — cadence-as-signal is contested, but consistency's indirect benefits (crawl demand, freshness, compounding coverage) are broadly accepted [BEST PRACTICE]]**
+  3. Enforce factual consistency: numbers and definitions must match across every page. Inconsistency makes the network look random to search engines. **[FRAMEWORK]**
+  4. Implement all internal links from the plan at publish time, not "later."
+- **Expected output:** Published clusters with live link graph and valid schema.
+- **Quality checks:** Run the 16-point quality audit (§9.7 / Appendix in checklist) on every core-section page before publishing; spot-audit outer section.
+- **Common mistakes:** Publishing pillars months before their clusters (thin hub syndrome); links deferred and forgotten; new pages while the site's ranking state is negative — if rankings have collapsed, audit/consolidate/fix links FIRST, then expand. **[FRAMEWORK — Koray's negative-ranking-state rule]**
+- **Best practices:** Keep quality nodes (the most important articles) close to the homepage in click depth — they carry the authority signals your link graph distributes.
+
+## Step 9 — Evaluate the Authority State
+
+- **Objective:** Measure whether the ranking state is shifting (§12 metrics).
+- **Inputs:** GSC, analytics, rank tracking, crawler.
+- **Actions:** At 30/90/180 days: impressions growth by topic cluster (impressions lead clicks — they signal Google testing your coverage); new/lost/shared queries per page; click-depth and orphan checks; coverage % vs. map.
+- **Expected output:** Quarterly Authority Evaluation report.
+- **Quality checks:** Analysis is per-cluster, not sitewide averages (averages hide which sections are working).
+- **Common mistakes:** Judging at 6 weeks (historical data lags ~6 months); reacting to individual keyword wobbles instead of cluster trends.
+- **Best practices:** Track *impressions first, clicks second* in the first two quarters — that ordering matches how trust accrues. **[FRAMEWORK]**
+
+## Step 10 — Refine, Reconfigure, Expand
+
+- **Objective:** Treat the map as living — never freeze it.
+- **Inputs:** Evaluation report; competitor publication monitoring.
+- **Actions:** Update pages (add info, remove context-diluting sections, adjust links); consolidate thin/overlapping pages; expand borders only when the current section's coverage is complete; log every map version with date and rationale.
+- **Expected output:** Map v2, v3… with changelog.
+- **Quality checks:** Decision rule for each new topic — new page if it's a new core/outer node; expand existing page if it's a deeper attribute of that page's entity; supplementary content if a full page would dilute macro context.
+- **Common mistakes:** Endless net-new publishing while existing pages decay; widening borders reactively every time a competitor publishes.
+- **Best practices:** Consolidate before expanding ("lean management"). Re-run the gap analysis quarterly.
+
+---
+
+# 5. The Topical Authority Map Framework
+
+## 5.1 The layers
+
+| Layer | Definition | Typical count | Example (personal finance) |
+|---|---|---|---|
+| **Pillar topic** | The central entity itself, or a top-level attribute set; owns the broadest canonical query | 1–5 | "Budgeting" |
+| **Core topic** | A main attribute of the central entity, tied to central search intent | 5–15 per pillar | "Zero-based budgeting" |
+| **Supporting topic** | A facet, comparison, use case, or process of a core topic | 3–10 per core topic | "Zero-based vs. 50/30/20" |
+| **Subtopic** | A specific question, variation, or long-tail node | as needed | "Zero-based budgeting with irregular income" |
+
+## 5.2 Entities & attributes
+
+Every node in the map owns **one entity-attribute pair**. That pair *is* the page's macro context — one focus per page. Multiple parallel topics on one page = diluted macro context = a page that ranks for nothing decisively.
+
+## 5.3 Questions
+
+Generate questions systematically from attributes using interrogatives (what/who/when/where/why/how) crossed with attribute types (root/rare/unique). The **representative question** gets the fullest answer first; **represented variations** (demographic, situational) follow in descending probability order.
+
+## 5.4 Search intents & predicates
+
+Tag every node: intent type + predicate + the exact canonical query it owns. Core section biases toward compare/use/buy predicates; outer section is almost entirely *know*.
+
+## 5.5 User journey stages
+
+| Stage | Funnel | Typical node types | Section |
+|---|---|---|---|
+| Problem-unaware / learning | TOFU | Definitions, concepts, how-X-works | Outer |
+| Solution-aware / evaluating | MOFU | Comparisons, methods, best-of, use cases | Core |
+| Decision / acting | BOFU | Product-adjacent guides, alternatives, pricing context | Core |
+| Post-purchase / mastery | Retention | How-tos, troubleshooting, advanced tactics | Outer/Core |
+
+## 5.6 How everything connects
+
+```mermaid
+graph TD
+    SC[Source Context<br/>who you are + how you monetize] --> CE[Central Entity]
+    CE --> CSI[Central Search Intent]
+    CSI --> CORE[CORE SECTION<br/>main attributes · compare/buy predicates]
+    CSI --> OUTER[OUTER SECTION<br/>connected query networks · know predicate]
+    CORE --> P1[Pillar page]
+    P1 --> C1[Core topic A]
+    P1 --> C2[Core topic B]
+    C1 --> S1[Supporting topic A1]
+    C1 --> S2[Supporting topic A2]
+    S1 --> Q1[Subtopic / question node]
+    OUTER --> O1[Outer cluster 1]
+    OUTER --> O2[Outer cluster 2]
+    O1 -.contextual bridge.-> C1
+    O2 -.contextual bridge.-> C2
+    C2 -.sibling bridge.-> C1
+```
+
+Solid lines = parent-child (hierarchy + URL structure + primary internal links). Dotted lines = contextual bridges (cross-links justified by a shared sub-topic). Outer-section clusters always bridge back to a core node — that bridge is how historical data earned on informational content transfers relevance to money pages.
+
+## 5.7 Internal linking structure rules
+
+1. Child → parent: always. Parent → children: always (defined list, most important first).
+2. Sibling ↔ sibling: only across a real contextual bridge.
+3. Anchor text = target page's title/H1 (or lemmatized form). Consistency here builds the knowledge-base effect.
+4. Place links after the linked concept is defined and its local question answered.
+5. 2–4 contextual links per 1,000 words as a working density norm **[BEST PRACTICE]**; boilerplate/sidebar links carry less weight than in-content links (Reasonable Surfer **[PATENT]**).
+6. Quality nodes sit within 1–2 clicks of the homepage.
+7. Strategic asymmetry: link *to* your most important pages; a strong page need not always link back. **[FRAMEWORK]**
+
+---
+
+# 6. Content Architecture
+
+## 6.1 Topic clusters
+A cluster = one parent page + its supporting pages + the dense link mesh among them. The cluster, not the page, is the unit of coverage. Popularized by HubSpot's pillar-cluster model **[FRAMEWORK — HubSpot]**; algorithmically motivated by phrase co-occurrence and site-level classification **[PATENT/FACT]**.
+
+## 6.2 Content hubs vs. silos
+- **Hub** = everything connected to a root (ontology view). **Silo** = theme-based branches (taxonomy view). Use both, in layers: root linked to homepage → sections expand outward → interlinking within sections → everything paths back to root. This creates a contextual crawl path, mirrored by URL structure (`/topic/subtopic/detail`).
+- **[DEBATED]** Strict silos (no cross-silo links ever) are outdated; cross-links across real contextual bridges outperform hermetic silos.
+
+## 6.3 Parent-child relationships
+Parent defines the concept and links down with a defined list; children go deep on one attribute and link up. The parent's heading vector previews children's canonical queries — that's what makes the hub feel complete without being bloated.
+
+## 6.4 Semantic bridges
+A bridge is a shared sub-concept that lets two pages connect without diluting either macro context (e.g., "budgeting apps" bridges "budgeting methods" ↔ "personal finance software"). Bridges are found in §3.7 and written as short transition segments in supplementary content.
+
+## 6.5 Contextual links
+A link's value = relevance of the anchor + surrounding passage to the target. Google documents descriptive anchors **[FACT]**; the Reasonable Surfer model implies contextual main-content links outweigh navigational ones **[PATENT]**. Practical rule: if you can't write a sentence that naturally defines the target before linking, the link doesn't belong there.
+
+## 6.6 Topical depth
+Depth = covering an attribute past the surface: definitions → instances → numbers → edge cases → conflicting views → next actions. Depth is measured against the entity inventory, not word count. Two 1,200-word pages covering distinct attributes beat one 4,000-word page mixing them.
+
+## 6.7 Information gain
+**[PATENT + BEST PRACTICE]** Google's "contextual estimation of link information gain" patent describes scoring documents by *new information relative to what the user has already seen*. Practical translation: every page must contain something the current top 10 doesn't — original data, first-hand testing, a named expert's input, a sharper framework, or attribute coverage the SERP lacks. Pages that only recombine the existing SERP add zero gain and dilute the site's quality profile.
+
+## 6.8 Content uniqueness
+Target ≥90% uniqueness and <20% phrase overlap with competitors. Uniqueness includes *structural* uniqueness (your own ordering and framing) and *evidentiary* uniqueness (your data, your examples, your images). Unique, context-relevant images are themselves a quality signal. **[FRAMEWORK; converges with helpful-content guidance [FACT]]**
+
+---
+
+# 7. Semantic SEO Integration
+
+How Koray's semantic framework **[FRAMEWORK throughout this section]** plugs into the SOP:
+
+| Principle | What it means | Where it lives in this SOP |
+|---|---|---|
+| **Context vectors** | The ordered heading sequence from first word to last; must be "straight" — every step relevant, every step with a point | Step 7 briefs; brief template |
+| **Topical maps** | The planning artifact connecting source context → entity → sections → nodes | Step 6; Template A |
+| **Topical coverage** | Complete + structured + connected processing of the entity | The whole SOP; measured in §12 |
+| **Entity relationships** | EAV (entity-attribute-value) triples with consistent predicates across the site | Step 4 entity extraction; Template B |
+| **Lexical semantics** | Synonyms, hypernyms/hyponyms, antonyms of the entity — coverage includes its lexical field | §3.3; include synonyms in titles/headings deliberately |
+| **Query semantics** | Search language ≠ natural language; meaning bends inside queries; query templates generate coverage systematically | Steps 4–5 |
+| **Search intent evolution** | Intents shift over time (and now, per-engine: classic SERP vs. AI answers); re-verify SERPs quarterly | Step 9–10 |
+| **Information gain** | Add what the SERP lacks | §6.7; brief quality check |
+| **Content completeness** | Every declaration raises a question the content then answers (inquisitive semantics); all interpretations of ambiguous queries covered | Step 7; QA checklist |
+| **Topical expansion** | Widen borders only after current coverage is complete; expansion follows consolidation | Step 10 |
+
+Four authorship rules worth enforcing in every brief because they're cheap and high-leverage:
+1. **Answer first, define later** — never delay the answer.
+2. **Be definite near contextual borders** — "is/are" for facts; reserve "can/may/might" for research-based possibilities and "should" for recommendations, and use them accurately (modality is information).
+3. **Numbers everywhere** — content without numeric values doesn't read as expertise (be precise: 3.785, not "about 3.7").
+4. **Examples after plurals** — "over 400 cryptocurrencies, such as Ethereum, Bitcoin, and Litecoin."
+
+---
+
+# 8. Workflow
+
+```mermaid
+flowchart TD
+    A[1. Source Context & Central Entity] --> B[2. Ontology, Personas & Journey]
+    B --> C[3. Authority Source Reverse-Engineering]
+    C --> D[4. Data Gathering<br/>GSC · SERP · Entities · Keyword tools · LLMs]
+    D --> E[5. Clustering & Filtering<br/>Relevant → Prominent → Popular]
+    E --> F[6. Topical Authority Map<br/>Core/Outer · Hierarchy · Metadata · Borders]
+    F --> G[7. Content Briefs<br/>Contextual vectors · Bridges · Link plan]
+    G --> H[8. Production & Publishing<br/>Cluster batches · Cadence · Consistency]
+    H --> I[9. Authority Evaluation<br/>Impressions → Clicks · New/Lost/Shared queries]
+    I --> J[10. Refine & Expand<br/>Consolidate → Reconfigure → Widen borders]
+    J -->|quarterly loop| D
+    I -->|negative ranking state?| K[STOP publishing<br/>Audit → Consolidate → Fix links first]
+    K --> H
+```
+
+---
+
+# 9. Checklists
+
+## 9.1 Pre-research checklist
+- [ ] Source context written and approved by revenue owner
+- [ ] Central entity chosen; synonyms listed
+- [ ] Central search intent written as one predicate sentence
+- [ ] Topical borders v0 drafted (WILL / WILL NOT)
+- [ ] Personas prioritized; journey stages agreed
+- [ ] Tool access confirmed (GSC, keyword tool, crawler)
+- [ ] For existing sites: ranking state assessed (positive / building / negative) — if negative, plan an audit-first sequence
+
+## 9.2 Research checklist
+- [ ] 3–5 authority sources identified; ONE selected for reverse-engineering
+- [ ] Authority source: sitemap, titles, headings, anchors, organic queries exported
+- [ ] GSC exports pulled (query contains entity; page contains entity)
+- [ ] SERP extraction done per seed query (autocomplete, related, PAA, tabs, knowledge panel, AI Overview citations)
+- [ ] Wikipedia/Wikidata analyzed for the central entity
+- [ ] LLM entity/lexical-relation prompts run AND validated against SERPs
+- [ ] Query templates separated from query data
+- [ ] Initial Data Sheet compiled with provenance columns
+
+## 9.3 Mapping checklist
+- [ ] Clusters built on SERP overlap (spot-checked ×10)
+- [ ] Filters applied in order: Relevant → Prominent → Popular
+- [ ] One canonical query per node; zero duplicates
+- [ ] Every node assigned: Core/Outer, attribute, page type, format, funnel stage, priority
+- [ ] Title tags, URL slugs, meta descriptions drafted per node
+- [ ] URL hierarchy mirrors topical hierarchy (root → seed → node)
+- [ ] Internal link targets + anchors planned per node
+- [ ] Map-level borders finalized and written into the map
+
+## 9.4 Content planning checklist
+- [ ] Brief exists for every node in the current batch
+- [ ] Each brief: main vs. supplementary content separated explicitly
+- [ ] Contextual vector (heading sequence) is straight — no drift
+- [ ] Answer-first rule specified for every question heading
+- [ ] Evidence requirements listed (named sources, numbers, examples)
+- [ ] Anchor text plan matches target titles/H1s
+- [ ] Information-gain element identified per page (what the SERP lacks)
+
+## 9.5 Publishing checklist
+- [ ] Cluster batch published together (parent + supporting)
+- [ ] All planned internal links live at publish
+- [ ] Schema valid on every page
+- [ ] Facts/numbers checked against the site glossary (consistency)
+- [ ] Unique images with macro-context-relevant ALTs
+- [ ] Author bio + credentials present
+- [ ] Publication cadence maintained per plan
+
+## 9.6 Internal linking checklist
+- [ ] No orphan pages (crawl-verified)
+- [ ] Child→parent and parent→children links present
+- [ ] Sibling links only across real contextual bridges
+- [ ] Anchors match target title/H1 (lemmatized OK)
+- [ ] Links placed after concept definition, never on opening words
+- [ ] Quality nodes ≤2 clicks from homepage
+- [ ] 2–4 in-content links per 1,000 words; ≥95% topically relevant
+
+## 9.7 QA checklist (pre-publish, per page — condensed from the 16-point audit)
+- [ ] Factuality ≥85%; claims dated/sourced
+- [ ] Zero contradictions with other site pages
+- [ ] Topic drift <10%; heading vector straight
+- [ ] Q&A structure where the query network demands it; answers reuse question words
+- [ ] 15–20 unique entities per 1,000 words, mostly with attributes
+- [ ] Sentences avg 15–20 words; ≥80% active voice; grade 8–10 readability
+- [ ] <1% filler; no redundant phrasing
+- [ ] ≥90% unique vs. competitors (<20% phrase overlap)
+- [ ] First words of H1/H2s/paragraphs lead with the entity or intent phrase
+- [ ] Definite modality at contextual borders; hedging only where accurate
+
+---
+
+# 10. Templates
+
+## Template A — Topical Authority Map (master)
+
+| Topic | Section (Core/Outer) | Pillar / Parent | Canonical Query | Attribute Owned | Search Intent | Predicate | Funnel | Page Type | Format | Title Tag | URL Slug | Meta Description | Borders: Will Cover | Borders: Will NOT Cover | Internal Link Targets | Anchor Text | Priority | Status | Author | Publish Date |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Zero-based budgeting | Core | Budgeting (pillar) | what is zero based budgeting | Method: allocation logic | Informational-commercial | know/compare | MOFU | Guide | Definition + steps | Zero-Based Budgeting: Method, Steps, and Examples | /budgeting/zero-based | … | Definition, steps, examples, pros/cons | App reviews (→ /apps), templates (→ /templates) | /budgeting, /budgeting/50-30-20 | "zero-based budgeting" | High | Brief | KZ | 2026-08-04 |
+
+## Template B — Entity Map
+
+| Entity | Type (Central / Sub / Related) | Attribute | Attribute Type (Root/Rare/Unique) | Value / Definition | Predicate | Relevant? | Prominent? | Popular? | Owning Page |
+|---|---|---|---|---|---|---|---|---|---|
+| Budget | Central | Allocation method | Root | How income is assigned to categories | know/compare | ✓ | ✓ | ✓ | /budgeting/methods |
+
+## Template C — Keyword Cluster Sheet
+
+| Cluster (Topic) | Canonical Query | Member Queries | Total Volume | SERP Overlap Score | Intent | Competing URLs | Technique | Source | → Map Node |
+|---|---|---|---|---|---|---|---|---|---|
+| Zero-based budgeting | what is zero based budgeting | zbb meaning; zero based budget example; how does zero based budgeting work | 9,400 | 0.7 | Info | url1; url2; url3 | Authority hacking | Ahrefs + SERP | /budgeting/zero-based |
+
+## Template D — Topic Cluster Sheet (cluster-level view)
+
+| Cluster | Pillar Page | Supporting Pages (count) | Coverage % (published/planned) | Cluster Volume | Avg Position | Impressions (90d) | Clicks (90d) | Gaps Remaining | Next Action |
+|---|---|---|---|---|---|---|---|---|---|
+| Budgeting methods | /budgeting | 8 of 11 | 73% | 41,200 | 14.2 | 88,400 | 2,310 | irregular income; couples | Publish 2 nodes; add bridge links |
+
+## Template E — Content Brief
+
+| Field | Content |
+|---|---|
+| Page / URL | |
+| Canonical query & intent | |
+| Central entity + attribute (macro context) | |
+| Topical borders (will / will not) | |
+| **Main content** — contextual vector | H1 → H2 → H2 → H3… (ordered; one line rationale each) |
+| **Main content** — required evidence | Numbers, named sources, examples after plurals |
+| **Supplementary content** — micro contexts | Question variations (representative first, represented after), brief answers + links |
+| Contextual bridges | Concept → target page → placement (after definition) |
+| Internal links & anchors | Anchor = target title/H1 |
+| Format & annotation notes | Lists defined before shown; tables for factor sets; unique image specs + ALTs |
+| Modality rules | is/are for facts; can/may for research; should for advice |
+| Information-gain element | What this page adds that the SERP lacks |
+| Quality gate | 16-point audit ≥64/80 before publish |
+
+## Template F — Internal Linking Plan
+
+| Source Page | Target Page | Anchor Text (= target title/H1) | Placement Rule | Link Type (parent/child/sibling/bridge/outer→core) | Status |
+|---|---|---|---|---|---|
+| /budgeting/zero-based | /budgeting | Budgeting | After method comparison section | Child→parent | Live |
+| /psychology-of-money/impulse-spending | /budgeting/zero-based | Zero-based budgeting | After defining allocation control | Outer→core bridge | Planned |
+
+---
+
+# 11. Common Mistakes (and How to Avoid Each)
+
+| # | Mistake | Why it fails | Avoidance |
+|---|---|---|---|
+| 1 | **Volume-first topic selection** | Optimizes for demand, not authority; produces off-context content | Filter Relevant → Prominent → Popular, in that order |
+| 2 | **No source context** | Same map as everyone else; content the business can't monetize | Step 1 charter before any research |
+| 3 | **Page count as coverage** | More pages ≠ coverage; thin fragmentation triggers cannibalization and quality suppression | One canonical query per page; consolidate overlaps |
+| 4 | **All-core maps (no outer section)** | No historical data engine; commercial pages stall without informational relevance transfer | Plan the outer section and its bridges deliberately |
+| 5 | **Copying a competitor's map wholesale** | Their source context ≠ yours; you inherit their irrelevancies and miss your angles | Reverse-engineer patterns, then re-filter through YOUR context |
+| 6 | **Ignoring topical borders** | Scope creep dilutes topicality; "AI for everything" sites rank for nothing | Written WILL/WILL-NOT lists; deepen before widening |
+| 7 | **Briefs without contextual structure** | Writers produce heading-stuffed articles with topic drift | Contextual vector + answer-first + modality rules in every brief |
+| 8 | **Inconsistent facts across pages** | The network reads as random; knowledge-base effect never forms | Site fact glossary; consistency check at publish |
+| 9 | **Internal links as an afterthought** | Coverage exists but isn't *connected* — half the definition of coverage unmet | Link plan in the map; links live at publish |
+| 10 | **Publishing into a negative ranking state** | Wrong historical signal amplified; new content makes it worse | Audit → consolidate → fix links → then expand |
+| 11 | **Judging results at 6–8 weeks** | Historical data lags ~6 months; premature pivots destroy momentum | Impressions at 90d, clicks at 180d; per-cluster analysis |
+| 12 | **Zero information gain** | SERP-recombination content adds nothing; helpful-content guidance explicitly targets it | Every brief names its gain element (data, testing, expert, framework) |
+| 13 | **Freezing the map** | Intents evolve; competitors expand borders; coverage is relative | Quarterly reconfiguration loop (Step 10) |
+| 14 | **Ignoring the buyer's journey** | "Topical authority" coverage that never converts and doesn't serve the audience | Journey mapping in Step 2; funnel stage on every node |
+
+---
+
+# 12. Success Metrics
+
+Measure per cluster, never just sitewide. Sequence expectations: **impressions → rankings → clicks → conversions**, in that order.
+
+| Dimension | Metric | Tool | Target / Signal |
+|---|---|---|---|
+| **Topical coverage** | Published nodes ÷ planned map nodes, per cluster | Map spreadsheet | ≥80% per active cluster before expanding borders |
+| **Entity coverage** | Entities/attributes covered ÷ entity inventory; entities per 1,000 words on core pages | Entity map + NLP tools | Inventory ≥80% with attributes; 15–20 entities/1,000 words |
+| **Organic visibility** | Impressions per cluster (leading indicator); share of voice for tracked topic queries | GSC (regex by URL path), rank tracker | Impressions rising within 60–90 days of cluster publish |
+| **Internal link health** | Orphan count; avg click depth of quality nodes; % anchors matching target H1 | Screaming Frog / Sitebulb | 0 orphans; quality nodes ≤2 clicks; ≥80% descriptive anchors |
+| **Rankings** | New / Lost / Shared queries per page; % of cluster queries in top 10 | GSC + rank tracker | New-query count growing per page = coverage being tested |
+| **Traffic** | Organic sessions per cluster; assisted conversions from outer→core paths | GA4/analytics | Cluster-level growth at 3–6 months |
+| **Engagement** | Engaged time, scroll, next-page rate on cluster pages; pogo-sticking proxies | GA4, Microsoft Clarity | Engagement is the raw material of historical data |
+| **Search Console health** | Coverage/indexing status of map URLs; CTR vs. position per cluster | GSC | 100% of map URLs indexed; CTR at/above position benchmark |
+| **AI visibility** (if relevant) | Citations/mentions of your pages in AI engines for topic prompts | AI-visibility tracking tools | Citation share growing with coverage — an increasingly used leading indicator, methodology still maturing **[DEBATED]** |
+
+**Evaluation cadence:** 30d (indexing + impressions), 90d (impressions trend + new queries), 180d (rankings + clicks — first fair judgment of the map), 365d (authority state reassessment + border review).
+
+
+---
+
+# 13. Worked Example — B2B SaaS: An AI Visibility Tracking Platform
+
+A complete walkthrough for a fictionalized SaaS ("VizTrack") that sells AI search visibility tracking to agencies and in-house SEO teams. (SaaS chosen because its core/outer split is instructive; the process is identical for fitness, finance, or cybersecurity.)
+
+## 13.1 Step 1 — Source context & central entity
+
+- **Source context:** VizTrack sells a subscription measurement + actioning system for AI search visibility (citations across ChatGPT, Gemini, Perplexity, AI Overviews) to agencies, in-house SEO managers, and SaaS founders who already understand traditional SEO. Monetization bridge: *teach how AI visibility works → prove the tool is the most rigorous way to measure it → convert through education-led trust.*
+- **Central entity:** **AI visibility** (synonyms: AI search visibility, LLM visibility, generative search visibility).
+- **Central search intent:** "Marketers who already do SEO want to **know** how AI engines decide what to cite, **compare** their visibility against competitors, and **buy** a system that makes citation acquisition repeatable." Predicate priority: know → compare → buy.
+- **Borders v0 — WILL cover:** AI engines' citation behavior; GEO/AEO methodology and measurement; citation acquisition; content optimization for LLM consumption; competitive analysis in AI search; the SEO↔GEO intersection. **WILL NOT cover:** generic SEO 101; paid/social marketing; LLM engineering and prompt-building for developers; generic "AI for marketing."
+
+## 13.2 Step 2 — Ontology & personas
+
+Ontology (abridged): AI visibility —has-metric→ citations (explicit / implicit), mentions, visibility score, share of voice; —is-measured-across→ engines (ChatGPT, Gemini, Perplexity, AI Overviews, AI Mode); —is-improved-by→ content optimization, entity coverage, digital PR/outreach; —is-related-to→ GEO, AEO, traditional SEO.
+
+Personas: (1) agency SEO lead (highest LTV — needs client-defensible answers), (2) in-house SaaS SEO manager (KPI now includes AI visibility share), (3) freelancer/consultant (price-sensitive entry), (4) startup marketing leader (wants reporting clarity).
+
+## 13.3 Steps 3–4 — Authority sources & data
+
+Authority set: the 3–4 deepest GEO/AEO publishers plus one adjacent SEO-tool blog. One is selected for full reverse-engineering: sitemap + title n-grams reveal their query templates ("[engine] citations", "how to appear in [engine]", "[tool] vs [tool]"). Data gathering compiles ~4,800 queries from GSC, SERP extraction (heavy PAA: "how does ChatGPT choose sources?"), Wikipedia (thin for this emerging entity — a signal that definitional content is an information-gain opportunity), LLM lexical-relation prompts (validated), and Ahrefs/Semrush exports.
+
+## 13.4 Step 5 — Cluster & filter
+
+SERP-overlap clustering yields 214 raw topics → filtered to 96:
+
+- Dropped as **not relevant**: "how to build a chatbot" (wrong audience), "prompt engineering course" (borders).
+- Dropped as **not prominent**: "AI visibility certification" (absent from titles/PAA of ranking content).
+- Kept despite low volume: "implicit citations" — low demand but *unique attribute* the brand can own (unique > root > rare).
+
+## 13.5 Step 6 — The map (abridged)
+
+**Core section (monetization: know/compare/buy):**
+
+| Topic | Canonical query | Attribute | Type | Funnel |
+|---|---|---|---|---|
+| AI visibility (pillar) | what is ai visibility | Definition + measurement | Guide | TOFU/MOFU |
+| AI visibility metrics | ai visibility metrics | Metrics: citations, SOV, score | Guide | MOFU |
+| ChatGPT citations | how does chatgpt cite sources | Engine: citation behavior | Guide | MOFU |
+| AI Overviews citations | how to get cited in google ai overviews | Engine: citation behavior | How-to | MOFU |
+| Explicit vs implicit citations | implicit citations | Citation types | Definition/compare | MOFU |
+| GEO vs SEO | geo vs seo | Discipline comparison | Comparison | MOFU |
+| Best AI visibility tools | ai visibility tools | Category comparison | Listicle | BOFU |
+| [Tool] alternatives / vs pages | [tool] alternatives | Competitive set | Comparison | BOFU |
+| Content optimization for AI citations | optimize content for ai search | Improvement lever | How-to | MOFU/BOFU |
+
+**Outer section (know predicate; historical data engine):**
+
+| Topic | Canonical query | Bridge back to core |
+|---|---|---|
+| How LLM retrieval works (RAG, grounding) | how does ai search retrieve sources | → ChatGPT citations |
+| AI search behavior statistics | ai search usage statistics | → AI visibility pillar |
+| Schema & structured data for AI | schema markup for ai search | → Content optimization |
+| Entity SEO fundamentals | entity seo | → Content optimization |
+| Digital PR for AI mentions | digital pr for ai search | → Citation acquisition |
+
+Metadata example (one node): Title "ChatGPT Citations: How ChatGPT Chooses and Cites Sources" · URL `/ai-citations/chatgpt` · anchor everywhere = "ChatGPT citations" · borders: covers selection behavior, citation formats, measurement; defers optimization tactics to `/content-optimization` and tool comparison to `/tools`.
+
+## 13.6 Steps 7–8 — Brief & publish (one node illustrated)
+
+Brief for `/ai-citations/chatgpt`: contextual vector = What ChatGPT citations are (answer-first definition, "is" modality) → How ChatGPT selects sources (numbers: retrieval share, named research) → Citation formats (table) → How to measure them (bridge → product-adjacent measurement guide) → Variations in supplementary content ("does ChatGPT cite Reddit?", "why did ChatGPT stop citing my site?" — brief answers + links). Information-gain element: original citation-frequency data from the brand's own tracking corpus — something no competitor's page has. Published as a batch with the pillar and two sibling engine pages; all links live day one.
+
+## 13.7 Steps 9–10 — Evaluation
+
+90 days: impressions for the /ai-citations/ cluster +240% (Google testing coverage); "implicit citations" reaches top 3 (unique attribute, weak competition) and begins pulling new queries. 180 days: engine-behavior cluster drives 60% of demo-page assisted conversions via outer→core bridges. Reconfiguration: two thin "vs" pages consolidated; borders expanded into "AI Mode optimization" only after core-section coverage passed 80%.
+
+---
+
+# Executive Summary (one page)
+
+**What this SOP does:** Turns topical authority from a buzzword into a repeatable production system: define who you are → choose the entity you'll own → map its complete query network from your commercial context → publish connected, consistent, evidence-rich coverage → measure the ranking-state shift per cluster.
+
+**The theory in three lines:**
+1. Topical authority is a **ranking state** earned when a site's coverage of an entity is complete, connected, and consistently engaged with over time (Topical Coverage × Historical Data).
+2. Google's documented systems (site-level classifiers, E-E-A-T, semantic search) and patent literature (Topical TrustRank, categorical quality, phrase-based indexing, information gain) all converge on **topic-level, entity-based site evaluation** — no single "authority score" is documented, and this SOP never pretends one is.
+3. Therefore the map — not the article — is the unit of strategy: **source context → central entity → central search intent → core section (monetize) + outer section (historical data) → nodes → bridges.**
+
+**The process in ten steps:** (1) Source context & central entity → (2) Ontology, personas, journey → (3) Reverse-engineer one authority source → (4) Gather all query/entity data with provenance → (5) Cluster by SERP overlap; filter Relevant→Prominent→Popular → (6) Build the map with full metadata and borders → (7) Brief every node with contextual vectors and link plans → (8) Publish in cluster batches with factual consistency and momentum → (9) Evaluate per cluster: impressions → rankings → clicks, at 90/180 days → (10) Consolidate, reconfigure, then expand borders. If the site's ranking state is negative: stop publishing, audit and consolidate first.
+
+**The five failure modes that kill most maps:** volume-first topic selection; no source context; page count mistaken for coverage; links as an afterthought; judging results before historical data can move (~6 months).
+
+---
+
+## Condensed Day-to-Day Checklist
+
+**Before adding any topic:**
+- [ ] Relevant to central entity AND monetization? → Prominent in SERPs? → Popular enough? (in that order)
+- [ ] Inside written borders? New page vs. expand-existing decision made?
+- [ ] One canonical query, one attribute, one macro context?
+
+**Before writing any page:**
+- [ ] Brief has: contextual vector, main/supplementary split, bridges, anchor plan, information-gain element
+- [ ] Answer-first structure; definite modality at borders; numbers + named sources specified
+
+**Before publishing any page:**
+- [ ] Facts match the site glossary; zero contradictions
+- [ ] All planned internal links live; anchors = target title/H1; placed after definitions
+- [ ] Schema valid; unique image + context ALT; author credentials
+- [ ] Quality audit passed (≥64/80)
+
+**Every month:**
+- [ ] Crawl: zero orphans; quality nodes ≤2 clicks deep
+- [ ] GSC per cluster: impressions trend; new/lost/shared queries
+- [ ] Competitor publication watch inside your borders
+
+**Every quarter:**
+- [ ] Coverage % per cluster vs. map; consolidate before expanding
+- [ ] Re-verify SERP intent for top canonical queries
+- [ ] Map version bump with changelog
+
+---
+
+*Sources consulted: Google Search Central documentation and Search Quality Rater Guidelines (E-E-A-T, helpful content self-assessment, link best practices); Bill Slawski's SEO by the Sea patent analyses (categorical quality scores, authority scores, Reasonable Surfer, phrase-based indexing); the Topical TrustRank research lineage as cited in Google's updated PageRank patent (via Search Engine Journal); Koray Tuğberk GÜBÜR's Holistic SEO / Semantic SEO methodology (topical maps, source context, contextual structure, attribute filtering, authorship rules); Ahrefs, Semrush, Moz, Search Engine Land, and Search Engine Journal topical-authority and topic-cluster guides; HubSpot's pillar-cluster model. Claims are tiered as [FACT], [PATENT], [BEST PRACTICE], [FRAMEWORK], or [DEBATED] throughout.*

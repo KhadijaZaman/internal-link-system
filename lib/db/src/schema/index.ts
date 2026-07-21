@@ -26,5 +26,7 @@ export * from "./healthSnapshots";
 export * from "./digests";
 export * from "./urlBlocklist";
 export * from "./pages";
+export * from "./bingStats";
+export * from "./aiCitations";
 export * from "./appState";
 export * from "./similarityRuns";

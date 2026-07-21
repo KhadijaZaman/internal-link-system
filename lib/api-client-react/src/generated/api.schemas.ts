@@ -2085,6 +2085,92 @@ export interface SimilarityRun {
   finishedAt: string | null;
 }
 
+export interface AiCitationUploadInput {
+  /**
+     * Optional label (defaults to a timestamped name)
+     * @maxLength 200
+     */
+  label?: string;
+  /**
+     * Raw CSV text of the Bing AI Performance export
+     * @minLength 1
+     * @maxLength 1500000
+     */
+  content: string;
+}
+
+export type AiCitationUploadKind = typeof AiCitationUploadKind[keyof typeof AiCitationUploadKind];
+
+
+export const AiCitationUploadKind = {
+  pages: 'pages',
+  grounding_queries: 'grounding_queries',
+} as const;
+
+export interface AiCitationUpload {
+  id: number;
+  label: string;
+  kind: AiCitationUploadKind;
+  rowCount: number;
+  unmatchedCount: number;
+  uploadedAt: string;
+}
+
+export interface AiCitationUploadResult {
+  upload: AiCitationUpload;
+  /** Rows whose URL mapped onto the canonical page registry (pages kind) */
+  matchedPages: number;
+  totalCitations: number;
+  warnings: string[];
+}
+
+export interface BingPageMapRow {
+  path: string;
+  /** @nullable */
+  title: string | null;
+  /** @nullable */
+  section: string | null;
+  /** @nullable */
+  gscClicks: number | null;
+  /** @nullable */
+  gscImpressions: number | null;
+  /** @nullable */
+  gscPosition: number | null;
+  /** @nullable */
+  bingClicks: number | null;
+  /** @nullable */
+  bingImpressions: number | null;
+  /** @nullable */
+  bingPosition: number | null;
+  /** @nullable */
+  aiCitations: number | null;
+  /** @nullable */
+  aiSessions: number | null;
+}
+
+export type BingPagesReportTotals = {
+  gscClicks: number;
+  bingClicks: number;
+  aiCitations: number;
+  aiSessions: number;
+};
+
+export interface BingPagesReport {
+  rows: BingPageMapRow[];
+  /**
+     * When the Bing API sync last ran (null = never)
+     * @nullable
+     */
+  bingSyncedAt: string | null;
+  /**
+     * When the AI citation rollup was last applied (null = never)
+     * @nullable
+     */
+  aiCitationsAt: string | null;
+  latestUpload: AiCitationUpload | null;
+  totals: BingPagesReportTotals;
+}
+
 export type StartDateParameter = string;
 
 export type EndDateParameter = string;

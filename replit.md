@@ -37,6 +37,10 @@ _Replace the heading above with the project's name, and this line with one sente
 - `artifacts/api-server/src/integrations/openaiClusterLabels.ts` — gpt-4o-mini batch cluster naming (fail-soft to top-keyword fallback)
 - `artifacts/api-server/src/jobs/keywordClustering.ts` — clustering job; `params.reprocess` triggers a free rebuild from stored SERP rows (transactional delete+insert; on failure previous clusters are kept and status restored)
 - `artifacts/api-server/src/lib/louvain.ts` — shared Louvain community detection (used by Knowledge Graph and Similarity Explorer)
+- `artifacts/api-server/src/integrations/bing.ts` — Bing Webmaster API client (GetPageStats/GetQueryStats for the rolling ~6-month window; API quirks: the URL lives in a field literally named `Query`, dates arrive as `/Date(ms±zzzz)/`, position `-1` means unknown → stored as null)
+- `artifacts/api-server/src/jobs/syncBingPages.ts` — daily `sync_bing_pages` job (04:00 UTC + manual): fetch-before-txn, delete-all+reinsert into `bing_page_stats`/`bing_query_stats`, canonical-path merge, UPDATE-only `pages.bing*` rollups; also exports `applyAiCitationRollup(uploadId)` used by the upload route
+- `artifacts/api-server/src/routes/bing.ts` — `GET /api/bing/pages` (GSC vs Bing vs AI-citations vs AI-sessions mapping report) + AI-citation CSV upload endpoints (header-tolerant kind detection: pages vs grounding_queries; Bing's AI Performance report has no API as of Jul 2026, so citations arrive by upload only)
+- `artifacts/api-server/src/lib/csvParse.ts` — pure RFC-4180 CSV parser (quotes, BOM, CRLF); unit-tested
 - `artifacts/api-server/src/jobs/analyzeSimilarity.ts` — Content Similarity Explorer job (`analyze_similarity`, manual-only): fetches pasted URLs via SSRF-guarded `fetchPageInHouse`, embeds + gpt-4o-mini topics/theme per article (fail-soft per URL), pairwise cosine (≥0.35 display, top-10), Louvain clusters on ≥0.45 edges; UI at `/similarity`, routes in `routes/similarity.ts`
 
 ## Architecture decisions
@@ -59,6 +63,8 @@ _Populate as you build — explicit user instructions worth remembering across s
 - GA4 key-event metrics fire on the app/Calendly hosts, NOT the marketing host — never put a `hostName` filter on a runReport that requests `keyEvents:*` metrics (it silently returns 0); fetch them unfiltered and join by landing-page path
 - Requeued cluster-run rebuilds keep their original `createdAt` — any queued-staleness check must prefer `heartbeatAt` (set to now on requeue) or rebuilds get instantly marked interrupted
 - `GET /api/similarity/runs` (list) deliberately returns `results: null` — it's polled every 3s during a run; clients must fetch `/api/similarity/runs/:id` for the full results payload
+- When merging metric rows with nullable positions (Bing returns -1/unknown), exclude null-position rows from the impression-weighted average — mapping null→0 dilutes the average toward a falsely "better" rank
+- The AI-citation upload route has a path-scoped `express.json({limit:"2mb"})` in app.ts (must stay registered before the global parser); the contract caps content at 1.5M chars
 
 ## Pointers
 

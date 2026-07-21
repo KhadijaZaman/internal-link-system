@@ -63,6 +63,9 @@ app.use(cookieParser());
 // body-parser sets req._body and the default parser below skips it — so the
 // rest of the API stays at the tighter 100KB default.
 app.use("/api/kb/documents", express.json({ limit: "600kb" }));
+// Bing AI Performance exports (raw CSV text in JSON; contract caps content
+// at 1.5M chars) — same pattern as the KB path above.
+app.use("/api/bing/ai-citations/uploads", express.json({ limit: "2mb" }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
