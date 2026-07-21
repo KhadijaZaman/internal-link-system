@@ -33,6 +33,7 @@ import impactRouter from "./impact";
 import healthScoreRouter from "./healthScore";
 import digestsRouter from "./digests";
 import clusteringRouter from "./clustering";
+import similarityRouter from "./similarity";
 
 const router: IRouter = Router();
 
@@ -70,5 +71,6 @@ router.use(impactRouter);
 router.use(healthScoreRouter);
 router.use(digestsRouter);
 router.use(clusteringRouter);
+router.use(similarityRouter);
 
 export default router;

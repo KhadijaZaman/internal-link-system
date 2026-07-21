@@ -961,10 +961,100 @@ export const ListClusterRunClustersResponse = zod.array(ListClusterRunClustersRe
 
 
 /**
+ * @summary Analyze up to 100 URLs for topics, pairwise similarity, and clusters
+ */
+export const startSimilarityRunBodyUrlsMin = 2;
+export const startSimilarityRunBodyUrlsMax = 100;
+
+
+
+export const StartSimilarityRunBody = zod.object({
+  "urls": zod.array(zod.string()).min(startSimilarityRunBodyUrlsMin).max(startSimilarityRunBodyUrlsMax).describe('Article URLs to analyze (http\/https, deduped server-side)')
+})
+
+
+/**
+ * @summary List recent similarity runs (newest first)
+ */
+export const ListSimilarityRunsResponseItem = zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['queued', 'running', 'complete', 'failed', 'interrupted']),
+  "urls": zod.array(zod.string()),
+  "progressDone": zod.number(),
+  "progressTotal": zod.number(),
+  "results": zod.union([zod.object({
+  "articles": zod.array(zod.object({
+  "url": zod.string(),
+  "finalUrl": zod.string().nullable(),
+  "title": zod.string().nullable(),
+  "wordCount": zod.number().nullable(),
+  "topics": zod.array(zod.string()),
+  "mainTheme": zod.string().nullable(),
+  "error": zod.string().nullable(),
+  "similar": zod.array(zod.object({
+  "url": zod.string(),
+  "title": zod.string().nullable(),
+  "sim": zod.number().describe('Cosine similarity (0-1)')
+}))
+})),
+  "clusters": zod.array(zod.object({
+  "label": zod.string(),
+  "memberUrls": zod.array(zod.string())
+}))
+}),zod.null()]),
+  "error": zod.string().nullable(),
+  "createdAt": zod.string(),
+  "startedAt": zod.string().nullable(),
+  "finishedAt": zod.string().nullable()
+})
+export const ListSimilarityRunsResponse = zod.array(ListSimilarityRunsResponseItem)
+
+
+/**
+ * @summary Get one similarity run (status, progress, results)
+ */
+export const GetSimilarityRunParams = zod.object({
+  "runId": zod.coerce.number()
+})
+
+export const GetSimilarityRunResponse = zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['queued', 'running', 'complete', 'failed', 'interrupted']),
+  "urls": zod.array(zod.string()),
+  "progressDone": zod.number(),
+  "progressTotal": zod.number(),
+  "results": zod.union([zod.object({
+  "articles": zod.array(zod.object({
+  "url": zod.string(),
+  "finalUrl": zod.string().nullable(),
+  "title": zod.string().nullable(),
+  "wordCount": zod.number().nullable(),
+  "topics": zod.array(zod.string()),
+  "mainTheme": zod.string().nullable(),
+  "error": zod.string().nullable(),
+  "similar": zod.array(zod.object({
+  "url": zod.string(),
+  "title": zod.string().nullable(),
+  "sim": zod.number().describe('Cosine similarity (0-1)')
+}))
+})),
+  "clusters": zod.array(zod.object({
+  "label": zod.string(),
+  "memberUrls": zod.array(zod.string())
+}))
+}),zod.null()]),
+  "error": zod.string().nullable(),
+  "createdAt": zod.string(),
+  "startedAt": zod.string().nullable(),
+  "finishedAt": zod.string().nullable()
+})
+
+
+/**
  * @summary Manually trigger a background job
  */
 export const RunJobParams = zod.object({
-  "jobName": zod.enum(['crawl_link_map', 'gsc_inventory_and_losers', 'optimize_queued_urls', 'crawl_wordpress', 'reembed_wordpress', 'semantic_linking', 'audit_orphans', 'audit_over_linked', 'audit_broken_links', 'run_full_pipeline', 'recompute_action_queue', 'weekly_digest', 'keyword_clustering', 'migrate_url_hygiene', 'sync_ga4_pages', 'embed_kb_chunks', 'sync_keyword_sheet'])
+  "jobName": zod.enum(['crawl_link_map', 'gsc_inventory_and_losers', 'optimize_queued_urls', 'crawl_wordpress', 'reembed_wordpress', 'semantic_linking', 'audit_orphans', 'audit_over_linked', 'audit_broken_links', 'run_full_pipeline', 'recompute_action_queue', 'weekly_digest', 'keyword_clustering', 'migrate_url_hygiene', 'sync_ga4_pages', 'embed_kb_chunks', 'sync_keyword_sheet', 'analyze_similarity'])
 })
 
 

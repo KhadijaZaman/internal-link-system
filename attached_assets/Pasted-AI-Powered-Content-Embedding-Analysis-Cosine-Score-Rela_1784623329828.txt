@@ -1,0 +1,38 @@
+AI Powered Content Embedding Analysis & Cosine Score Relationship Explorer
+Discover relationships between articles through AI-powered analysis and topic clustering. This tool analyzes the content of articles and provides insights into their topics, themes, and cosine score similarities. Enter URLs (one per line, up to 100) to analyze their content and visualize relationships.
+
+Enter URLs (one per line)
+
+https://wellows.com/solutions/agencies/
+https://wellows.com/blog/great-decoupling/
+https://wellows.com/blog/content-briefs/
+https://wellows.com/blog/audit-brand-visibility-on-llms/
+
+
+Content Analysis Results
+Article 1: GEO for Agencies: Sell AI Visibility Under Your Br...
+
+Article 2: What is the Great Decoupling and how it Impacts Ge...
+
+Article 3: How to Create Content Briefs for GEO That AI Under...
+
+Topics: Generative Engine Optimization (GEO), Content Briefs, Role of AI in Content Creation, Importance of Structure in Content, Target Audience and Search Intent
+
+Main Theme: The shift from traditional SEO to Generative Engine Optimization (GEO) emphasizes the importance of creating AI-ready content using comprehensive content briefs that are essential for aligning with AI systems' capabilities and user search behaviors.
+
+Similar Articles:
+
+What is the Great Decoupling and how it Impacts Generative Engine Optimization? (Similarity: 0.72)
+Brand Visibility in LLMs: How to Audit & Improve It (2026) (Similarity: 0.54)
+GEO for Agencies: Sell AI Visibility Under Your Brand | Wellows (Similarity: 0.48)
+Article 4: Brand Visibility in LLMs: How to Audit & Improve I...
+
+Topics: Brand visibility in language learning models (LLMs), Differences between traditional SEO and LLM brand visibility, Continuous auditing of brand mentions in AI, Factors influencing brand visibility in LLMs, Importance of third-party validation and consistent terminology
+
+Main Theme: The article discusses the emerging importance of brand visibility in language learning models (LLMs) like ChatGPT, Gemini, and Perplexity, highlighting how it differs from traditional SEO and emphasizing the need for continuous auditing to ensure accurate and favorable brand representation due to the ever-changing nature of AI-cited sources.
+
+Similar Articles:
+
+What is the Great Decoupling and how it Impacts Generative Engine Optimization? (Similarity: 0.70)
+GEO for Agencies: Sell AI Visibility Under Your Brand | Wellows (Similarity: 0.66)
+How to Create Content Briefs for GEO That AI Understands (Similarity: 0.54)

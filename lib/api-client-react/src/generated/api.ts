@@ -108,7 +108,9 @@ import type {
   PageTargetKeyword,
   PruningReport,
   QueryInsights,
+  SimilarityRun,
   StartClusterRunInput,
+  StartSimilarityRunInput,
   StructuralSuggestInput,
   StructuralSuggestResult,
   StructuralTargets,
@@ -2788,7 +2790,232 @@ export function useListClusterRunClusters<TData = Awaited<ReturnType<typeof list
 
 
 
-export const getRunJobUrl = (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet',) => {
+export const getStartSimilarityRunUrl = () => {
+
+
+
+
+  return `/api/similarity/runs`
+}
+
+/**
+ * @summary Analyze up to 100 URLs for topics, pairwise similarity, and clusters
+ */
+export const startSimilarityRun = async (startSimilarityRunInput: StartSimilarityRunInput, options?: RequestInit): Promise<SimilarityRun> => {
+
+  return customFetch<SimilarityRun>(getStartSimilarityRunUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      startSimilarityRunInput,)
+  }
+);}
+
+
+
+
+export const getStartSimilarityRunMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startSimilarityRun>>, TError,{data: BodyType<StartSimilarityRunInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startSimilarityRun>>, TError,{data: BodyType<StartSimilarityRunInput>}, TContext> => {
+
+const mutationKey = ['startSimilarityRun'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startSimilarityRun>>, {data: BodyType<StartSimilarityRunInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  startSimilarityRun(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartSimilarityRunMutationResult = NonNullable<Awaited<ReturnType<typeof startSimilarityRun>>>
+    export type StartSimilarityRunMutationBody = BodyType<StartSimilarityRunInput>
+    export type StartSimilarityRunMutationError = ErrorType<void>
+
+    /**
+ * @summary Analyze up to 100 URLs for topics, pairwise similarity, and clusters
+ */
+export const useStartSimilarityRun = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startSimilarityRun>>, TError,{data: BodyType<StartSimilarityRunInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startSimilarityRun>>,
+        TError,
+        {data: BodyType<StartSimilarityRunInput>},
+        TContext
+      > => {
+      return useMutation(getStartSimilarityRunMutationOptions(options));
+    }
+
+export const getListSimilarityRunsUrl = () => {
+
+
+
+
+  return `/api/similarity/runs`
+}
+
+/**
+ * @summary List recent similarity runs (newest first)
+ */
+export const listSimilarityRuns = async ( options?: RequestInit): Promise<SimilarityRun[]> => {
+
+  return customFetch<SimilarityRun[]>(getListSimilarityRunsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSimilarityRunsQueryKey = () => {
+    return [
+    `/api/similarity/runs`
+    ] as const;
+    }
+
+
+export const getListSimilarityRunsQueryOptions = <TData = Awaited<ReturnType<typeof listSimilarityRuns>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSimilarityRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSimilarityRunsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSimilarityRuns>>> = ({ signal }) => listSimilarityRuns({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSimilarityRuns>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSimilarityRunsQueryResult = NonNullable<Awaited<ReturnType<typeof listSimilarityRuns>>>
+export type ListSimilarityRunsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List recent similarity runs (newest first)
+ */
+
+export function useListSimilarityRuns<TData = Awaited<ReturnType<typeof listSimilarityRuns>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSimilarityRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSimilarityRunsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetSimilarityRunUrl = (runId: number,) => {
+
+
+
+
+  return `/api/similarity/runs/${runId}`
+}
+
+/**
+ * @summary Get one similarity run (status, progress, results)
+ */
+export const getSimilarityRun = async (runId: number, options?: RequestInit): Promise<SimilarityRun> => {
+
+  return customFetch<SimilarityRun>(getGetSimilarityRunUrl(runId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSimilarityRunQueryKey = (runId: number,) => {
+    return [
+    `/api/similarity/runs/${runId}`
+    ] as const;
+    }
+
+
+export const getGetSimilarityRunQueryOptions = <TData = Awaited<ReturnType<typeof getSimilarityRun>>, TError = ErrorType<void>>(runId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSimilarityRun>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSimilarityRunQueryKey(runId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSimilarityRun>>> = ({ signal }) => getSimilarityRun(runId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(runId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSimilarityRun>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSimilarityRunQueryResult = NonNullable<Awaited<ReturnType<typeof getSimilarityRun>>>
+export type GetSimilarityRunQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get one similarity run (status, progress, results)
+ */
+
+export function useGetSimilarityRun<TData = Awaited<ReturnType<typeof getSimilarityRun>>, TError = ErrorType<void>>(
+ runId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSimilarityRun>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSimilarityRunQueryOptions(runId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getRunJobUrl = (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity',) => {
 
 
 
@@ -2799,7 +3026,7 @@ export const getRunJobUrl = (jobName: 'crawl_link_map' | 'gsc_inventory_and_lose
 /**
  * @summary Manually trigger a background job
  */
-export const runJob = async (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet', options?: RequestInit): Promise<JobRunResult> => {
+export const runJob = async (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity', options?: RequestInit): Promise<JobRunResult> => {
 
   return customFetch<JobRunResult>(getRunJobUrl(jobName),
   {
@@ -2814,8 +3041,8 @@ export const runJob = async (jobName: 'crawl_link_map' | 'gsc_inventory_and_lose
 
 
 export const getRunJobMutationOptions = <TError = ErrorType<JobRunResult>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet'}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet'}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity'}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity'}, TContext> => {
 
 const mutationKey = ['runJob'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -2827,7 +3054,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runJob>>, {jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet'}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runJob>>, {jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity'}> = (props) => {
           const {jobName} = props ?? {};
 
           return  runJob(jobName,requestOptions)
@@ -2848,11 +3075,11 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
  * @summary Manually trigger a background job
  */
 export const useRunJob = <TError = ErrorType<JobRunResult>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet'}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity'}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof runJob>>,
         TError,
-        {jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet'},
+        {jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity'},
         TContext
       > => {
       return useMutation(getRunJobMutationOptions(options));

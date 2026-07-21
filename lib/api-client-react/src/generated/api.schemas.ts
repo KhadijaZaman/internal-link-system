@@ -2015,6 +2015,76 @@ export interface KeywordCluster {
   competitorUrls: ClusterUrl[];
 }
 
+export interface StartSimilarityRunInput {
+  /**
+     * Article URLs to analyze (http/https, deduped server-side)
+     * @minItems 2
+     * @maxItems 100
+     */
+  urls: string[];
+}
+
+export interface SimilarityMatch {
+  url: string;
+  /** @nullable */
+  title: string | null;
+  /** Cosine similarity (0-1) */
+  sim: number;
+}
+
+export interface SimilarityArticle {
+  url: string;
+  /** @nullable */
+  finalUrl: string | null;
+  /** @nullable */
+  title: string | null;
+  /** @nullable */
+  wordCount: number | null;
+  topics: string[];
+  /** @nullable */
+  mainTheme: string | null;
+  /** @nullable */
+  error: string | null;
+  similar: SimilarityMatch[];
+}
+
+export interface SimilarityCluster {
+  label: string;
+  memberUrls: string[];
+}
+
+export interface SimilarityResults {
+  articles: SimilarityArticle[];
+  clusters: SimilarityCluster[];
+}
+
+export type SimilarityRunStatus = typeof SimilarityRunStatus[keyof typeof SimilarityRunStatus];
+
+
+export const SimilarityRunStatus = {
+  queued: 'queued',
+  running: 'running',
+  complete: 'complete',
+  failed: 'failed',
+  interrupted: 'interrupted',
+} as const;
+
+export interface SimilarityRun {
+  id: number;
+  status: SimilarityRunStatus;
+  urls: string[];
+  progressDone: number;
+  progressTotal: number;
+  results: SimilarityResults | null;
+  /** @nullable */
+  error: string | null;
+  createdAt: string;
+  /** @nullable */
+  startedAt: string | null;
+  /** @nullable */
+  finishedAt: string | null;
+}
+
 export type StartDateParameter = string;
 
 export type EndDateParameter = string;

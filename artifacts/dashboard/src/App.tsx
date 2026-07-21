@@ -33,6 +33,7 @@ import Ga4Pages from "@/pages/ga4/pages";
 import PageReport from "@/pages/report/pages";
 import KeywordReport from "@/pages/keyword-report";
 import Clustering from "@/pages/clustering";
+import SimilarityExplorer from "@/pages/similarity-explorer";
 import { GscRangeProvider } from "@/components/gsc/range-context";
 
 const queryClient = new QueryClient({
@@ -85,6 +86,7 @@ function Router() {
       <Route path="/report" component={() => <ProtectedRoute component={PageReport} />} />
       <Route path="/keyword-report" component={() => <ProtectedRoute component={KeywordReport} />} />
       <Route path="/clustering" component={() => <ProtectedRoute component={Clustering} />} />
+      <Route path="/similarity" component={() => <ProtectedRoute component={SimilarityExplorer} />} />
       <Route path="/gsc/:rest*">
         {() => (
           <GscRangeProvider>

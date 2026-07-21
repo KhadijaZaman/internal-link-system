@@ -686,6 +686,60 @@ paths:
                   $ref: "#/components/schemas/KeywordCluster"
         "404":
           description: Not found
+  /similarity/runs:
+    post:
+      operationId: startSimilarityRun
+      tags: [similarity]
+      summary: Analyze up to 100 URLs for topics, pairwise similarity, and clusters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartSimilarityRunInput"
+      responses:
+        "202":
+          description: Run queued and job started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimilarityRun"
+        "400":
+          description: Invalid input
+        "409":
+          description: A similarity analysis is already in progress
+    get:
+      operationId: listSimilarityRuns
+      tags: [similarity]
+      summary: List recent similarity runs (newest first)
+      responses:
+        "200":
+          description: Recent runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SimilarityRun"
+  /similarity/runs/{runId}:
+    get:
+      operationId: getSimilarityRun
+      tags: [similarity]
+      summary: Get one similarity run (status, progress, results)
+      parameters:
+        - in: path
+          name: runId
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimilarityRun"
+        "404":
+          description: Not found
   /jobs/{jobName}/run:
     post:
       operationId: runJob
@@ -697,7 +751,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [crawl_link_map, gsc_inventory_and_losers, optimize_queued_urls, crawl_wordpress, reembed_wordpress, semantic_linking, audit_orphans, audit_over_linked, audit_broken_links, run_full_pipeline, recompute_action_queue, weekly_digest, keyword_clustering, migrate_url_hygiene, sync_ga4_pages, embed_kb_chunks, sync_keyword_sheet]
+            enum: [crawl_link_map, gsc_inventory_and_losers, optimize_queued_urls, crawl_wordpress, reembed_wordpress, semantic_linking, audit_orphans, audit_over_linked, audit_broken_links, run_full_pipeline, recompute_action_queue, weekly_digest, keyword_clustering, migrate_url_hygiene, sync_ga4_pages, embed_kb_chunks, sync_keyword_sheet, analyze_similarity]
       responses:
         "202":
           description: Job started
@@ -3632,3 +3686,78 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ClusterUrl"
+    StartSimilarityRunInput:
+      type: object
+      required: [urls]
+      properties:
+        urls:
+          type: array
+          minItems: 2
+          maxItems: 100
+          items: { type: string }
+          description: Article URLs to analyze (http/https, deduped server-side)
+    SimilarityMatch:
+      type: object
+      required: [url, title, sim]
+      properties:
+        url: { type: string }
+        title: { type: ["string", "null"] }
+        sim: { type: number, description: Cosine similarity (0-1) }
+    SimilarityArticle:
+      type: object
+      required: [url, finalUrl, title, wordCount, topics, mainTheme, error, similar]
+      properties:
+        url: { type: string }
+        finalUrl: { type: ["string", "null"] }
+        title: { type: ["string", "null"] }
+        wordCount: { type: ["integer", "null"] }
+        topics:
+          type: array
+          items: { type: string }
+        mainTheme: { type: ["string", "null"] }
+        error: { type: ["string", "null"] }
+        similar:
+          type: array
+          items:
+            $ref: "#/components/schemas/SimilarityMatch"
+    SimilarityCluster:
+      type: object
+      required: [label, memberUrls]
+      properties:
+        label: { type: string }
+        memberUrls:
+          type: array
+          items: { type: string }
+    SimilarityResults:
+      type: object
+      required: [articles, clusters]
+      properties:
+        articles:
+          type: array
+          items:
+            $ref: "#/components/schemas/SimilarityArticle"
+        clusters:
+          type: array
+          items:
+            $ref: "#/components/schemas/SimilarityCluster"
+    SimilarityRun:
+      type: object
+      required: [id, status, urls, progressDone, progressTotal, results, error, createdAt, startedAt, finishedAt]
+      properties:
+        id: { type: integer }
+        status:
+          type: string
+          enum: [queued, running, complete, failed, interrupted]
+        urls:
+          type: array
+          items: { type: string }
+        progressDone: { type: integer }
+        progressTotal: { type: integer }
+        results:
+          oneOf:
+            - $ref: "#/components/schemas/SimilarityResults"
+            - type: "null"
+        error: { type: ["string", "null"] }
+        createdAt: { type: string }
+        startedAt: { type: ["string", "null"] }
+        finishedAt: { type: ["string", "null"] }

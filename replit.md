@@ -36,6 +36,8 @@ _Replace the heading above with the project's name, and this line with one sente
 - `artifacts/api-server/src/services/clustering.ts` — union-find SERP clustering + `isOperatorQuery()` junk filter (quoted/boolean/`site:` GSC scraper queries); filter runs at GSC selection (before paid SERP spend) and on rebuild; unit-tested
 - `artifacts/api-server/src/integrations/openaiClusterLabels.ts` — gpt-4o-mini batch cluster naming (fail-soft to top-keyword fallback)
 - `artifacts/api-server/src/jobs/keywordClustering.ts` — clustering job; `params.reprocess` triggers a free rebuild from stored SERP rows (transactional delete+insert; on failure previous clusters are kept and status restored)
+- `artifacts/api-server/src/lib/louvain.ts` — shared Louvain community detection (used by Knowledge Graph and Similarity Explorer)
+- `artifacts/api-server/src/jobs/analyzeSimilarity.ts` — Content Similarity Explorer job (`analyze_similarity`, manual-only): fetches pasted URLs via SSRF-guarded `fetchPageInHouse`, embeds + gpt-4o-mini topics/theme per article (fail-soft per URL), pairwise cosine (≥0.35 display, top-10), Louvain clusters on ≥0.45 edges; UI at `/similarity`, routes in `routes/similarity.ts`
 
 ## Architecture decisions
 
@@ -56,6 +58,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 - Any change to a cached response shape must bump that cache key in lockstep (e.g. `report:pages:v5`, `ga4:pages:v4`, `authority-snapshot:v2`)
 - GA4 key-event metrics fire on the app/Calendly hosts, NOT the marketing host — never put a `hostName` filter on a runReport that requests `keyEvents:*` metrics (it silently returns 0); fetch them unfiltered and join by landing-page path
 - Requeued cluster-run rebuilds keep their original `createdAt` — any queued-staleness check must prefer `heartbeatAt` (set to now on requeue) or rebuilds get instantly marked interrupted
+- `GET /api/similarity/runs` (list) deliberately returns `results: null` — it's polled every 3s during a run; clients must fetch `/api/similarity/runs/:id` for the full results payload
 
 ## Pointers
 

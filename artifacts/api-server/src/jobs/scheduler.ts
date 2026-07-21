@@ -14,6 +14,7 @@ import { runMigrateUrlHygiene } from "./migrateUrlHygiene";
 import { runSyncGa4Pages } from "./syncGa4Pages";
 import { runEmbedKbChunks } from "./embedKbChunks";
 import { runSyncKeywordSheet } from "./syncKeywordSheet";
+import { runAnalyzeSimilarity } from "./analyzeSimilarity";
 import { logger } from "../lib/logger";
 
 export function setupJobs(): void {
@@ -47,6 +48,9 @@ export function setupJobs(): void {
   // Daily refresh of the persistent Target Keyword Daily Movement sheet —
   // GSC + Sheets only, no paid spend.
   registerJob("sync_keyword_sheet", runSyncKeywordSheet);
+  // Content Similarity Explorer runs — triggered by POST /similarity/runs,
+  // never on a cron (fetches arbitrary user-supplied URLs + OpenAI spend).
+  registerJob("analyze_similarity", runAnalyzeSimilarity);
 }
 
 export function startScheduler(): void {

@@ -96,6 +96,12 @@ const JOB_LABELS: Record<string, JobLabel> = {
     route: "/submissions",
     routeLabel: "Open My Submissions",
   },
+  analyze_similarity: {
+    title: "Content Similarity Analysis",
+    description: "Fetches and compares the pasted article URLs: topics, main theme, pairwise similarity, and topic clusters. Starts automatically from the Similarity Explorer page.",
+    route: "/similarity",
+    routeLabel: "Open Similarity Explorer",
+  },
 };
 
 export function getJobLabel(name: string): JobLabel {
