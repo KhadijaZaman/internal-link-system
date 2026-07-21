@@ -8,6 +8,7 @@ import {
   jsonb,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sitesTable } from "./sites";
 
 /**
  * Unified "do this next" queue. Rows are materialized from live signals
@@ -20,6 +21,10 @@ export const actionItemsTable = pgTable(
   "action_items",
   {
     id: serial("id").primaryKey(),
+    siteId: integer("site_id")
+      .notNull()
+      .default(1)
+      .references(() => sitesTable.id),
     /** action_type + normalized target URL — stable identity across recomputes. */
     dedupeKey: text("dedupe_key").notNull(),
     actionType: text("action_type").notNull(),
@@ -41,7 +46,7 @@ export const actionItemsTable = pgTable(
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow(),
   },
   (t) => ({
-    uniq: uniqueIndex("action_items_dedupe_uniq").on(t.dedupeKey),
+    uniq: uniqueIndex("action_items_dedupe_uniq").on(t.siteId, t.dedupeKey),
   }),
 );
 

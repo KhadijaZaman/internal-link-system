@@ -6,12 +6,18 @@ import {
   timestamp,
   jsonb,
   uniqueIndex,
+  integer,
 } from "drizzle-orm/pg-core";
+import { sitesTable } from "./sites";
 
 export const linkSuggestionsTable = pgTable(
   "link_suggestions",
   {
     id: serial("id").primaryKey(),
+    siteId: integer("site_id")
+      .notNull()
+      .default(1)
+      .references(() => sitesTable.id),
     donorUrl: text("donor_url").notNull(),
     receiverUrl: text("receiver_url").notNull(),
     anchorText: text("anchor_text"),
@@ -33,6 +39,7 @@ export const linkSuggestionsTable = pgTable(
   },
   (t) => ({
     uniq: uniqueIndex("link_suggestions_uniq").on(
+      t.siteId,
       t.donorUrl,
       t.receiverUrl,
       t.anchorText,

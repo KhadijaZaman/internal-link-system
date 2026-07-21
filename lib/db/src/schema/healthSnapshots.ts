@@ -1,4 +1,13 @@
-import { pgTable, serial, integer, date, jsonb, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  serial,
+  integer,
+  date,
+  jsonb,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
+import { sitesTable } from "./sites";
 
 /**
  * Daily site-health score snapshots, persisted at the end of every
@@ -10,13 +19,17 @@ export const healthSnapshotsTable = pgTable(
   "health_snapshots",
   {
     id: serial("id").primaryKey(),
+    siteId: integer("site_id")
+      .notNull()
+      .default(1)
+      .references(() => sitesTable.id),
     snapshotDate: date("snapshot_date").notNull(),
     score: integer("score").notNull(),
     components: jsonb("components").$type<Record<string, unknown>>().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (t) => ({
-    uniq: uniqueIndex("health_snapshots_date_uniq").on(t.snapshotDate),
+    uniq: uniqueIndex("health_snapshots_date_uniq").on(t.siteId, t.snapshotDate),
   }),
 );
 

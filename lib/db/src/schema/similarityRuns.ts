@@ -6,6 +6,7 @@ import {
   timestamp,
   jsonb,
 } from "drizzle-orm/pg-core";
+import { sitesTable } from "./sites";
 
 export interface SimilarityArticleSimilar {
   /** Input URL of the similar article. */
@@ -44,6 +45,10 @@ export interface SimilarityResults {
 
 export const similarityRunsTable = pgTable("similarity_runs", {
   id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .default(1)
+    .references(() => sitesTable.id),
   /** queued | running | complete | failed | interrupted */
   status: text("status").notNull().default("queued"),
   /** Normalized input URLs (deduped, max 100). */

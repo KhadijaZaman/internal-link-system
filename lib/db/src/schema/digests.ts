@@ -1,4 +1,13 @@
-import { pgTable, serial, date, jsonb, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  serial,
+  date,
+  jsonb,
+  timestamp,
+  uniqueIndex,
+  integer,
+} from "drizzle-orm/pg-core";
+import { sitesTable } from "./sites";
 
 /**
  * Weekly digest snapshots — one row per ISO week (Monday date), written by
@@ -10,12 +19,16 @@ export const digestsTable = pgTable(
   "digests",
   {
     id: serial("id").primaryKey(),
+    siteId: integer("site_id")
+      .notNull()
+      .default(1)
+      .references(() => sitesTable.id),
     weekOf: date("week_of").notNull(),
     payload: jsonb("payload").$type<Record<string, unknown>>().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (t) => ({
-    uniq: uniqueIndex("digests_week_uniq").on(t.weekOf),
+    uniq: uniqueIndex("digests_week_uniq").on(t.siteId, t.weekOf),
   }),
 );
 

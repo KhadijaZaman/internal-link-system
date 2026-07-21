@@ -9,6 +9,7 @@ import {
   index,
   customType,
 } from "drizzle-orm/pg-core";
+import { sitesTable } from "./sites";
 
 const vector = customType<{ data: number[]; driverData: string }>({
   dataType() {
@@ -46,6 +47,10 @@ export const linkLookupsTable = pgTable(
   "link_lookups",
   {
     id: serial("id").primaryKey(),
+    siteId: integer("site_id")
+      .notNull()
+      .default(1)
+      .references(() => sitesTable.id),
     kind: text("kind").notNull(),
     label: text("label"),
     inputValue: text("input_value").notNull(),

@@ -3,9 +3,14 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
 import { conversations } from "./conversations";
+import { sitesTable } from "./sites";
 
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .default(1)
+    .references(() => sitesTable.id),
   conversationId: integer("conversation_id")
     .notNull()
     .references(() => conversations.id, { onDelete: "cascade" }),
@@ -17,6 +22,7 @@ export const messages = pgTable("messages", {
 export const insertMessageSchema = createInsertSchema(messages).omit({
   id: true,
   createdAt: true,
+  siteId: true,
 });
 
 export type Message = typeof messages.$inferSelect;

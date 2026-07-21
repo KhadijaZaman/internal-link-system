@@ -2,6 +2,13 @@ import express, { type Express } from "express";
 import cors, { type CorsOptions } from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
+import { clerkMiddleware } from "@clerk/express";
+import { publishableKeyFromHost } from "@clerk/shared/keys";
+import {
+  CLERK_PROXY_PATH,
+  clerkProxyMiddleware,
+  getClerkProxyHost,
+} from "./middlewares/clerkProxyMiddleware";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
@@ -56,8 +63,24 @@ app.use(
     },
   }),
 );
+// Clerk Frontend API proxy — must be mounted BEFORE body parsers (it
+// streams raw bytes). No-op in development.
+app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
+
 app.use(cors(corsOptions));
 app.use(cookieParser());
+
+// Resolve the publishable key from the incoming request host so the same
+// server can serve multiple Clerk custom domains. Falls back to
+// CLERK_PUBLISHABLE_KEY when the host doesn't map to a custom domain.
+app.use(
+  clerkMiddleware((req) => ({
+    publishableKey: publishableKeyFromHost(
+      getClerkProxyHost(req) ?? "",
+      process.env["CLERK_PUBLISHABLE_KEY"],
+    ),
+  })),
+);
 // Knowledge-base uploads carry long transcripts (contract caps content at
 // 500K chars). Parse that path with a larger limit BEFORE the global parser —
 // body-parser sets req._body and the default parser below skips it — so the

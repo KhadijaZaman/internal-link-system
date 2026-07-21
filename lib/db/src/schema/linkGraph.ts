@@ -7,7 +7,9 @@ import {
   uniqueIndex,
   doublePrecision,
   jsonb,
+  integer,
 } from "drizzle-orm/pg-core";
+import { sitesTable } from "./sites";
 
 /**
  * Where on the page the link was extracted from.
@@ -22,6 +24,10 @@ export const linkGraphTable = pgTable(
   "link_graph",
   {
     id: serial("id").primaryKey(),
+    siteId: integer("site_id")
+      .notNull()
+      .default(1)
+      .references(() => sitesTable.id),
     sourceUrl: text("source_url").notNull(),
     targetUrl: text("target_url").notNull(),
     anchorText: text("anchor_text"),
@@ -41,6 +47,7 @@ export const linkGraphTable = pgTable(
     targetIdx: index("link_graph_target_idx").on(t.targetUrl),
     placementIdx: index("link_graph_placement_idx").on(t.placement),
     uniq: uniqueIndex("link_graph_uniq").on(
+      t.siteId,
       t.sourceUrl,
       t.targetUrl,
       t.anchorText,

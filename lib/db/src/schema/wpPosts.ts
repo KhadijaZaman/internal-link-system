@@ -6,7 +6,9 @@ import {
   jsonb,
   customType,
   index,
+  primaryKey,
 } from "drizzle-orm/pg-core";
+import { sitesTable } from "./sites";
 
 const vector = customType<{ data: number[]; driverData: string }>({
   dataType() {
@@ -23,7 +25,7 @@ const vector = customType<{ data: number[]; driverData: string }>({
 export const wpPostsTable = pgTable(
   "wp_posts",
   {
-    url: text("url").primaryKey(),
+    url: text("url").notNull(),
     type: text("type").notNull(), // "post" | "page"
     title: text("title"),
     slug: text("slug"),
@@ -44,9 +46,14 @@ export const wpPostsTable = pgTable(
     embedding: vector("embedding"),
     embeddedAt: timestamp("embedded_at", { withTimezone: true }),
     crawledAt: timestamp("crawled_at", { withTimezone: true }).defaultNow(),
+    siteId: integer("site_id")
+      .notNull()
+      .default(1)
+      .references(() => sitesTable.id),
   },
   (t) => ({
     typeIdx: index("wp_posts_type_idx").on(t.type),
+    pk: primaryKey({ name: "wp_posts_pkey", columns: [t.url, t.siteId] }),
   }),
 );
 

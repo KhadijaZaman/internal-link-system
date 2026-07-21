@@ -10,25 +10,27 @@
  * impression-weighted average position) after collapsing.
  */
 
-export function siteOrigin(): string {
-  const d = process.env["SITE_DOMAIN"] ?? "wellows.com";
-  const host = d
+/** Normalize a user-entered domain to the canonical bare host. */
+export function normalizeHost(domain: string): string {
+  return domain
     .replace(/^https?:\/\//, "")
     .replace(/\/.*$/, "")
-    .replace(/^www\./, "");
-  return `https://${host}`;
+    .replace(/^www\./, "")
+    .toLowerCase();
 }
 
-export function siteHost(): string {
-  return siteOrigin().replace(/^https?:\/\//, "");
+/** Origin (https://host) for a site's canonical bare host. */
+export function siteOrigin(siteHost: string): string {
+  return `https://${normalizeHost(siteHost)}`;
 }
 
 /**
- * Collapse an absolute URL or bare path to its canonical path key.
- * Returns null for URLs on a foreign host (they have no canonical path on
- * this site) and for unparseable values like GA4's "(not set)".
+ * Collapse an absolute URL or bare path to its canonical path key for the
+ * given site host. Returns null for URLs on a foreign host (they have no
+ * canonical path on this site) and for unparseable values like GA4's
+ * "(not set)".
  */
-export function canonicalPath(raw: string): string | null {
+export function canonicalPath(raw: string, siteHost: string): string | null {
   const s = raw.trim();
   if (!s) return null;
   let path = s;
@@ -36,7 +38,7 @@ export function canonicalPath(raw: string): string | null {
     try {
       const u = new URL(s);
       const host = u.hostname.toLowerCase().replace(/^www\./, "");
-      if (host !== siteHost()) return null;
+      if (host !== normalizeHost(siteHost)) return null;
       path = u.pathname;
     } catch {
       return null;
@@ -50,9 +52,9 @@ export function canonicalPath(raw: string): string | null {
   return p || "/";
 }
 
-/** Canonical absolute URL for a canonical path. */
-export function canonicalUrl(path: string): string {
-  return `${siteOrigin()}${path === "/" ? "/" : path}`;
+/** Canonical absolute URL for a canonical path on the given site host. */
+export function canonicalUrl(path: string, siteHost: string): string {
+  return `${siteOrigin(siteHost)}${path === "/" ? "/" : path}`;
 }
 
 // ---------- Blocklist matching ----------
@@ -81,10 +83,14 @@ export function isBlockedPath(path: string, regexes: RegExp[]): boolean {
   return regexes.some((re) => re.test(path));
 }
 
-/** Load and compile the url_blocklist table into matchers. */
-export async function loadBlockRegexes(): Promise<RegExp[]> {
+/** Load and compile one site's url_blocklist rows into matchers. */
+export async function loadBlockRegexes(siteId: number): Promise<RegExp[]> {
   const { db, urlBlocklistTable } = await import("@workspace/db");
-  const rows = await db.select({ pattern: urlBlocklistTable.pattern }).from(urlBlocklistTable);
+  const { eq } = await import("drizzle-orm");
+  const rows = await db
+    .select({ pattern: urlBlocklistTable.pattern })
+    .from(urlBlocklistTable)
+    .where(eq(urlBlocklistTable.siteId, siteId));
   return rows.map((r) => compileBlockPattern(r.pattern));
 }
 

@@ -7,6 +7,7 @@ import {
   jsonb,
   index,
 } from "drizzle-orm/pg-core";
+import { sitesTable } from "./sites";
 
 // Bing AI Performance report exports (Copilot / Bing AI citations). There is
 // no API for this report as of mid-2026, so data arrives as manual file
@@ -15,6 +16,10 @@ import {
 // the view (and the pages.ai_citations rollup) without any date-range merging.
 export const aiCitationUploadsTable = pgTable("ai_citation_uploads", {
   id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .default(1)
+    .references(() => sitesTable.id),
   label: text("label").notNull(),
   // "pages" = page-level citation counts; "grounding_queries" = the key
   // phrases the AI used when retrieving cited content.
@@ -31,6 +36,10 @@ export const aiCitationRowsTable = pgTable(
   "ai_citation_rows",
   {
     id: serial("id").primaryKey(),
+    siteId: integer("site_id")
+      .notNull()
+      .default(1)
+      .references(() => sitesTable.id),
     uploadId: integer("upload_id")
       .notNull()
       .references(() => aiCitationUploadsTable.id, { onDelete: "cascade" }),

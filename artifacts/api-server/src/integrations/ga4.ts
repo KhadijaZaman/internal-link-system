@@ -1,6 +1,12 @@
 import { google } from "googleapis";
 import { withCache } from "./gsc";
-import { canonicalPath, isBlockedPath, loadBlockRegexes, siteHost } from "../lib/urlCanon";
+import { canonicalPath, isBlockedPath, loadBlockRegexes, normalizeHost } from "../lib/urlCanon";
+
+/** Minimal site scope needed by GA4 fetches. */
+export interface Ga4Site {
+  id: number;
+  host: string;
+}
 
 const GA4_SCOPE = "https://www.googleapis.com/auth/analytics.readonly";
 const GA4_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -129,14 +135,18 @@ async function runReport(
  * report, pre-reduced to per-path organic/all buckets so both channel views
  * and the AI column come from a single fetch.
  */
-async function fetchRawPathAggs(startDate: string, endDate: string): Promise<RawPathAgg[]> {
+async function fetchRawPathAggs(
+  startDate: string,
+  endDate: string,
+  site: Ga4Site,
+): Promise<RawPathAgg[]> {
   // v4: key events fetched WITHOUT the hostName filter (they fire on
   // app.wellows.com / calendly.com, never on the marketing host, so the
   // filtered report always reported 0).
-  return withCache(`ga4:pages:v4|${startDate}|${endDate}`, GA4_CACHE_TTL_MS, async () => {
+  return withCache(`s${site.id}|ga4:pages:v4|${startDate}|${endDate}`, GA4_CACHE_TTL_MS, async () => {
     const token = await accessToken();
     const property = ga4PropertyId();
-    const block = await loadBlockRegexes();
+    const block = await loadBlockRegexes(site.id);
     const dateRanges = [{ startDate, endDate }];
 
     // Report 1 — engagement, locked to the production site host: the GA4
@@ -162,7 +172,7 @@ async function fetchRawPathAggs(startDate: string, endDate: string): Promise<Raw
         dimensionFilter: {
           filter: {
             fieldName: "hostName",
-            stringFilter: { matchType: "EXACT", value: siteHost() },
+            stringFilter: { matchType: "EXACT", value: normalizeHost(site.host) },
           },
         },
         orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
@@ -182,7 +192,7 @@ async function fetchRawPathAggs(startDate: string, endDate: string): Promise<Raw
     const agg = new Map<string, RawPathAgg>();
     for (const r of engagement.rows ?? []) {
       const d = r.dimensionValues ?? [];
-      const path = canonicalPath(d[0]?.value ?? "");
+      const path = canonicalPath(d[0]?.value ?? "", site.host);
       if (!path || isBlockedPath(path, block)) continue;
       const channelGroup = d[1]?.value ?? "";
       const source = d[2]?.value ?? "";
@@ -223,7 +233,7 @@ async function fetchRawPathAggs(startDate: string, endDate: string): Promise<Raw
     // close this fully.
     for (const r of keyEventsReport.rows ?? []) {
       const d = r.dimensionValues ?? [];
-      const path = canonicalPath(d[0]?.value ?? "");
+      const path = canonicalPath(d[0]?.value ?? "", site.host);
       if (!path) continue;
       const cur = agg.get(path);
       if (!cur) continue;
@@ -246,8 +256,9 @@ export async function queryGa4Pages(opts: {
   startDate: string;
   endDate: string;
   channel: Ga4Channel;
+  site: Ga4Site;
 }): Promise<{ rows: Ga4PageRow[]; totals: Ga4Totals }> {
-  const raw = await fetchRawPathAggs(opts.startDate, opts.endDate);
+  const raw = await fetchRawPathAggs(opts.startDate, opts.endDate, opts.site);
   const rows: Ga4PageRow[] = [];
   const acc = { sessions: 0, engaged: 0, dur: 0, keyEvents: 0, aiSessions: 0 };
   for (const r of raw) {

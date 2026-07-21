@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: auth
     description: Admin authentication
+  - name: sites
+    description: Sites owned by the signed-in user
   - name: dashboard
     description: Dashboard summary data
   - name: graph
@@ -113,6 +115,46 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AuthSession"
+  /sites:
+    get:
+      operationId: listSites
+      tags: [sites]
+      summary: Sites owned by the signed-in user
+      responses:
+        "200":
+          description: Owned sites plus whether the legacy site is claimable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SitesResponse"
+        "401":
+          description: Not signed in
+  /sites/claim-legacy:
+    post:
+      operationId: claimLegacySite
+      tags: [sites]
+      summary: Claim the legacy site with the previous admin password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClaimLegacyInput"
+      responses:
+        "200":
+          description: Legacy site claimed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Site"
+        "401":
+          description: Not signed in
+        "403":
+          description: Wrong password
+        "409":
+          description: Legacy site already claimed
+        "429":
+          description: Too many attempts
   /dashboard/summary:
     get:
       operationId: getDashboardSummary
@@ -1787,6 +1829,29 @@ components:
       properties:
         authenticated: { type: boolean }
         username: { type: ["string", "null"] }
+    Site:
+      type: object
+      required: [id, domain, host, displayName, sitemapUrl]
+      properties:
+        id: { type: integer }
+        domain: { type: string }
+        host: { type: string }
+        displayName: { type: string }
+        sitemapUrl: { type: ["string", "null"] }
+    SitesResponse:
+      type: object
+      required: [sites, legacyClaimable]
+      properties:
+        sites:
+          type: array
+          items:
+            $ref: "#/components/schemas/Site"
+        legacyClaimable: { type: boolean }
+    ClaimLegacyInput:
+      type: object
+      required: [password]
+      properties:
+        password: { type: string, minLength: 1, maxLength: 200 }
     JobLastRun:
       type: object
       required: [name]

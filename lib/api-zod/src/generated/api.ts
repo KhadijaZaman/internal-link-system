@@ -50,6 +50,41 @@ export const GetSessionResponse = zod.object({
 
 
 /**
+ * @summary Sites owned by the signed-in user
+ */
+export const ListSitesResponse = zod.object({
+  "sites": zod.array(zod.object({
+  "id": zod.number(),
+  "domain": zod.string(),
+  "host": zod.string(),
+  "displayName": zod.string(),
+  "sitemapUrl": zod.string().nullable()
+})),
+  "legacyClaimable": zod.boolean()
+})
+
+
+/**
+ * @summary Claim the legacy site with the previous admin password
+ */
+export const claimLegacySiteBodyPasswordMax = 200;
+
+
+
+export const ClaimLegacySiteBody = zod.object({
+  "password": zod.string().min(1).max(claimLegacySiteBodyPasswordMax)
+})
+
+export const ClaimLegacySiteResponse = zod.object({
+  "id": zod.number(),
+  "domain": zod.string(),
+  "host": zod.string(),
+  "displayName": zod.string(),
+  "sitemapUrl": zod.string().nullable()
+})
+
+
+/**
  * @summary Dashboard KPIs and last-run timestamps
  */
 export const GetDashboardSummaryResponse = zod.object({

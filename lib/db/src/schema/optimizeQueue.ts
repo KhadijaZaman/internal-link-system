@@ -1,4 +1,12 @@
-import { pgTable, serial, text, timestamp, jsonb } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  serial,
+  text,
+  timestamp,
+  jsonb,
+  integer,
+} from "drizzle-orm/pg-core";
+import { sitesTable } from "./sites";
 
 /**
  * A knowledge-base passage that was injected into a brief's prompt as
@@ -17,6 +25,10 @@ export interface GroundingPassage {
 
 export const optimizeQueueTable = pgTable("optimize_queue", {
   id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .default(1)
+    .references(() => sitesTable.id),
   url: text("url").notNull(),
   status: text("status").default("optimize").notNull(),
   priority: text("priority").default("medium").notNull(),

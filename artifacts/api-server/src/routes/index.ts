@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
 import authRouter from "./auth";
+import sitesRouter from "./sites";
 import dashboardRouter from "./dashboard";
 import linkGraphRouter from "./linkGraph";
 import knowledgeGraphRouter from "./knowledgeGraph";
@@ -41,6 +42,7 @@ const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(authRouter);
+router.use(sitesRouter);
 router.use(dashboardRouter);
 router.use(linkGraphRouter);
 router.use(knowledgeGraphRouter);

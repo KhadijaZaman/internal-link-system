@@ -6,9 +6,14 @@ import {
   integer,
   date,
 } from "drizzle-orm/pg-core";
+import { sitesTable } from "./sites";
 
 export const queryLosersTable = pgTable("query_losers", {
   id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .default(1)
+    .references(() => sitesTable.id),
   weekOf: date("week_of").notNull(),
   url: text("url").notNull(),
   query: text("query").notNull(),

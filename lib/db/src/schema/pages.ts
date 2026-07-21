@@ -6,17 +6,19 @@ import {
   doublePrecision,
   timestamp,
   index,
+  primaryKey,
 } from "drizzle-orm/pg-core";
+import { sitesTable } from "./sites";
 
-// Canonical page registry — ONE row per canonical path. Every ingestion
-// path (GSC sync, crawler, WordPress sync) upserts here, and every view
-// counts pages from this table with an explicit filter. Metrics tables
+// Canonical page registry — ONE row per (site, canonical path). Every
+// ingestion path (GSC sync, crawler, WordPress sync) upserts here, and every
+// view counts pages from this table with an explicit filter. Metrics tables
 // (gsc_snapshots, wp_posts, link_graph) keep their own rows but store
 // canonical URLs so they join cleanly against this registry.
 export const pagesTable = pgTable(
   "pages",
   {
-    path: text("path").primaryKey(), // canonical path, e.g. "/blog/ai-startups"
+    path: text("path").notNull(), // canonical path, e.g. "/blog/ai-startups"
     url: text("url").notNull(), // canonical absolute URL
     title: text("title"),
     section: text("section"),
@@ -46,8 +48,13 @@ export const pagesTable = pgTable(
     aiCitationsAt: timestamp("ai_citations_at", { withTimezone: true }),
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+    siteId: integer("site_id")
+      .notNull()
+      .default(1)
+      .references(() => sitesTable.id),
   },
   (t) => ({
+    pk: primaryKey({ name: "pages_pkey", columns: [t.path, t.siteId] }),
     sectionIdx: index("pages_section_idx").on(t.section),
   }),
 );

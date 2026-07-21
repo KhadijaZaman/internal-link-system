@@ -9,6 +9,7 @@ import {
   index,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
+import { sitesTable } from "./sites";
 
 /**
  * Topical Authority Map runs. Each generate creates a NEW row (history kept);
@@ -16,6 +17,10 @@ import {
  */
 export const topicalMapsTable = pgTable("topical_maps", {
   id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .default(1)
+    .references(() => sitesTable.id),
   /** queued | running | complete | failed | interrupted */
   status: text("status").notNull().default("queued"),
   phase: text("phase"),
@@ -42,6 +47,10 @@ export const topicalMapNodesTable = pgTable(
   "topical_map_nodes",
   {
     id: serial("id").primaryKey(),
+    siteId: integer("site_id")
+      .notNull()
+      .default(1)
+      .references(() => sitesTable.id),
     mapId: integer("map_id")
       .notNull()
       .references(() => topicalMapsTable.id, { onDelete: "cascade" }),
@@ -95,6 +104,10 @@ export const topicalMapBridgesTable = pgTable(
   "topical_map_bridges",
   {
     id: serial("id").primaryKey(),
+    siteId: integer("site_id")
+      .notNull()
+      .default(1)
+      .references(() => sitesTable.id),
     mapId: integer("map_id")
       .notNull()
       .references(() => topicalMapsTable.id, { onDelete: "cascade" }),

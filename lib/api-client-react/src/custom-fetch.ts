@@ -8,6 +8,8 @@ export type BodyType<T> = T;
 
 export type AuthTokenGetter = () => Promise<string | null> | string | null;
 
+export type SiteIdGetter = () => number | string | null;
+
 const NO_BODY_STATUS = new Set([204, 205, 304]);
 const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
@@ -42,6 +44,19 @@ export function setBaseUrl(url: string | null): void {
  */
 export function setAuthTokenGetter(getter: AuthTokenGetter | null): void {
   _authTokenGetter = getter;
+}
+
+let _siteIdGetter: SiteIdGetter | null = null;
+
+/**
+ * Register a getter that supplies the active site id. Before every fetch the
+ * getter is invoked; when it returns a non-null value, an `X-Site-Id` header
+ * is attached to the request so the API can scope data to that site.
+ *
+ * Pass `null` to clear the getter.
+ */
+export function setSiteIdGetter(getter: SiteIdGetter | null): void {
+  _siteIdGetter = getter;
 }
 
 function isRequest(input: RequestInfo | URL): input is Request {
@@ -355,6 +370,15 @@ export async function customFetch<T = unknown>(
     const token = await _authTokenGetter();
     if (token) {
       headers.set("authorization", `Bearer ${token}`);
+    }
+  }
+
+  // Attach the active site id when a getter is configured and the caller
+  // hasn't set the header explicitly.
+  if (_siteIdGetter && !headers.has("x-site-id")) {
+    const siteId = _siteIdGetter();
+    if (siteId != null) {
+      headers.set("x-site-id", String(siteId));
     }
   }
 

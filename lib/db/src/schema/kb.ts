@@ -7,6 +7,7 @@ import {
   customType,
   index,
 } from "drizzle-orm/pg-core";
+import { sitesTable } from "./sites";
 
 const vector = customType<{ data: number[]; driverData: string }>({
   dataType() {
@@ -32,6 +33,10 @@ const vector = customType<{ data: number[]; driverData: string }>({
  */
 export const kbDocumentsTable = pgTable("kb_documents", {
   id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .default(1)
+    .references(() => sitesTable.id),
   title: text("title").notNull(),
   charCount: integer("char_count").notNull().default(0),
   chunkCount: integer("chunk_count").notNull().default(0),
@@ -47,6 +52,10 @@ export const kbChunksTable = pgTable(
   "kb_chunks",
   {
     id: serial("id").primaryKey(),
+    siteId: integer("site_id")
+      .notNull()
+      .default(1)
+      .references(() => sitesTable.id),
     documentId: integer("document_id")
       .notNull()
       .references(() => kbDocumentsTable.id, { onDelete: "cascade" }),

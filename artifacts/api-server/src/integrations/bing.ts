@@ -23,8 +23,8 @@ function apiKey(): string {
 }
 
 /** Bing property URL. The verified property is the bare https origin. */
-export function bingSiteUrl(): string {
-  return siteOrigin();
+export function bingSiteUrl(siteHost: string): string {
+  return siteOrigin(siteHost);
 }
 
 interface RawStatRow {
@@ -60,8 +60,8 @@ export function parseBingDate(raw: string): string | null {
   return d.toISOString().slice(0, 10);
 }
 
-async function callBing(method: string): Promise<RawStatRow[]> {
-  const url = `${BING_BASE}/${method}?siteUrl=${encodeURIComponent(bingSiteUrl())}&apikey=${apiKey()}`;
+async function callBing(method: string, siteHost: string): Promise<RawStatRow[]> {
+  const url = `${BING_BASE}/${method}?siteUrl=${encodeURIComponent(bingSiteUrl(siteHost))}&apikey=${apiKey()}`;
   const res = await fetch(url, {
     headers: { Accept: "application/json" },
     signal: AbortSignal.timeout(60_000),
@@ -101,11 +101,11 @@ function toRows(raw: RawStatRow[], method: string): BingStatRow[] {
 }
 
 /** Page-level stats (~6-month window; `key` holds the page URL). */
-export async function fetchBingPageStats(): Promise<BingStatRow[]> {
-  return toRows(await callBing("GetPageStats"), "GetPageStats");
+export async function fetchBingPageStats(siteHost: string): Promise<BingStatRow[]> {
+  return toRows(await callBing("GetPageStats", siteHost), "GetPageStats");
 }
 
 /** Query-level stats (~6-month window; `key` holds the search query). */
-export async function fetchBingQueryStats(): Promise<BingStatRow[]> {
-  return toRows(await callBing("GetQueryStats"), "GetQueryStats");
+export async function fetchBingQueryStats(siteHost: string): Promise<BingStatRow[]> {
+  return toRows(await callBing("GetQueryStats", siteHost), "GetQueryStats");
 }

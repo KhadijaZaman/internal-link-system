@@ -30,6 +30,7 @@ import type {
   AuthSession,
   AuthoritySnapshot,
   BingPagesReport,
+  ClaimLegacyInput,
   ClusterRun,
   ContentAuditTextInput,
   ContentEntitiesAudit,
@@ -114,6 +115,8 @@ import type {
   PruningReport,
   QueryInsights,
   SimilarityRun,
+  Site,
+  SitesResponse,
   StartClusterRunInput,
   StartSimilarityRunInput,
   StructuralSuggestInput,
@@ -446,6 +449,154 @@ export function useGetSession<TData = Awaited<ReturnType<typeof getSession>>, TE
 
 
 
+
+export const getListSitesUrl = () => {
+
+
+
+
+  return `/api/sites`
+}
+
+/**
+ * @summary Sites owned by the signed-in user
+ */
+export const listSites = async ( options?: RequestInit): Promise<SitesResponse> => {
+
+  return customFetch<SitesResponse>(getListSitesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSitesQueryKey = () => {
+    return [
+    `/api/sites`
+    ] as const;
+    }
+
+
+export const getListSitesQueryOptions = <TData = Awaited<ReturnType<typeof listSites>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSites>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSitesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSites>>> = ({ signal }) => listSites({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSites>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSitesQueryResult = NonNullable<Awaited<ReturnType<typeof listSites>>>
+export type ListSitesQueryError = ErrorType<void>
+
+
+/**
+ * @summary Sites owned by the signed-in user
+ */
+
+export function useListSites<TData = Awaited<ReturnType<typeof listSites>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSites>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSitesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getClaimLegacySiteUrl = () => {
+
+
+
+
+  return `/api/sites/claim-legacy`
+}
+
+/**
+ * @summary Claim the legacy site with the previous admin password
+ */
+export const claimLegacySite = async (claimLegacyInput: ClaimLegacyInput, options?: RequestInit): Promise<Site> => {
+
+  return customFetch<Site>(getClaimLegacySiteUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      claimLegacyInput,)
+  }
+);}
+
+
+
+
+export const getClaimLegacySiteMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof claimLegacySite>>, TError,{data: BodyType<ClaimLegacyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof claimLegacySite>>, TError,{data: BodyType<ClaimLegacyInput>}, TContext> => {
+
+const mutationKey = ['claimLegacySite'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof claimLegacySite>>, {data: BodyType<ClaimLegacyInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  claimLegacySite(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClaimLegacySiteMutationResult = NonNullable<Awaited<ReturnType<typeof claimLegacySite>>>
+    export type ClaimLegacySiteMutationBody = BodyType<ClaimLegacyInput>
+    export type ClaimLegacySiteMutationError = ErrorType<void>
+
+    /**
+ * @summary Claim the legacy site with the previous admin password
+ */
+export const useClaimLegacySite = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof claimLegacySite>>, TError,{data: BodyType<ClaimLegacyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof claimLegacySite>>,
+        TError,
+        {data: BodyType<ClaimLegacyInput>},
+        TContext
+      > => {
+      return useMutation(getClaimLegacySiteMutationOptions(options));
+    }
 
 export const getGetDashboardSummaryUrl = () => {
 

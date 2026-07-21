@@ -7,6 +7,7 @@ import {
   date,
   index,
 } from "drizzle-orm/pg-core";
+import { sitesTable } from "./sites";
 
 // Bing Webmaster API time series (sync_bing_pages job). The API returns a
 // rolling ~6-month window with no date params, so every sync is a
@@ -18,6 +19,10 @@ export const bingPageStatsTable = pgTable(
   "bing_page_stats",
   {
     id: serial("id").primaryKey(),
+    siteId: integer("site_id")
+      .notNull()
+      .default(1)
+      .references(() => sitesTable.id),
     bucketDate: date("bucket_date").notNull(),
     path: text("path").notNull(), // canonical path
     clicks: integer("clicks").notNull().default(0),
@@ -34,6 +39,10 @@ export const bingQueryStatsTable = pgTable(
   "bing_query_stats",
   {
     id: serial("id").primaryKey(),
+    siteId: integer("site_id")
+      .notNull()
+      .default(1)
+      .references(() => sitesTable.id),
     bucketDate: date("bucket_date").notNull(),
     query: text("query").notNull(),
     clicks: integer("clicks").notNull().default(0),

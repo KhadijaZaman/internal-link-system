@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db, pagesTable } from "@workspace/db";
 import { isBlockedPath, loadBlockRegexes } from "../lib/urlCanon";
 
@@ -14,12 +14,15 @@ export const CONTENT_PAGES_FILTER_LABEL =
 
 const contentPagesWhere = sql`(${pagesTable.inWp} = true OR ${pagesTable.inGsc} = true OR ${pagesTable.inSitemap} = true) AND coalesce(${pagesTable.httpStatus}, 200) < 400`;
 
-export async function countContentPages(): Promise<number> {
+export async function countContentPages(siteId: number): Promise<number> {
   // The blocklist is applied in JS (patterns are wildcards, not SQL-friendly)
   // so patterns added AFTER a page was registered still drop it from counts.
   const [rows, block] = await Promise.all([
-    db.select({ path: pagesTable.path }).from(pagesTable).where(contentPagesWhere),
-    loadBlockRegexes(),
+    db
+      .select({ path: pagesTable.path })
+      .from(pagesTable)
+      .where(and(eq(pagesTable.siteId, siteId), contentPagesWhere)),
+    loadBlockRegexes(siteId),
   ]);
   return rows.filter((r) => !isBlockedPath(r.path, block)).length;
 }

@@ -20,6 +20,28 @@ export interface AuthSession {
   username?: string | null;
 }
 
+export interface Site {
+  id: number;
+  domain: string;
+  host: string;
+  displayName: string;
+  /** @nullable */
+  sitemapUrl: string | null;
+}
+
+export interface SitesResponse {
+  sites: Site[];
+  legacyClaimable: boolean;
+}
+
+export interface ClaimLegacyInput {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  password: string;
+}
+
 export interface JobLastRun {
   name: string;
   /** @nullable */

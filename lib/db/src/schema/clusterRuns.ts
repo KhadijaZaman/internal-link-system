@@ -9,6 +9,7 @@ import {
   jsonb,
   index,
 } from "drizzle-orm/pg-core";
+import { sitesTable } from "./sites";
 
 export interface ClusterRunParams {
   /** GSC lookback window in days. */
@@ -55,6 +56,10 @@ export interface ClusterUrlEntry {
 
 export const clusterRunsTable = pgTable("cluster_runs", {
   id: serial("id").primaryKey(),
+  siteId: integer("site_id")
+    .notNull()
+    .default(1)
+    .references(() => sitesTable.id),
   /** queued | running | complete | failed | interrupted */
   status: text("status").notNull().default("queued"),
   phase: text("phase"),
@@ -73,6 +78,10 @@ export const clusterRunClustersTable = pgTable(
   "cluster_run_clusters",
   {
     id: serial("id").primaryKey(),
+    siteId: integer("site_id")
+      .notNull()
+      .default(1)
+      .references(() => sitesTable.id),
     runId: integer("run_id")
       .notNull()
       .references(() => clusterRunsTable.id, { onDelete: "cascade" }),

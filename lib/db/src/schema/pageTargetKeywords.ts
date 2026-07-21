@@ -4,7 +4,9 @@ import {
   text,
   timestamp,
   unique,
+  integer,
 } from "drizzle-orm/pg-core";
+import { sitesTable } from "./sites";
 
 /**
  * Operator-entered target keywords for a specific page (URL). These feed the
@@ -20,11 +22,16 @@ export const pageTargetKeywordsTable = pgTable(
     url: text("url").notNull(),
     keyword: text("keyword").notNull(),
     addedAt: timestamp("added_at", { withTimezone: true }).defaultNow(),
+    siteId: integer("site_id")
+      .notNull()
+      .default(1)
+      .references(() => sitesTable.id),
   },
   (t) => ({
     urlKeywordUnique: unique("page_target_keywords_url_keyword_unique").on(
       t.url,
       t.keyword,
+      t.siteId,
     ),
   }),
 );

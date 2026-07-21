@@ -11,6 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@clerk/express": "^2.1.43",
+    "@clerk/shared": "^4.25.5",
     "@replit/connectors-sdk": "^0.4.1",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
@@ -22,6 +24,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
     "googleapis": "^160.0.0",
+    "http-proxy-middleware": "^4.2.0",
     "node-cron": "^4.2.1",
     "openai": "^6.38.0",
     "pg": "^8.20.0",

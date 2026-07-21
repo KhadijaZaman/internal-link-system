@@ -4,7 +4,7 @@ import {
   bingPageStatsTable,
   bingQueryStatsTable,
 } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { fetchBingPageStats, fetchBingQueryStats } from "../integrations/bing";
 import {
   aggregateByCanonical,
@@ -12,6 +12,7 @@ import {
   loadBlockRegexes,
 } from "../lib/urlCanon";
 import { withDbRetry } from "../lib/dbRetry";
+import { getLegacySite } from "../lib/site";
 import { logger } from "../lib/logger";
 
 /**
@@ -28,10 +29,12 @@ import { logger } from "../lib/logger";
  * — Bing pages never grow the registry.
  */
 export async function runSyncBingPages(): Promise<void> {
+  // Bing sync stays legacy-site-only until per-site job scheduling (task #20).
+  const site = await getLegacySite();
   const [pageRows, queryRows, blockRegexes] = await Promise.all([
-    fetchBingPageStats(),
-    fetchBingQueryStats(),
-    loadBlockRegexes(),
+    fetchBingPageStats(site.host),
+    fetchBingQueryStats(site.host),
+    loadBlockRegexes(site.id),
   ]);
   const now = new Date();
 
@@ -43,6 +46,7 @@ export async function runSyncBingPages(): Promise<void> {
     clicks: number;
     impressions: number;
     position: number | null;
+    siteId: number;
   }> = [];
   const byDate = new Map<string, typeof pageRows>();
   for (const r of pageRows) {
@@ -60,7 +64,7 @@ export async function runSyncBingPages(): Promise<void> {
     }));
     const grouped = aggregateByCanonical(
       metricRows,
-      (row) => canonicalPath(row.raw.key),
+      (row) => canonicalPath(row.raw.key, site.host),
       blockRegexes,
     );
     let kept = 0;
@@ -83,6 +87,7 @@ export async function runSyncBingPages(): Promise<void> {
         clicks: merged.clicks,
         impressions: merged.impressions,
         position: posWeight > 0 ? posSum / posWeight : null,
+        siteId: site.id,
       });
     }
     droppedPageRows += rows.length - kept;
@@ -123,6 +128,7 @@ export async function runSyncBingPages(): Promise<void> {
       clicks,
       impressions,
       position: posWeight > 0 ? posSum / posWeight : null,
+      siteId: site.id,
     };
   });
 
@@ -150,8 +156,8 @@ export async function runSyncBingPages(): Promise<void> {
       db.transaction(async (tx) => {
         updated = 0;
         unmatched = 0;
-        await tx.delete(bingPageStatsTable);
-        await tx.delete(bingQueryStatsTable);
+        await tx.delete(bingPageStatsTable).where(eq(bingPageStatsTable.siteId, site.id));
+        await tx.delete(bingQueryStatsTable).where(eq(bingQueryStatsTable.siteId, site.id));
         const CHUNK = 500;
         for (let i = 0; i < pageInserts.length; i += CHUNK) {
           await tx.insert(bingPageStatsTable).values(pageInserts.slice(i, i + CHUNK));
@@ -162,7 +168,8 @@ export async function runSyncBingPages(): Promise<void> {
         // Reset + apply rollups (UPDATE-only; readers never see zeros).
         await tx
           .update(pagesTable)
-          .set({ bingClicks: 0, bingImpressions: 0, bingPosition: null, bingSyncedAt: now });
+          .set({ bingClicks: 0, bingImpressions: 0, bingPosition: null, bingSyncedAt: now })
+          .where(eq(pagesTable.siteId, site.id));
         for (const [path, r] of rollups) {
           const result = await tx
             .update(pagesTable)
@@ -172,7 +179,7 @@ export async function runSyncBingPages(): Promise<void> {
               bingPosition: r.posWeight > 0 ? r.posSum / r.posWeight : null,
               updatedAt: now,
             })
-            .where(eq(pagesTable.path, path));
+            .where(and(eq(pagesTable.siteId, site.id), eq(pagesTable.path, path)));
           if ((result.rowCount ?? 0) > 0) updated++;
           else unmatched++;
         }
@@ -200,7 +207,10 @@ export async function runSyncBingPages(): Promise<void> {
  * citation upload. Called by the upload route after a successful insert.
  * UPDATE-only, transactional reset+apply — same shape as the Bing/GA4 sync.
  */
-export async function applyAiCitationRollup(uploadId: number): Promise<{
+export async function applyAiCitationRollup(
+  uploadId: number,
+  siteId: number,
+): Promise<{
   updated: number;
   unmatched: number;
 }> {
@@ -212,7 +222,10 @@ export async function applyAiCitationRollup(uploadId: number): Promise<{
       db.transaction(async (tx) => {
         updated = 0;
         unmatched = 0;
-        await tx.update(pagesTable).set({ aiCitations: 0, aiCitationsAt: now });
+        await tx
+          .update(pagesTable)
+          .set({ aiCitations: 0, aiCitationsAt: now })
+          .where(eq(pagesTable.siteId, siteId));
         const rows = await tx.execute(sql`
           SELECT path, SUM(citations)::int AS citations
           FROM ai_citation_rows
@@ -223,7 +236,7 @@ export async function applyAiCitationRollup(uploadId: number): Promise<{
           const result = await tx
             .update(pagesTable)
             .set({ aiCitations: row.citations, updatedAt: now })
-            .where(eq(pagesTable.path, row.path));
+            .where(and(eq(pagesTable.siteId, siteId), eq(pagesTable.path, row.path)));
           if ((result.rowCount ?? 0) > 0) updated++;
           else unmatched++;
         }
