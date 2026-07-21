@@ -510,6 +510,59 @@ export default function Dashboard() {
           </div>
 
         </div>
+
+        {health.decline && health.decline.scoreChange < 0 && (
+          <div className="border-t border-inherit p-6 md:p-8 bg-background/60 backdrop-blur-sm" data-testid="health-decline-panel">
+            <div className="flex items-center gap-2 mb-1">
+              <TrendingDown className="h-4 w-4 text-red-500" />
+              <h4 className="text-sm font-semibold text-foreground">Why the score is declining</h4>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4" data-testid="health-decline-summary">
+              Down {Math.abs(Math.round(health.decline.scoreChange))} points since{" "}
+              {new Date(health.decline.baselineDate + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}{" "}
+              ({health.decline.baselineScore} → {health.decline.currentScore}).
+              {health.decline.drivers.length > 0
+                ? " The changes below are what's driving it."
+                : " No single factor moved sharply — several components each got slightly worse. Check the Score Breakdown above for where the points are going."}
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {health.decline.drivers.map((d) => (
+                <div key={d.key} className="rounded-lg border border-border/60 bg-card p-4 shadow-sm" data-testid={`health-driver-${d.key}`}>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="text-sm font-semibold text-foreground">{d.label}</span>
+                    <Badge variant="destructive" className="font-mono text-xs shrink-0">
+                      -{Math.round(d.pointsLost * 10) / 10} pts
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    <span className="font-medium text-foreground/80">Evidence:</span> {d.evidence}
+                    {" "}(cost went from {Math.round(d.deductionBefore * 10) / 10} to {Math.round(d.deductionAfter * 10) / 10} points)
+                  </p>
+                  <p className="text-xs text-foreground/90 mb-2">
+                    <span className="font-medium">Do this:</span> {d.action}
+                  </p>
+                  {d.link && (
+                    <WouterLink
+                      href={d.link}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                      data-testid={`health-driver-link-${d.key}`}
+                    >
+                      Open <ChevronRight className="h-3 w-3" />
+                    </WouterLink>
+                  )}
+                </div>
+              ))}
+            </div>
+            {health.decline.improvements.length > 0 && (
+              <p className="text-xs text-muted-foreground mt-3">
+                Improving meanwhile:{" "}
+                {health.decline.improvements
+                  .map((d) => `${d.label} (${Math.round(Math.abs(d.pointsLost) * 10) / 10} pts recovered)`)
+                  .join(", ")}
+              </p>
+            )}
+          </div>
+        )}
       </Card>
 
       {/* Middle Grid: Activity & Next Actions */}

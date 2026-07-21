@@ -1,4 +1,4 @@
-import { sql, desc, eq } from "drizzle-orm";
+import { sql, desc, asc, eq, lte, lt } from "drizzle-orm";
 import {
   db,
   healthSnapshotsTable,
@@ -197,6 +197,145 @@ export async function persistHealthSnapshot(): Promise<void> {
     // Snapshot persistence must never fail the parent job.
     logger.warn({ err: e }, "Health snapshot persist failed");
   }
+}
+
+export interface HealthDriver {
+  key: HealthComponent["key"];
+  label: string;
+  /** How many extra points this component costs now vs the baseline (positive = worse). */
+  pointsLost: number;
+  rawBefore: number;
+  rawAfter: number;
+  deductionBefore: number;
+  deductionAfter: number;
+  evidence: string;
+  action: string;
+  /** Dashboard route where the operator can act, or null if the fix lives on the Overview page. */
+  link: string | null;
+}
+
+export interface HealthDecline {
+  baselineDate: string;
+  baselineScore: number;
+  currentScore: number;
+  /** current - baseline (negative = declining). */
+  scoreChange: number;
+  drivers: HealthDriver[];
+  improvements: HealthDriver[];
+}
+
+const DRIVER_PLAYBOOK: Record<
+  HealthComponent["key"],
+  { evidence: (before: number, after: number) => string; action: string; link: string | null }
+> = {
+  orphans: {
+    evidence: (b, a) => `Pages with no inbound internal links went from ${b} to ${a}`,
+    action:
+      "Add internal links pointing to these pages — Structural Fixes lists them ready to work top-down.",
+    link: "/links/structural",
+  },
+  dead_ends: {
+    evidence: (b, a) => `Pages that link out to nothing went from ${b} to ${a}`,
+    action:
+      "Add outbound links from these pages to related articles — Structural Fixes has the list.",
+    link: "/links/structural",
+  },
+  losers: {
+    evidence: (b, a) => `Pages with critical/high ranking drops this week went from ${b} to ${a}`,
+    action:
+      "Open Query Losers, review the biggest drops, and queue the worst pages for optimization.",
+    link: "/losers",
+  },
+  backlog: {
+    evidence: (b, a) => `Pending link suggestions and queued optimizations went from ${b} to ${a}`,
+    action: "Approve or dismiss pending link suggestions to shrink the backlog.",
+    link: "/suggestions",
+  },
+  staleness: {
+    evidence: (b, a) =>
+      `Last Search Console sync moved from ${b} day${b === 1 ? "" : "s"} ago to ${a} day${a === 1 ? "" : "s"} ago`,
+    action: 'Refresh the data — click "Run now" on the pipeline at the top of this page.',
+    link: null,
+  },
+};
+
+function parseSnapshotComponents(raw: unknown): Map<string, { raw: number; deduction: number }> {
+  const out = new Map<string, { raw: number; deduction: number }>();
+  if (!raw || typeof raw !== "object") return out;
+  const list = (raw as { components?: unknown }).components;
+  if (!Array.isArray(list)) return out;
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const c = item as { key?: unknown; raw?: unknown; deduction?: unknown };
+    if (typeof c.key !== "string" || typeof c.raw !== "number" || typeof c.deduction !== "number")
+      continue;
+    out.set(c.key, { raw: c.raw, deduction: c.deduction });
+  }
+  return out;
+}
+
+/**
+ * Explain how the score moved vs a baseline snapshot: prefer the most recent
+ * snapshot at least 7 days old (a stable "last week" anchor); fall back to the
+ * oldest snapshot before today. Returns null when there is no prior snapshot
+ * to compare against (fresh installs).
+ */
+export async function explainHealthChange(current: HealthScore): Promise<HealthDecline | null> {
+  const today = new Date().toISOString().slice(0, 10);
+  const cutoff = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
+
+  let [baseline] = await db
+    .select()
+    .from(healthSnapshotsTable)
+    .where(lte(healthSnapshotsTable.snapshotDate, cutoff))
+    .orderBy(desc(healthSnapshotsTable.snapshotDate))
+    .limit(1);
+  if (!baseline) {
+    [baseline] = await db
+      .select()
+      .from(healthSnapshotsTable)
+      .where(lt(healthSnapshotsTable.snapshotDate, today))
+      .orderBy(asc(healthSnapshotsTable.snapshotDate))
+      .limit(1);
+  }
+  if (!baseline) return null;
+
+  const prev = parseSnapshotComponents(baseline.components);
+  const drivers: HealthDriver[] = [];
+  const improvements: HealthDriver[] = [];
+
+  for (const comp of current.components) {
+    const before = prev.get(comp.key);
+    if (!before) continue; // can't claim a change without a baseline value
+    const delta = Math.round((comp.deduction - before.deduction) * 10) / 10;
+    if (Math.abs(delta) < 0.5) continue;
+    const playbook = DRIVER_PLAYBOOK[comp.key];
+    const entry: HealthDriver = {
+      key: comp.key,
+      label: comp.label,
+      pointsLost: delta,
+      rawBefore: before.raw,
+      rawAfter: comp.raw,
+      deductionBefore: before.deduction,
+      deductionAfter: comp.deduction,
+      evidence: playbook.evidence(before.raw, comp.raw),
+      action: playbook.action,
+      link: playbook.link,
+    };
+    if (delta > 0) drivers.push(entry);
+    else improvements.push(entry);
+  }
+  drivers.sort((a, b) => b.pointsLost - a.pointsLost);
+  improvements.sort((a, b) => a.pointsLost - b.pointsLost);
+
+  return {
+    baselineDate: baseline.snapshotDate,
+    baselineScore: baseline.score,
+    currentScore: current.score,
+    scoreChange: current.score - baseline.score,
+    drivers,
+    improvements,
+  };
 }
 
 export async function getHealthTrend(limit = 26): Promise<Array<{ date: string; score: number }>> {

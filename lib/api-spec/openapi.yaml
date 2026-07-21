@@ -1685,9 +1685,51 @@ components:
       properties:
         date: { type: string }
         score: { type: integer }
+    HealthDriver:
+      type: object
+      required:
+        - key
+        - label
+        - pointsLost
+        - rawBefore
+        - rawAfter
+        - deductionBefore
+        - deductionAfter
+        - evidence
+        - action
+        - link
+      properties:
+        key:
+          type: string
+          enum: [orphans, dead_ends, losers, backlog, staleness]
+        label: { type: string }
+        pointsLost: { type: number }
+        rawBefore: { type: number }
+        rawAfter: { type: number }
+        deductionBefore: { type: number }
+        deductionAfter: { type: number }
+        evidence: { type: string }
+        action: { type: string }
+        link: { type: ["string", "null"] }
+    HealthDecline:
+      type: object
+      required: [baselineDate, baselineScore, currentScore, scoreChange, drivers, improvements]
+      properties:
+        baselineDate: { type: string }
+        baselineScore: { type: integer }
+        currentScore: { type: integer }
+        scoreChange: { type: number }
+        drivers:
+          type: array
+          items:
+            $ref: "#/components/schemas/HealthDriver"
+        improvements:
+          type: array
+          items:
+            $ref: "#/components/schemas/HealthDriver"
     HealthScore:
       type: object
-      required: [generatedAt, score, label, components, trend]
+      required: [generatedAt, score, label, components, trend, decline]
       properties:
         generatedAt: { type: string, format: date-time }
         score: { type: integer }
@@ -1702,6 +1744,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/HealthTrendPoint"
+        decline:
+          anyOf:
+            - $ref: "#/components/schemas/HealthDecline"
+            - type: "null"
     ImpactMetrics:
       type: object
       required: [clicks, impressions]

@@ -159,6 +159,40 @@ export interface HealthTrendPoint {
   score: number;
 }
 
+export type HealthDriverKey = typeof HealthDriverKey[keyof typeof HealthDriverKey];
+
+
+export const HealthDriverKey = {
+  orphans: 'orphans',
+  dead_ends: 'dead_ends',
+  losers: 'losers',
+  backlog: 'backlog',
+  staleness: 'staleness',
+} as const;
+
+export interface HealthDriver {
+  key: HealthDriverKey;
+  label: string;
+  pointsLost: number;
+  rawBefore: number;
+  rawAfter: number;
+  deductionBefore: number;
+  deductionAfter: number;
+  evidence: string;
+  action: string;
+  /** @nullable */
+  link: string | null;
+}
+
+export interface HealthDecline {
+  baselineDate: string;
+  baselineScore: number;
+  currentScore: number;
+  scoreChange: number;
+  drivers: HealthDriver[];
+  improvements: HealthDriver[];
+}
+
 export type HealthScoreLabel = typeof HealthScoreLabel[keyof typeof HealthScoreLabel];
 
 
@@ -176,6 +210,7 @@ export interface HealthScore {
   label: HealthScoreLabel;
   components: HealthComponent[];
   trend: HealthTrendPoint[];
+  decline: HealthDecline | null;
 }
 
 export interface ImpactMetrics {

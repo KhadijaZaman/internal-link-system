@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { HealthComponent } from './healthComponent';
+import type { HealthDecline } from './healthDecline';
 import type { HealthScoreLabel } from './healthScoreLabel';
 import type { HealthTrendPoint } from './healthTrendPoint';
 
@@ -15,4 +16,5 @@ export interface HealthScore {
   label: HealthScoreLabel;
   components: HealthComponent[];
   trend: HealthTrendPoint[];
+  decline: HealthDecline | null;
 }

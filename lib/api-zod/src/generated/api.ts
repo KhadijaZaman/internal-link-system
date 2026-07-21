@@ -1952,7 +1952,37 @@ export const GetHealthScoreResponse = zod.object({
   "trend": zod.array(zod.object({
   "date": zod.string(),
   "score": zod.number()
+})),
+  "decline": zod.union([zod.object({
+  "baselineDate": zod.string(),
+  "baselineScore": zod.number(),
+  "currentScore": zod.number(),
+  "scoreChange": zod.number(),
+  "drivers": zod.array(zod.object({
+  "key": zod.enum(['orphans', 'dead_ends', 'losers', 'backlog', 'staleness']),
+  "label": zod.string(),
+  "pointsLost": zod.number(),
+  "rawBefore": zod.number(),
+  "rawAfter": zod.number(),
+  "deductionBefore": zod.number(),
+  "deductionAfter": zod.number(),
+  "evidence": zod.string(),
+  "action": zod.string(),
+  "link": zod.string().nullable()
+})),
+  "improvements": zod.array(zod.object({
+  "key": zod.enum(['orphans', 'dead_ends', 'losers', 'backlog', 'staleness']),
+  "label": zod.string(),
+  "pointsLost": zod.number(),
+  "rawBefore": zod.number(),
+  "rawAfter": zod.number(),
+  "deductionBefore": zod.number(),
+  "deductionAfter": zod.number(),
+  "evidence": zod.string(),
+  "action": zod.string(),
+  "link": zod.string().nullable()
 }))
+}),zod.null()])
 })
 
 
