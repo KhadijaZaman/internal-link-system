@@ -644,6 +644,27 @@ paths:
                 $ref: "#/components/schemas/ClusterRun"
         "404":
           description: Not found
+  /clustering/runs/{runId}/rebuild:
+    post:
+      operationId: rebuildClusterRun
+      tags: [clustering]
+      summary: Rebuild a run's clusters from its stored SERP data (free — no new scraping)
+      parameters:
+        - in: path
+          name: runId
+          required: true
+          schema: { type: integer }
+      responses:
+        "202":
+          description: Rebuild queued and job started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterRun"
+        "404":
+          description: Not found
+        "409":
+          description: A clustering run is already in progress, or this run has no stored data to rebuild from
   /clustering/runs/{runId}/clusters:
     get:
       operationId: listClusterRunClusters
@@ -3530,6 +3551,9 @@ components:
         keywordLimit: { type: integer }
         locationCode: { type: integer }
         excludeBrand: { type: boolean }
+        reprocess:
+          type: boolean
+          description: Set while a rebuild-from-stored-SERPs is queued/running
     ClusterRun:
       type: object
       required: [id, status, phase, params, progressDone, progressTotal, stats, error, createdAt, startedAt, finishedAt]

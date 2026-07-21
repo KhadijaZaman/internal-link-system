@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   useListClusterRuns,
   getListClusterRunsQueryKey,
   useStartClusterRun,
+  useRebuildClusterRun,
   useListClusterRunClusters,
   getListClusterRunClustersQueryKey,
   type ClusterRun,
@@ -38,6 +39,7 @@ import {
   ExternalLink,
   Loader2,
   Play,
+  Sparkles,
 } from "lucide-react";
 import {
   ScatterChart,
@@ -98,6 +100,7 @@ const PHASE_LABELS: Record<string, string> = {
   posting_serp_tasks: "Sending keywords to DataForSEO…",
   fetching_serps: "Scraping live Google results…",
   clustering: "Building intent clusters…",
+  labeling: "Naming clusters with AI…",
   saving: "Saving results…",
   done: "Done",
 };
@@ -152,6 +155,19 @@ export default function Clustering() {
   const runs = runsQ.data ?? [];
   const activeRun = runs.find((r) => r.status === "queued" || r.status === "running");
   const completeRuns = runs.filter((r) => r.status === "complete");
+
+  // When a run finishes (fresh or rebuild), drop the cached cluster list so
+  // the new topics show immediately (clustersQ has a 10-min staleTime).
+  const prevActiveIdRef = useRef<number | null>(null);
+  useEffect(() => {
+    const prevId = prevActiveIdRef.current;
+    if (prevId != null && !activeRun) {
+      queryClient.invalidateQueries({
+        queryKey: getListClusterRunClustersQueryKey(prevId),
+      });
+    }
+    prevActiveIdRef.current = activeRun?.id ?? null;
+  }, [activeRun, queryClient]);
   const failedLatest =
     !activeRun && runs.length > 0 && runs[0]!.status !== "complete" ? runs[0] : null;
 
@@ -204,6 +220,30 @@ export default function Clustering() {
               ? String((err as { error: unknown }).error)
               : "Failed to start the clustering run";
           toast({ variant: "destructive", title: "Couldn't start run", description: msg });
+        },
+      },
+    );
+  };
+
+  const rebuildMutation = useRebuildClusterRun();
+  const handleRebuild = (runId: number) => {
+    rebuildMutation.mutate(
+      { runId },
+      {
+        onSuccess: () => {
+          toast({
+            title: "Rebuilding clusters",
+            description:
+              "Re-grouping and renaming from the already-scraped Google results — no new scraping cost. Takes under a minute.",
+          });
+          queryClient.invalidateQueries({ queryKey: getListClusterRunsQueryKey() });
+        },
+        onError: (err: unknown) => {
+          const msg =
+            err && typeof err === "object" && "error" in err
+              ? String((err as { error: unknown }).error)
+              : "Failed to start the rebuild";
+          toast({ variant: "destructive", title: "Couldn't rebuild", description: msg });
         },
       },
     );
@@ -422,9 +462,31 @@ export default function Clustering() {
                 {fmtInt(selectedRun.stats["keywords"] ?? 0)} keywords
                 {(selectedRun.stats["unclustered"] ?? 0) > 0 &&
                   ` · ${fmtInt(selectedRun.stats["unclustered"] ?? 0)} unclustered`}
+                {(selectedRun.stats["operatorFiltered"] ?? 0) > 0 &&
+                  ` · ${fmtInt(selectedRun.stats["operatorFiltered"] ?? 0)} junk search-operator queries excluded`}
               </span>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleRebuild(selectedRun.id)}
+              disabled={rebuildMutation.isPending || !!activeRun}
+              title="Re-groups and renames this run's clusters using the already-scraped Google results and AI naming — no new scraping cost."
+            >
+              {rebuildMutation.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+              )}
+              Improve cluster names (free)
+            </Button>
           </div>
+
+          {selectedRun.error && (
+            <p className="text-xs text-destructive">
+              {selectedRun.error}
+            </p>
+          )}
 
           {clustersQ.isLoading ? (
             <div className="flex justify-center py-10"><Spinner /></div>

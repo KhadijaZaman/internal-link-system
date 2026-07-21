@@ -55,7 +55,15 @@ async function reconcileStaleRuns(): Promise<void> {
         ),
         and(
           eq(clusterRunsTable.status, "queued"),
-          lt(clusterRunsTable.createdAt, new Date(now - STALE_QUEUED_MS)),
+          // Requeued rebuilds keep their original (old) createdAt, so staleness
+          // must prefer heartbeatAt — set to now when a rebuild is queued.
+          or(
+            lt(clusterRunsTable.heartbeatAt, new Date(now - STALE_QUEUED_MS)),
+            and(
+              isNull(clusterRunsTable.heartbeatAt),
+              lt(clusterRunsTable.createdAt, new Date(now - STALE_QUEUED_MS)),
+            ),
+          ),
         ),
       ),
     );
@@ -110,6 +118,92 @@ router.post("/clustering/runs", requireAuth, async (req, res) => {
   }
 
   res.status(202).json(serializeRun(run));
+});
+
+/**
+ * Rebuild a run's clusters from its stored SERP data — re-filters junk
+ * queries, re-clusters, and re-labels with AI. Free: no GSC or DataForSEO
+ * calls. Allowed on complete runs (and interrupted ones that still have
+ * stored rows, e.g. a rebuild cut short by a server restart).
+ */
+router.post("/clustering/runs/:runId/rebuild", requireAuth, async (req, res) => {
+  const runId = Number(req.params.runId);
+  if (!Number.isInteger(runId)) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+
+  await reconcileStaleRuns();
+
+  const [run] = await db
+    .select()
+    .from(clusterRunsTable)
+    .where(eq(clusterRunsTable.id, runId))
+    .limit(1);
+  if (!run) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (run.status !== "complete" && run.status !== "interrupted") {
+    res.status(409).json({ error: "Only finished runs can be rebuilt." });
+    return;
+  }
+
+  const active = await db
+    .select({ id: clusterRunsTable.id })
+    .from(clusterRunsTable)
+    .where(
+      or(eq(clusterRunsTable.status, "queued"), eq(clusterRunsTable.status, "running")),
+    )
+    .limit(1);
+  if (active.length > 0) {
+    res.status(409).json({ error: "A clustering run is already in progress." });
+    return;
+  }
+
+  const [stored] = await db
+    .select({ id: clusterRunClustersTable.id })
+    .from(clusterRunClustersTable)
+    .where(eq(clusterRunClustersTable.runId, runId))
+    .limit(1);
+  if (!stored) {
+    res.status(409).json({ error: "This run has no stored data to rebuild from." });
+    return;
+  }
+
+  const [requeued] = await db
+    .update(clusterRunsTable)
+    .set({
+      status: "queued",
+      phase: null,
+      params: { ...run.params, reprocess: true },
+      error: null,
+      finishedAt: null,
+      // Fresh heartbeat so the queued-staleness reconciler doesn't instantly
+      // mark this old-createdAt row as interrupted.
+      heartbeatAt: new Date(),
+    })
+    .where(eq(clusterRunsTable.id, runId))
+    .returning();
+
+  const result = await runJob("keyword_clustering");
+  if (!result.started) {
+    // Never delete the run — restore it so its stored (paid) data stays usable.
+    await db
+      .update(clusterRunsTable)
+      .set({
+        status: run.status,
+        phase: run.phase,
+        params: run.params,
+        error: run.error,
+        finishedAt: run.finishedAt,
+      })
+      .where(eq(clusterRunsTable.id, runId));
+    res.status(409).json({ error: `Could not start rebuild: ${result.reason}` });
+    return;
+  }
+
+  res.status(202).json(serializeRun(requeued ?? run));
 });
 
 router.get("/clustering/runs", requireAuth, async (_req, res) => {

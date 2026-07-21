@@ -2641,6 +2641,76 @@ export function useGetClusterRun<TData = Awaited<ReturnType<typeof getClusterRun
 
 
 
+export const getRebuildClusterRunUrl = (runId: number,) => {
+
+
+
+
+  return `/api/clustering/runs/${runId}/rebuild`
+}
+
+/**
+ * @summary Rebuild a run's clusters from its stored SERP data (free — no new scraping)
+ */
+export const rebuildClusterRun = async (runId: number, options?: RequestInit): Promise<ClusterRun> => {
+
+  return customFetch<ClusterRun>(getRebuildClusterRunUrl(runId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRebuildClusterRunMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rebuildClusterRun>>, TError,{runId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof rebuildClusterRun>>, TError,{runId: number}, TContext> => {
+
+const mutationKey = ['rebuildClusterRun'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof rebuildClusterRun>>, {runId: number}> = (props) => {
+          const {runId} = props ?? {};
+
+          return  rebuildClusterRun(runId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RebuildClusterRunMutationResult = NonNullable<Awaited<ReturnType<typeof rebuildClusterRun>>>
+
+    export type RebuildClusterRunMutationError = ErrorType<void>
+
+    /**
+ * @summary Rebuild a run's clusters from its stored SERP data (free — no new scraping)
+ */
+export const useRebuildClusterRun = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rebuildClusterRun>>, TError,{runId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof rebuildClusterRun>>,
+        TError,
+        {runId: number},
+        TContext
+      > => {
+      return useMutation(getRebuildClusterRunMutationOptions(options));
+    }
+
 export const getListClusterRunClustersUrl = (runId: number,) => {
 
 

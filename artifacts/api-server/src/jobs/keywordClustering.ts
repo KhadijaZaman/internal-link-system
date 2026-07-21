@@ -9,7 +9,13 @@ import {
 import { and, asc, eq, lt, isNull, or } from "drizzle-orm";
 import { queryGscDimension, type GscDimensionRow } from "../integrations/gsc";
 import { postSerpTasks, fetchSerpTaskResult } from "../integrations/dataforseo";
-import { buildClusters, pickTopic, assignQuadrants } from "../services/clustering";
+import {
+  buildClusters,
+  pickTopic,
+  assignQuadrants,
+  isOperatorQuery,
+} from "../services/clustering";
+import { generateClusterLabels } from "../integrations/openaiClusterLabels";
 import { withDbRetry } from "../lib/dbRetry";
 import { logger } from "../lib/logger";
 
@@ -115,18 +121,280 @@ export async function runKeywordClustering(): Promise<void> {
       { label: "cluster_runs_pick" },
     );
     if (!run) return;
+    const isRebuild = run.params.reprocess === true;
     try {
-      await processRun(run);
+      if (isRebuild) await reprocessRun(run);
+      else await processRun(run);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      logger.error({ err: e, runId: run.id }, "Clustering run failed");
-      await updateRun(run.id, {
-        status: "failed",
-        error: msg,
-        finishedAt: new Date(),
-      });
+      logger.error({ err: e, runId: run.id, isRebuild }, "Clustering run failed");
+      if (isRebuild) {
+        // A failed rebuild must never lose the run (its stored SERP data is
+        // paid for): restore it as complete with the old rows intact and
+        // surface the error on the run itself.
+        await updateRun(run.id, {
+          status: "complete",
+          phase: "done",
+          params: { ...run.params, reprocess: false },
+          error: `Rebuild failed — previous clusters kept: ${msg}`,
+          finishedAt: new Date(),
+        });
+      } else {
+        await updateRun(run.id, {
+          status: "failed",
+          error: msg,
+          finishedAt: new Date(),
+        });
+      }
     }
   }
+}
+
+interface PendingCluster {
+  topic: string;
+  keywords: ClusterKeywordEntry[];
+  totalClicks: number;
+  totalImpressions: number;
+  blendedCtr: number;
+  avgPosition: number | null;
+  ownUrls: ClusterUrlEntry[];
+  competitorUrls: ClusterUrlEntry[];
+}
+
+function aggregate(entriesIn: ClusterKeywordEntry[], site: string): PendingCluster {
+  const entries = [...entriesIn].sort((a, b) => b.impressions - a.impressions);
+  const totalClicks = entries.reduce((s, e) => s + e.clicks, 0);
+  const totalImpressions = entries.reduce((s, e) => s + e.impressions, 0);
+  const posWeight = entries.reduce(
+    (s, e) => s + (e.position > 0 ? e.impressions : 0),
+    0,
+  );
+  const posSum = entries.reduce(
+    (s, e) => s + (e.position > 0 ? e.position * e.impressions : 0),
+    0,
+  );
+
+  // Own vs competitor URL aggregation across the cluster's SERPs.
+  const urlAgg = new Map<string, { count: number; best: number; sum: number }>();
+  for (const e of entries) {
+    for (const su of e.serpUrls) {
+      const norm = normalizeSerpUrl(su.url);
+      const agg = urlAgg.get(norm) ?? { count: 0, best: Infinity, sum: 0 };
+      agg.count++;
+      agg.best = Math.min(agg.best, su.position);
+      agg.sum += su.position;
+      urlAgg.set(norm, agg);
+    }
+  }
+  const own: ClusterUrlEntry[] = [];
+  const comp: ClusterUrlEntry[] = [];
+  for (const [url, agg] of urlAgg) {
+    const host = hostOf(url);
+    const entry: ClusterUrlEntry = {
+      url,
+      domain: host,
+      keywordCount: agg.count,
+      bestPosition: Number.isFinite(agg.best) ? agg.best : null,
+      avgPosition: agg.count > 0 ? Number((agg.sum / agg.count).toFixed(1)) : null,
+    };
+    if (isOwnHost(host, site)) own.push(entry);
+    else comp.push(entry);
+  }
+  const byCoverage = (a: ClusterUrlEntry, b: ClusterUrlEntry) =>
+    b.keywordCount - a.keywordCount ||
+    (a.bestPosition ?? 999) - (b.bestPosition ?? 999);
+  own.sort(byCoverage);
+  comp.sort(byCoverage);
+
+  return {
+    topic: pickTopic(entries.map((e) => e.query)),
+    keywords: entries,
+    totalClicks,
+    totalImpressions,
+    blendedCtr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
+    avgPosition: posWeight > 0 ? Number((posSum / posWeight).toFixed(1)) : null,
+    ownUrls: own,
+    competitorUrls: comp.slice(0, MAX_COMPETITOR_URLS),
+  };
+}
+
+/**
+ * Shared tail of both run types: cluster the entries by SERP overlap, label
+ * clusters with AI (fail-soft to the TF-IDF keyword), assign quadrants, and
+ * persist atomically (delete + insert in one transaction so a failed rebuild
+ * never destroys the previously stored — and paid-for — SERP data).
+ */
+async function clusterLabelAndPersist(
+  run: ClusterRun,
+  entries: ClusterKeywordEntry[],
+  baseStats: Record<string, number>,
+): Promise<void> {
+  await updateRun(run.id, { phase: "clustering" });
+
+  const clusterable = entries.filter((e) => e.serpUrls.length > 0);
+  const urlSets = clusterable.map(
+    (e) => new Set(e.serpUrls.map((u) => normalizeSerpUrl(u.url))),
+  );
+  const components = buildClusters(urlSets);
+
+  const clusteredQueries = new Set<string>();
+  for (const comp of components) {
+    for (const idx of comp) clusteredQueries.add(clusterable[idx]!.query);
+  }
+  const unclustered = entries.filter((e) => !clusteredQueries.has(e.query));
+
+  const site = siteHost();
+  const clusters = components.map((comp) =>
+    aggregate(
+      comp.map((idx) => clusterable[idx]!),
+      site,
+    ),
+  );
+
+  // ---- AI topic labels (fail-soft: keeps pickTopic fallback) ----
+  await updateRun(run.id, { phase: "labeling" });
+  const labels = await generateClusterLabels(
+    clusters.map((c) => ({
+      fallback: c.topic,
+      keywords: c.keywords.map((k) => k.query),
+    })),
+  );
+  for (let i = 0; i < clusters.length; i++) {
+    clusters[i]!.topic = labels[i] ?? clusters[i]!.topic;
+  }
+
+  const { quadrants, isOutlier } = assignQuadrants(
+    clusters.map((c) => ({
+      impressions: c.totalImpressions,
+      ctrPercent: c.blendedCtr,
+    })),
+  );
+
+  // ---- Persist ----
+  await updateRun(run.id, { phase: "saving" });
+
+  const rows: Array<typeof clusterRunClustersTable.$inferInsert> = clusters
+    .map((c, i) => ({
+      runId: run.id,
+      clusterKey: i,
+      topic: c.topic,
+      quadrant: quadrants[i]!,
+      isOutlier: isOutlier[i]!,
+      keywordCount: c.keywords.length,
+      totalClicks: c.totalClicks,
+      totalImpressions: c.totalImpressions,
+      blendedCtr: Number(c.blendedCtr.toFixed(2)),
+      avgPosition: c.avgPosition,
+      keywords: c.keywords,
+      ownUrls: c.ownUrls,
+      competitorUrls: c.competitorUrls,
+    }))
+    .sort((a, b) => b.totalImpressions - a.totalImpressions)
+    .map((row, i) => ({ ...row, clusterKey: i }));
+
+  if (unclustered.length > 0) {
+    const u = aggregate(unclustered, site);
+    rows.push({
+      runId: run.id,
+      clusterKey: -1,
+      topic: "Unclustered",
+      quadrant: null,
+      isOutlier: false,
+      keywordCount: u.keywords.length,
+      totalClicks: u.totalClicks,
+      totalImpressions: u.totalImpressions,
+      blendedCtr: Number(u.blendedCtr.toFixed(2)),
+      avgPosition: u.avgPosition,
+      keywords: u.keywords,
+      ownUrls: [],
+      competitorUrls: [],
+    });
+  }
+
+  await withDbRetry(
+    () =>
+      db.transaction(async (tx) => {
+        await tx
+          .delete(clusterRunClustersTable)
+          .where(eq(clusterRunClustersTable.runId, run.id));
+        for (let i = 0; i < rows.length; i += 50) {
+          await tx.insert(clusterRunClustersTable).values(rows.slice(i, i + 50));
+        }
+      }),
+    { label: `cluster_rows_persist:${run.id}` },
+  );
+
+  await updateRun(run.id, {
+    status: "complete",
+    phase: "done",
+    params: { ...run.params, reprocess: false },
+    progressDone: run.progressTotal > 0 ? run.progressTotal : entries.length,
+    finishedAt: new Date(),
+    error: null,
+    stats: {
+      ...baseStats,
+      keywords: entries.length,
+      clusters: clusters.length,
+      unclustered: unclustered.length,
+    },
+  });
+  logger.info(
+    {
+      runId: run.id,
+      keywords: entries.length,
+      clusters: clusters.length,
+      unclustered: unclustered.length,
+      operatorFiltered: baseStats["operatorFiltered"] ?? 0,
+    },
+    "Clustering run complete",
+  );
+}
+
+/** Rebuild an existing run from its stored SERP data — no GSC or DataForSEO calls. */
+async function reprocessRun(run: ClusterRun): Promise<void> {
+  await updateRun(run.id, {
+    status: "running",
+    phase: "clustering",
+    startedAt: new Date(),
+    error: null,
+  });
+
+  const rows = await withDbRetry(
+    () =>
+      db
+        .select()
+        .from(clusterRunClustersTable)
+        .where(eq(clusterRunClustersTable.runId, run.id)),
+    { label: `cluster_rows_load:${run.id}` },
+  );
+  const byQuery = new Map<string, ClusterKeywordEntry>();
+  for (const row of rows) {
+    for (const k of row.keywords) {
+      if (!byQuery.has(k.query)) byQuery.set(k.query, k);
+    }
+  }
+  if (byQuery.size === 0) {
+    throw new Error("This run has no stored keyword data to rebuild from.");
+  }
+
+  let operatorFiltered = 0;
+  const entries: ClusterKeywordEntry[] = [];
+  for (const e of byQuery.values()) {
+    if (isOperatorQuery(e.query)) operatorFiltered++;
+    else entries.push(e);
+  }
+  if (entries.length < 2) {
+    throw new Error(
+      "Not enough usable keywords left to rebuild after filtering search-operator queries.",
+    );
+  }
+
+  const serpsFetched = entries.filter((e) => e.serpUrls.length > 0).length;
+  await clusterLabelAndPersist(run, entries, {
+    serpsFetched,
+    serpsFailed: run.stats?.["serpsFailed"] ?? 0,
+    operatorFiltered,
+  });
 }
 
 async function processRun(run: ClusterRun): Promise<void> {
@@ -156,11 +424,18 @@ async function processRun(run: ClusterRun): Promise<void> {
   const byImpressions = [...gscRows].sort((a, b) => b.impressions - a.impressions);
   const seen = new Set<string>();
   const selected: GscDimensionRow[] = [];
+  let operatorFiltered = 0;
   for (const row of byImpressions) {
     const q = row.key.trim().toLowerCase();
     if (!q || seen.has(q)) continue;
-    if (brandToken && q.includes(brandToken)) continue;
     seen.add(q);
+    if (brandToken && q.includes(brandToken)) continue;
+    // Search-operator / boolean queries (AI-agent scrapes) are noise: skip
+    // them BEFORE spending paid SERP credits, freeing slots for real queries.
+    if (isOperatorQuery(q)) {
+      operatorFiltered++;
+      continue;
+    }
     selected.push(row);
     if (selected.length >= p.keywordLimit) break;
   }
@@ -226,25 +501,10 @@ async function processRun(run: ClusterRun): Promise<void> {
     );
   }
 
-  // ---- 4. Cluster by SERP URL overlap ----
-  await updateRun(run.id, { phase: "clustering", progressDone: queries.length });
+  await updateRun(run.id, { progressDone: queries.length });
 
-  const clusterable = queries.filter((q) => (serpByKeyword.get(q)?.length ?? 0) > 0);
-  const urlSets = clusterable.map(
-    (q) => new Set((serpByKeyword.get(q) ?? []).map((u) => normalizeSerpUrl(u.url))),
-  );
-  const components = buildClusters(urlSets);
-
-  const clusteredKeywords = new Set<string>();
-  for (const comp of components) {
-    for (const idx of comp) clusteredKeywords.add(clusterable[idx]!);
-  }
-  const unclustered = queries.filter((q) => !clusteredKeywords.has(q));
-
-  // ---- 5. Aggregate, label, quadrant ----
-  const site = siteHost();
-
-  function keywordEntry(q: string): ClusterKeywordEntry {
+  // ---- 4-6. Cluster, label, persist (shared with rebuild) ----
+  const entries: ClusterKeywordEntry[] = queries.map((q) => {
     const gsc = gscByQuery.get(q);
     return {
       query: q,
@@ -254,167 +514,11 @@ async function processRun(run: ClusterRun): Promise<void> {
       position: gsc?.position ?? 0,
       serpUrls: serpByKeyword.get(q) ?? [],
     };
-  }
-
-  interface PendingCluster {
-    topic: string;
-    keywords: ClusterKeywordEntry[];
-    totalClicks: number;
-    totalImpressions: number;
-    blendedCtr: number;
-    avgPosition: number | null;
-    ownUrls: ClusterUrlEntry[];
-    competitorUrls: ClusterUrlEntry[];
-  }
-
-  function aggregate(kws: string[]): PendingCluster {
-    const entries = kws.map(keywordEntry).sort((a, b) => b.impressions - a.impressions);
-    const totalClicks = entries.reduce((s, e) => s + e.clicks, 0);
-    const totalImpressions = entries.reduce((s, e) => s + e.impressions, 0);
-    const posWeight = entries.reduce(
-      (s, e) => s + (e.position > 0 ? e.impressions : 0),
-      0,
-    );
-    const posSum = entries.reduce(
-      (s, e) => s + (e.position > 0 ? e.position * e.impressions : 0),
-      0,
-    );
-
-    // Own vs competitor URL aggregation across the cluster's SERPs.
-    const urlAgg = new Map<
-      string,
-      { count: number; best: number; sum: number }
-    >();
-    for (const e of entries) {
-      for (const su of e.serpUrls) {
-        const norm = normalizeSerpUrl(su.url);
-        const agg = urlAgg.get(norm) ?? { count: 0, best: Infinity, sum: 0 };
-        agg.count++;
-        agg.best = Math.min(agg.best, su.position);
-        agg.sum += su.position;
-        urlAgg.set(norm, agg);
-      }
-    }
-    const own: ClusterUrlEntry[] = [];
-    const comp: ClusterUrlEntry[] = [];
-    for (const [url, agg] of urlAgg) {
-      const host = hostOf(url);
-      const entry: ClusterUrlEntry = {
-        url,
-        domain: host,
-        keywordCount: agg.count,
-        bestPosition: Number.isFinite(agg.best) ? agg.best : null,
-        avgPosition: agg.count > 0 ? Number((agg.sum / agg.count).toFixed(1)) : null,
-      };
-      if (isOwnHost(host, site)) own.push(entry);
-      else comp.push(entry);
-    }
-    const byCoverage = (a: ClusterUrlEntry, b: ClusterUrlEntry) =>
-      b.keywordCount - a.keywordCount ||
-      (a.bestPosition ?? 999) - (b.bestPosition ?? 999);
-    own.sort(byCoverage);
-    comp.sort(byCoverage);
-
-    return {
-      topic: pickTopic(kws),
-      keywords: entries,
-      totalClicks,
-      totalImpressions,
-      blendedCtr:
-        totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
-      avgPosition: posWeight > 0 ? Number((posSum / posWeight).toFixed(1)) : null,
-      ownUrls: own,
-      competitorUrls: comp.slice(0, MAX_COMPETITOR_URLS),
-    };
-  }
-
-  const clusters = components.map((comp) =>
-    aggregate(comp.map((idx) => clusterable[idx]!)),
-  );
-  const { quadrants, isOutlier } = assignQuadrants(
-    clusters.map((c) => ({
-      impressions: c.totalImpressions,
-      ctrPercent: c.blendedCtr,
-    })),
-  );
-
-  // ---- 6. Persist ----
-  await updateRun(run.id, { phase: "saving" });
-  await withDbRetry(
-    () =>
-      db
-        .delete(clusterRunClustersTable)
-        .where(eq(clusterRunClustersTable.runId, run.id)),
-    { label: `cluster_rows_clear:${run.id}` },
-  );
-
-  const rows: Array<typeof clusterRunClustersTable.$inferInsert> = clusters
-    .map((c, i) => ({
-      runId: run.id,
-      clusterKey: i,
-      topic: c.topic,
-      quadrant: quadrants[i]!,
-      isOutlier: isOutlier[i]!,
-      keywordCount: c.keywords.length,
-      totalClicks: c.totalClicks,
-      totalImpressions: c.totalImpressions,
-      blendedCtr: Number(c.blendedCtr.toFixed(2)),
-      avgPosition: c.avgPosition,
-      keywords: c.keywords,
-      ownUrls: c.ownUrls,
-      competitorUrls: c.competitorUrls,
-    }))
-    .sort((a, b) => b.totalImpressions - a.totalImpressions)
-    .map((row, i) => ({ ...row, clusterKey: i }));
-
-  if (unclustered.length > 0) {
-    const u = aggregate(unclustered);
-    rows.push({
-      runId: run.id,
-      clusterKey: -1,
-      topic: "Unclustered",
-      quadrant: null,
-      isOutlier: false,
-      keywordCount: u.keywords.length,
-      totalClicks: u.totalClicks,
-      totalImpressions: u.totalImpressions,
-      blendedCtr: Number(u.blendedCtr.toFixed(2)),
-      avgPosition: u.avgPosition,
-      keywords: u.keywords,
-      ownUrls: [],
-      competitorUrls: [],
-    });
-  }
-
-  for (let i = 0; i < rows.length; i += 50) {
-    const chunk = rows.slice(i, i + 50);
-    await withDbRetry(
-      () => db.insert(clusterRunClustersTable).values(chunk),
-      { label: `cluster_rows_insert:${run.id}` },
-    );
-  }
-
-  await updateRun(run.id, {
-    status: "complete",
-    phase: "done",
-    progressDone: queries.length,
-    finishedAt: new Date(),
-    stats: {
-      keywords: queries.length,
-      serpsFetched: serpByKeyword.size,
-      serpsFailed: failed,
-      clusters: clusters.length,
-      unclustered: unclustered.length,
-    },
   });
-  logger.info(
-    {
-      runId: run.id,
-      keywords: queries.length,
-      clusters: clusters.length,
-      unclustered: unclustered.length,
-      serpsFailed: failed,
-    },
-    "Clustering run complete",
-  );
+
+  await clusterLabelAndPersist(run, entries, {
+    serpsFetched: serpByKeyword.size,
+    serpsFailed: failed,
+    operatorFiltered,
+  });
 }

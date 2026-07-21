@@ -32,6 +32,9 @@ _Replace the heading above with the project's name, and this line with one sente
 - `artifacts/api-server/src/jobs/embedKbChunks.ts` — background KB embedding drain loop (`embed_kb_chunks`): uploads store chunks with NULL embeddings, job embeds and derives doc status (pending/partial/ready) by counting embedded chunks vs `chunkCount`; triggered on upload + 10-min sweep cron
 - `artifacts/api-server/src/lib/semanticScorer.ts` — pure scoring functions + `buildWhyLine()` (plain-English rationale computed at read time from stored sub-scores; null for legacy-v0 rows so the UI falls back to `korayRationale`)
 - `artifacts/api-server/src/lib/kbGrounding.ts` — returns grounding `{text, passages}`; passages are persisted on `optimize_queue.grounding_passages` (jsonb) so the brief drawer can show "Knowledge-base sources used" (null = legacy brief, [] = generated ungrounded)
+- `artifacts/api-server/src/services/clustering.ts` — union-find SERP clustering + `isOperatorQuery()` junk filter (quoted/boolean/`site:` GSC scraper queries); filter runs at GSC selection (before paid SERP spend) and on rebuild; unit-tested
+- `artifacts/api-server/src/integrations/openaiClusterLabels.ts` — gpt-4o-mini batch cluster naming (fail-soft to top-keyword fallback)
+- `artifacts/api-server/src/jobs/keywordClustering.ts` — clustering job; `params.reprocess` triggers a free rebuild from stored SERP rows (transactional delete+insert; on failure previous clusters are kept and status restored)
 
 ## Architecture decisions
 
@@ -51,6 +54,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 - When rows collapse onto one canonical path, metrics must be MERGED (sum clicks/impressions, impression-weighted position), never overwritten
 - Any change to a cached response shape must bump that cache key in lockstep (e.g. `report:pages:v5`, `ga4:pages:v4`, `authority-snapshot:v2`)
 - GA4 key-event metrics fire on the app/Calendly hosts, NOT the marketing host — never put a `hostName` filter on a runReport that requests `keyEvents:*` metrics (it silently returns 0); fetch them unfiltered and join by landing-page path
+- Requeued cluster-run rebuilds keep their original `createdAt` — any queued-staleness check must prefer `heartbeatAt` (set to now on requeue) or rebuilds get instantly marked interrupted
 
 ## Pointers
 

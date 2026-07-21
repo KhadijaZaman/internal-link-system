@@ -13,4 +13,6 @@ export interface ClusterRunParams {
   keywordLimit: number;
   locationCode: number;
   excludeBrand: boolean;
+  /** Set while a rebuild-from-stored-SERPs is queued/running */
+  reprocess?: boolean;
 }

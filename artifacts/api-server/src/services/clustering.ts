@@ -88,6 +88,28 @@ export function buildClusters(urlSets: Array<Set<string>>): number[][] {
   return [...components.values()].filter((c) => c.length >= 2);
 }
 
+/**
+ * Detect Google search-operator / boolean queries that show up in GSC data
+ * (mostly AI-agent "fan-out" searches, e.g. `"fintech" "founded in 2020"` or
+ * `(fintech companies) and (uk)`). These are not human keywords: they pollute
+ * clusters and produce topic labels full of inverted commas, so they are
+ * excluded from clustering entirely.
+ *
+ * Detection is structural on purpose — a bare " and " / " or " test would
+ * wrongly drop legitimate queries like "pros and cons of x".
+ */
+const OPERATOR_PREFIX_RE =
+  /(?:^|\s|-)(?:site|inurl|allinurl|intitle|allintitle|intext|allintext|filetype|related|cache):/;
+const BOOLEAN_STRUCTURE_RE = /\)\s*(?:and|or|\||&)\s*\(/;
+
+export function isOperatorQuery(query: string): boolean {
+  const q = query.toLowerCase();
+  if (q.includes('"') || /[\u201c\u201d\u00ab\u00bb]/.test(q)) return true;
+  if (OPERATOR_PREFIX_RE.test(q)) return true;
+  if (BOOLEAN_STRUCTURE_RE.test(q)) return true;
+  return false;
+}
+
 const STOP_WORDS = new Set([
   "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how",
   "i", "in", "is", "it", "of", "on", "or", "that", "the", "this", "to",

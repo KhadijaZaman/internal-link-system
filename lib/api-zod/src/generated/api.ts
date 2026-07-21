@@ -862,7 +862,8 @@ export const ListClusterRunsResponseItem = zod.object({
   "country": zod.string().nullable(),
   "keywordLimit": zod.number(),
   "locationCode": zod.number(),
-  "excludeBrand": zod.boolean()
+  "excludeBrand": zod.boolean(),
+  "reprocess": zod.boolean().optional().describe('Set while a rebuild-from-stored-SERPs is queued\/running')
 }),
   "progressDone": zod.number(),
   "progressTotal": zod.number(),
@@ -891,7 +892,8 @@ export const GetClusterRunResponse = zod.object({
   "country": zod.string().nullable(),
   "keywordLimit": zod.number(),
   "locationCode": zod.number(),
-  "excludeBrand": zod.boolean()
+  "excludeBrand": zod.boolean(),
+  "reprocess": zod.boolean().optional().describe('Set while a rebuild-from-stored-SERPs is queued\/running')
 }),
   "progressDone": zod.number(),
   "progressTotal": zod.number(),
@@ -900,6 +902,14 @@ export const GetClusterRunResponse = zod.object({
   "createdAt": zod.string(),
   "startedAt": zod.string().nullable(),
   "finishedAt": zod.string().nullable()
+})
+
+
+/**
+ * @summary Rebuild a run's clusters from its stored SERP data (free — no new scraping)
+ */
+export const RebuildClusterRunParams = zod.object({
+  "runId": zod.coerce.number()
 })
 
 

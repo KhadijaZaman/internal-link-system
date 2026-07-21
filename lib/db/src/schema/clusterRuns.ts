@@ -21,6 +21,11 @@ export interface ClusterRunParams {
   locationCode: number;
   /** Exclude queries containing the brand token. */
   excludeBrand: boolean;
+  /**
+   * When true, the next job pickup rebuilds this run from its stored SERP
+   * data (re-cluster + re-label) instead of scraping again.
+   */
+  reprocess?: boolean;
 }
 
 export interface ClusterSerpUrl {
