@@ -9,6 +9,7 @@ import {
 } from "../integrations/gsc";
 import { queryGa4Pages, type Ga4Channel } from "../integrations/ga4";
 import { canonicalPath, isBlockedPath, loadBlockRegexes } from "../lib/urlCanon";
+import { pageVerdicts } from "../lib/insights";
 
 const router: IRouter = Router();
 
@@ -68,9 +69,9 @@ router.get("/report/pages", requireAuth, async (req, res) => {
   }
   const { startDate, endDate } = v;
   try {
-    // v5: GA4 scoped to a channel (organic by default) + key events + AI
-    // sessions (v5 = key events no longer host-filtered).
-    const key = `report:pages:v5|${channel}|${startDate}|${endDate}`;
+    // v6: adds server-computed per-row verdicts (low_ctr / weak_engagement /
+    // no_conversions / ai_only). v5 = key events no longer host-filtered.
+    const key = `report:pages:v6|${channel}|${startDate}|${endDate}`;
     const data = await withCache(key, GSC_CACHE_TTL_MS, async () => {
       // GSC is the core source (page aggregates + per-query rows). GA4 is
       // best-effort so the report still renders if its quota is exhausted.
@@ -219,6 +220,7 @@ router.get("/report/pages", requireAuth, async (req, res) => {
           aiSessions: a.aiSessions,
           queryCount: a.queries.length,
           topQueries: a.queries.slice(0, TOP_QUERIES_PER_PAGE),
+          verdicts: pageVerdicts(a),
         };
       });
       rows.sort((x, y) => y.impressions - x.impressions || y.sessions - x.sessions);

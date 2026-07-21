@@ -5,6 +5,7 @@
  * Wellows internal linking system API
  * OpenAPI spec version: 0.1.0
  */
+import type { GscQueryRowCtrFlag } from './gscQueryRowCtrFlag';
 
 export interface GscQueryRow {
   query: string;
@@ -13,4 +14,21 @@ export interface GscQueryRow {
   ctr: number;
   position: number;
   isBranded: boolean;
+  /**
+     * Benchmark CTR for this position (top 10 only; null for branded queries or positions beyond 10)
+     * @nullable
+     */
+  expectedCtr: number | null;
+  /**
+     * Set when CTR is far below the position norm on meaningful volume
+     * @nullable
+     */
+  ctrFlag: GscQueryRowCtrFlag;
+  /** Estimated clicks lost vs the position benchmark over the selected range (0 when not flagged) */
+  missedClicks: number;
+  /**
+     * Pages splitting rankings on this query (from the latest weekly snapshot); null when not cannibalized
+     * @nullable
+     */
+  competingUrls: string[] | null;
 }

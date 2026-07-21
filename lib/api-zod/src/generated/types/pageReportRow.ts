@@ -5,6 +5,7 @@
  * Wellows internal linking system API
  * OpenAPI spec version: 0.1.0
  */
+import type { PageReportRowVerdictsItem } from './pageReportRowVerdictsItem';
 import type { ReportQueryRow } from './reportQueryRow';
 
 export interface PageReportRow {
@@ -22,4 +23,5 @@ export interface PageReportRow {
   aiSessions: number;
   queryCount: number;
   topQueries: ReportQueryRow[];
+  verdicts: PageReportRowVerdictsItem[];
 }

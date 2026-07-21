@@ -5,6 +5,7 @@
  * Wellows internal linking system API
  * OpenAPI spec version: 0.1.0
  */
+import type { KnowledgeGraphNodeLoserSeverity } from './knowledgeGraphNodeLoserSeverity';
 
 export interface KnowledgeGraphNode {
   id: string;
@@ -22,4 +23,11 @@ export interface KnowledgeGraphNode {
   /** @nullable */
   topQuery?: string | null;
   hasEmbedding: boolean;
+  /**
+     * Worst latest-week ranking-loser severity for this page (null = no losses last week)
+     * @nullable
+     */
+  loserSeverity: KnowledgeGraphNodeLoserSeverity;
+  /** Count of open action-queue items targeting this page */
+  openActions: number;
 }

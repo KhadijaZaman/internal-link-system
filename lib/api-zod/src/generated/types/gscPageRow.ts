@@ -5,6 +5,7 @@
  * Wellows internal linking system API
  * OpenAPI spec version: 0.1.0
  */
+import type { GscPageRowCtrFlag } from './gscPageRowCtrFlag';
 
 export interface GscPageRow {
   url: string;
@@ -12,4 +13,16 @@ export interface GscPageRow {
   impressions: number;
   ctr: number;
   position: number;
+  /**
+     * Benchmark CTR for this position (top 10 only; null beyond position 10)
+     * @nullable
+     */
+  expectedCtr: number | null;
+  /**
+     * Set when CTR is far below the position norm on meaningful volume
+     * @nullable
+     */
+  ctrFlag: GscPageRowCtrFlag;
+  /** Estimated clicks lost vs the position benchmark over the selected range (0 when not flagged) */
+  missedClicks: number;
 }

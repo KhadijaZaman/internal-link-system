@@ -405,18 +405,62 @@ export interface LinkGraphNode {
   clicks?: number | null;
 }
 
+export type LinkGraphEdgeAuditFlagsItem = typeof LinkGraphEdgeAuditFlagsItem[keyof typeof LinkGraphEdgeAuditFlagsItem];
+
+
+export const LinkGraphEdgeAuditFlagsItem = {
+  off_topic: 'off_topic',
+  tier_violation: 'tier_violation',
+  generic_anchor: 'generic_anchor',
+} as const;
+
 export interface LinkGraphEdge {
   source: string;
   target: string;
   /** @nullable */
   anchorText?: string | null;
+  /**
+     * Link-quality flags from the audit_link_quality job. Null = not audited yet (or a chrome edge).
+     * @nullable
+     */
+  auditFlags?: LinkGraphEdgeAuditFlagsItem[] | null;
+  /**
+     * Source→target embedding cosine (null when either page has no embedding or the edge is unaudited).
+     * @nullable
+     */
+  auditSimilarity?: number | null;
+}
+
+export interface LinkGraphAuditSummary {
+  /** @nullable */
+  auditedAt: string | null;
+  contentEdges: number;
+  auditedEdges: number;
+  offTopic: number;
+  tierViolations: number;
+  genericAnchors: number;
 }
 
 export interface LinkGraph {
   generatedAt: string;
   nodes: LinkGraphNode[];
   edges: LinkGraphEdge[];
+  audit: LinkGraphAuditSummary;
 }
+
+/**
+ * Worst latest-week ranking-loser severity for this page (null = no losses last week)
+ * @nullable
+ */
+export type KnowledgeGraphNodeLoserSeverity = typeof KnowledgeGraphNodeLoserSeverity[keyof typeof KnowledgeGraphNodeLoserSeverity] | null;
+
+
+export const KnowledgeGraphNodeLoserSeverity = {
+  critical: 'critical',
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
 
 export interface KnowledgeGraphNode {
   id: string;
@@ -434,6 +478,13 @@ export interface KnowledgeGraphNode {
   /** @nullable */
   topQuery?: string | null;
   hasEmbedding: boolean;
+  /**
+     * Worst latest-week ranking-loser severity for this page (null = no losses last week)
+     * @nullable
+     */
+  loserSeverity: KnowledgeGraphNodeLoserSeverity;
+  /** Count of open action-queue items targeting this page */
+  openActions: number;
 }
 
 export type KnowledgeGraphEdgeKind = typeof KnowledgeGraphEdgeKind[keyof typeof KnowledgeGraphEdgeKind];
@@ -1002,6 +1053,17 @@ export interface GscOverview {
   timeseries: GscTimeseriesPoint[];
 }
 
+/**
+ * Set when CTR is far below the position norm on meaningful volume
+ * @nullable
+ */
+export type GscQueryRowCtrFlag = typeof GscQueryRowCtrFlag[keyof typeof GscQueryRowCtrFlag] | null;
+
+
+export const GscQueryRowCtrFlag = {
+  underperforming: 'underperforming',
+} as const;
+
 export interface GscQueryRow {
   query: string;
   clicks: number;
@@ -1009,13 +1071,46 @@ export interface GscQueryRow {
   ctr: number;
   position: number;
   isBranded: boolean;
+  /**
+     * Benchmark CTR for this position (top 10 only; null for branded queries or positions beyond 10)
+     * @nullable
+     */
+  expectedCtr: number | null;
+  /**
+     * Set when CTR is far below the position norm on meaningful volume
+     * @nullable
+     */
+  ctrFlag: GscQueryRowCtrFlag;
+  /** Estimated clicks lost vs the position benchmark over the selected range (0 when not flagged) */
+  missedClicks: number;
+  /**
+     * Pages splitting rankings on this query (from the latest weekly snapshot); null when not cannibalized
+     * @nullable
+     */
+  competingUrls: string[] | null;
 }
 
 export interface GscQueriesResponse {
   rows: GscQueryRow[];
   brandedTotals: GscMetricsTotals;
   unbrandedTotals: GscMetricsTotals;
+  /**
+     * Snapshot date the cannibalization flags were computed from
+     * @nullable
+     */
+  cannibalSnapshotDate: string | null;
 }
+
+/**
+ * Set when CTR is far below the position norm on meaningful volume
+ * @nullable
+ */
+export type GscPageRowCtrFlag = typeof GscPageRowCtrFlag[keyof typeof GscPageRowCtrFlag] | null;
+
+
+export const GscPageRowCtrFlag = {
+  underperforming: 'underperforming',
+} as const;
 
 export interface GscPageRow {
   url: string;
@@ -1023,6 +1118,18 @@ export interface GscPageRow {
   impressions: number;
   ctr: number;
   position: number;
+  /**
+     * Benchmark CTR for this position (top 10 only; null beyond position 10)
+     * @nullable
+     */
+  expectedCtr: number | null;
+  /**
+     * Set when CTR is far below the position norm on meaningful volume
+     * @nullable
+     */
+  ctrFlag: GscPageRowCtrFlag;
+  /** Estimated clicks lost vs the position benchmark over the selected range (0 when not flagged) */
+  missedClicks: number;
 }
 
 export interface GscPagesResponse {
@@ -1071,6 +1178,16 @@ export interface ReportQueryRow {
   clicks: number;
 }
 
+export type PageReportRowVerdictsItem = typeof PageReportRowVerdictsItem[keyof typeof PageReportRowVerdictsItem];
+
+
+export const PageReportRowVerdictsItem = {
+  low_ctr: 'low_ctr',
+  weak_engagement: 'weak_engagement',
+  no_conversions: 'no_conversions',
+  ai_only: 'ai_only',
+} as const;
+
 export interface PageReportRow {
   path: string;
   title: string;
@@ -1086,6 +1203,7 @@ export interface PageReportRow {
   aiSessions: number;
   queryCount: number;
   topQueries: ReportQueryRow[];
+  verdicts: PageReportRowVerdictsItem[];
 }
 
 export interface ReportTotals {
@@ -1995,6 +2113,18 @@ export const KeywordClusterQuadrant = {
   underperformers: 'underperformers',
 } as const;
 
+/**
+ * Whether this cluster's search demand aligns with the site's core topic (threshold 0.42)
+ * @nullable
+ */
+export type KeywordClusterCoreTag = typeof KeywordClusterCoreTag[keyof typeof KeywordClusterCoreTag] | null;
+
+
+export const KeywordClusterCoreTag = {
+  on_core: 'on_core',
+  off_core: 'off_core',
+} as const;
+
 export interface KeywordCluster {
   id: number;
   /** Sequential cluster number; -1 = unclustered keywords */
@@ -2010,6 +2140,16 @@ export interface KeywordCluster {
   blendedCtr: number;
   /** @nullable */
   avgPosition: number | null;
+  /**
+     * Cosine similarity between the cluster's impression-weighted keyword centroid and the site's core-topic centroid (null = not enough embedded keywords)
+     * @nullable
+     */
+  coreSimilarity: number | null;
+  /**
+     * Whether this cluster's search demand aligns with the site's core topic (threshold 0.42)
+     * @nullable
+     */
+  coreTag: KeywordClusterCoreTag;
   keywords: ClusterKeyword[];
   ownUrls: ClusterUrl[];
   competitorUrls: ClusterUrl[];

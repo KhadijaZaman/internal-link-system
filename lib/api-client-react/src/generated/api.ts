@@ -3623,7 +3623,7 @@ export function useListAiCitationUploads<TData = Awaited<ReturnType<typeof listA
 
 
 
-export const getRunJobUrl = (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map',) => {
+export const getRunJobUrl = (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map' | 'audit_link_quality',) => {
 
 
 
@@ -3634,7 +3634,7 @@ export const getRunJobUrl = (jobName: 'crawl_link_map' | 'gsc_inventory_and_lose
 /**
  * @summary Manually trigger a background job
  */
-export const runJob = async (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map', options?: RequestInit): Promise<JobRunResult> => {
+export const runJob = async (jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map' | 'audit_link_quality', options?: RequestInit): Promise<JobRunResult> => {
 
   return customFetch<JobRunResult>(getRunJobUrl(jobName),
   {
@@ -3649,8 +3649,8 @@ export const runJob = async (jobName: 'crawl_link_map' | 'gsc_inventory_and_lose
 
 
 export const getRunJobMutationOptions = <TError = ErrorType<JobRunResult>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map'}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map'}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map' | 'audit_link_quality'}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map' | 'audit_link_quality'}, TContext> => {
 
 const mutationKey = ['runJob'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -3662,7 +3662,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runJob>>, {jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map'}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runJob>>, {jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map' | 'audit_link_quality'}> = (props) => {
           const {jobName} = props ?? {};
 
           return  runJob(jobName,requestOptions)
@@ -3683,11 +3683,11 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
  * @summary Manually trigger a background job
  */
 export const useRunJob = <TError = ErrorType<JobRunResult>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map'}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runJob>>, TError,{jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map' | 'audit_link_quality'}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof runJob>>,
         TError,
-        {jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map'},
+        {jobName: 'crawl_link_map' | 'gsc_inventory_and_losers' | 'optimize_queued_urls' | 'crawl_wordpress' | 'reembed_wordpress' | 'semantic_linking' | 'audit_orphans' | 'audit_over_linked' | 'audit_broken_links' | 'run_full_pipeline' | 'recompute_action_queue' | 'weekly_digest' | 'keyword_clustering' | 'migrate_url_hygiene' | 'sync_ga4_pages' | 'embed_kb_chunks' | 'sync_keyword_sheet' | 'analyze_similarity' | 'sync_bing_pages' | 'generate_topical_map' | 'audit_link_quality'},
         TContext
       > => {
       return useMutation(getRunJobMutationOptions(options));

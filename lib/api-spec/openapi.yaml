@@ -892,7 +892,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [crawl_link_map, gsc_inventory_and_losers, optimize_queued_urls, crawl_wordpress, reembed_wordpress, semantic_linking, audit_orphans, audit_over_linked, audit_broken_links, run_full_pipeline, recompute_action_queue, weekly_digest, keyword_clustering, migrate_url_hygiene, sync_ga4_pages, embed_kb_chunks, sync_keyword_sheet, analyze_similarity, sync_bing_pages, generate_topical_map]
+            enum: [crawl_link_map, gsc_inventory_and_losers, optimize_queued_urls, crawl_wordpress, reembed_wordpress, semantic_linking, audit_orphans, audit_over_linked, audit_broken_links, run_full_pipeline, recompute_action_queue, weekly_digest, keyword_clustering, migrate_url_hygiene, sync_ga4_pages, embed_kb_chunks, sync_keyword_sheet, analyze_similarity, sync_bing_pages, generate_topical_map, audit_link_quality]
       responses:
         "202":
           description: Job started
@@ -2178,9 +2178,28 @@ components:
         source: { type: string }
         target: { type: string }
         anchorText: { type: ["string", "null"] }
+        auditFlags:
+          type: ["array", "null"]
+          description: Link-quality flags from the audit_link_quality job. Null = not audited yet (or a chrome edge).
+          items:
+            type: string
+            enum: [off_topic, tier_violation, generic_anchor]
+        auditSimilarity:
+          type: ["number", "null"]
+          description: Source→target embedding cosine (null when either page has no embedding or the edge is unaudited).
+    LinkGraphAuditSummary:
+      type: object
+      required: [auditedAt, contentEdges, auditedEdges, offTopic, tierViolations, genericAnchors]
+      properties:
+        auditedAt: { type: ["string", "null"], format: date-time }
+        contentEdges: { type: integer }
+        auditedEdges: { type: integer }
+        offTopic: { type: integer }
+        tierViolations: { type: integer }
+        genericAnchors: { type: integer }
     LinkGraph:
       type: object
-      required: [generatedAt, nodes, edges]
+      required: [generatedAt, nodes, edges, audit]
       properties:
         generatedAt: { type: string, format: date-time }
         nodes:
@@ -2189,9 +2208,11 @@ components:
         edges:
           type: array
           items: { $ref: "#/components/schemas/LinkGraphEdge" }
+        audit:
+          $ref: "#/components/schemas/LinkGraphAuditSummary"
     KnowledgeGraphNode:
       type: object
-      required: [id, section, clusterId, pagerank, inboundCount, outboundCount, hasEmbedding]
+      required: [id, section, clusterId, pagerank, inboundCount, outboundCount, hasEmbedding, loserSeverity, openActions]
       properties:
         id: { type: string }
         title: { type: ["string", "null"] }
@@ -2204,6 +2225,13 @@ components:
         clicks: { type: ["integer", "null"] }
         topQuery: { type: ["string", "null"] }
         hasEmbedding: { type: boolean }
+        loserSeverity:
+          type: ["string", "null"]
+          enum: [critical, high, medium, low, null]
+          description: Worst latest-week ranking-loser severity for this page (null = no losses last week)
+        openActions:
+          type: integer
+          description: Count of open action-queue items targeting this page
     KnowledgeGraphEdge:
       type: object
       required: [source, target, kind]
@@ -2839,7 +2867,7 @@ components:
           items: { $ref: "#/components/schemas/GscTimeseriesPoint" }
     GscQueryRow:
       type: object
-      required: [query, clicks, impressions, ctr, position, isBranded]
+      required: [query, clicks, impressions, ctr, position, isBranded, expectedCtr, ctrFlag, missedClicks, competingUrls]
       properties:
         query: { type: string }
         clicks: { type: integer }
@@ -2847,24 +2875,51 @@ components:
         ctr: { type: number }
         position: { type: number }
         isBranded: { type: boolean }
+        expectedCtr:
+          type: ["number", "null"]
+          description: Benchmark CTR for this position (top 10 only; null for branded queries or positions beyond 10)
+        ctrFlag:
+          type: ["string", "null"]
+          enum: [underperforming, null]
+          description: Set when CTR is far below the position norm on meaningful volume
+        missedClicks:
+          type: integer
+          description: Estimated clicks lost vs the position benchmark over the selected range (0 when not flagged)
+        competingUrls:
+          type: ["array", "null"]
+          items: { type: string }
+          description: Pages splitting rankings on this query (from the latest weekly snapshot); null when not cannibalized
     GscQueriesResponse:
       type: object
-      required: [rows, brandedTotals, unbrandedTotals]
+      required: [rows, brandedTotals, unbrandedTotals, cannibalSnapshotDate]
       properties:
         rows:
           type: array
           items: { $ref: "#/components/schemas/GscQueryRow" }
         brandedTotals: { $ref: "#/components/schemas/GscMetricsTotals" }
         unbrandedTotals: { $ref: "#/components/schemas/GscMetricsTotals" }
+        cannibalSnapshotDate:
+          type: ["string", "null"]
+          description: Snapshot date the cannibalization flags were computed from
     GscPageRow:
       type: object
-      required: [url, clicks, impressions, ctr, position]
+      required: [url, clicks, impressions, ctr, position, expectedCtr, ctrFlag, missedClicks]
       properties:
         url: { type: string }
         clicks: { type: integer }
         impressions: { type: integer }
         ctr: { type: number }
         position: { type: number }
+        expectedCtr:
+          type: ["number", "null"]
+          description: Benchmark CTR for this position (top 10 only; null beyond position 10)
+        ctrFlag:
+          type: ["string", "null"]
+          enum: [underperforming, null]
+          description: Set when CTR is far below the position norm on meaningful volume
+        missedClicks:
+          type: integer
+          description: Estimated clicks lost vs the position benchmark over the selected range (0 when not flagged)
     GscPagesResponse:
       type: object
       required: [rows]
@@ -2916,7 +2971,7 @@ components:
         clicks: { type: integer }
     PageReportRow:
       type: object
-      required: [path, title, position, impressions, clicks, ctr, sessions, engagementRate, engagedSessions, avgEngagementTime, keyEvents, aiSessions, queryCount, topQueries]
+      required: [path, title, position, impressions, clicks, ctr, sessions, engagementRate, engagedSessions, avgEngagementTime, keyEvents, aiSessions, queryCount, topQueries, verdicts]
       properties:
         path: { type: string }
         title: { type: string }
@@ -2935,6 +2990,12 @@ components:
         topQueries:
           type: array
           items: { $ref: "#/components/schemas/ReportQueryRow" }
+        # Server-computed cross-source flags (GSC ranking x GA4 behavior).
+        verdicts:
+          type: array
+          items:
+            type: string
+            enum: [low_ctr, weak_engagement, no_conversions, ai_only]
     ReportTotals:
       type: object
       required: [impressions, clicks, sessions, position, engagementRate]
@@ -3799,7 +3860,7 @@ components:
         avgPosition: { type: ["number", "null"] }
     KeywordCluster:
       type: object
-      required: [id, clusterKey, topic, quadrant, isOutlier, keywordCount, totalClicks, totalImpressions, blendedCtr, avgPosition, keywords, ownUrls, competitorUrls]
+      required: [id, clusterKey, topic, quadrant, isOutlier, keywordCount, totalClicks, totalImpressions, blendedCtr, avgPosition, coreSimilarity, coreTag, keywords, ownUrls, competitorUrls]
       properties:
         id: { type: integer }
         clusterKey:
@@ -3815,6 +3876,13 @@ components:
         totalImpressions: { type: integer }
         blendedCtr: { type: number, description: Blended CTR as a percentage }
         avgPosition: { type: ["number", "null"] }
+        coreSimilarity:
+          type: ["number", "null"]
+          description: Cosine similarity between the cluster's impression-weighted keyword centroid and the site's core-topic centroid (null = not enough embedded keywords)
+        coreTag:
+          type: ["string", "null"]
+          enum: [on_core, off_core, null]
+          description: Whether this cluster's search demand aligns with the site's core topic (threshold 0.42)
         keywords:
           type: array
           items:

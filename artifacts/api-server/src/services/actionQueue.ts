@@ -14,6 +14,14 @@ import { desc, eq, inArray, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { withDbRetry } from "../lib/dbRetry";
 import { persistHealthSnapshot } from "./health";
+import {
+  EXPECTED_CTR,
+  CTR_UNDERPERFORM_RATIO,
+  CTR_MIN_IMPRESSIONS,
+  CTR_MIN_MISSED_CLICKS,
+  scoreOf,
+  pickCannibalContenders,
+} from "../lib/insights";
 
 /**
  * Unified action queue recompute.
@@ -57,34 +65,6 @@ const TYPE_WEIGHTS: Record<ActionType, number> = {
   review_suggestions: 50,
   add_outbound_links: 30,
 };
-
-/**
- * Median organic CTR by rounded position (blended benchmark, conservative to
- * account for SERP features absorbing clicks). Used to spot pages that rank
- * well but under-earn clicks — the classic title/meta rewrite opportunity.
- */
-const EXPECTED_CTR: Record<number, number> = {
-  1: 0.28,
-  2: 0.15,
-  3: 0.1,
-  4: 0.075,
-  5: 0.06,
-  6: 0.045,
-  7: 0.035,
-  8: 0.03,
-  9: 0.025,
-  10: 0.022,
-};
-/** Flag CTR only when it's below this fraction of the position norm. */
-const CTR_UNDERPERFORM_RATIO = 0.5;
-/** Weekly impressions needed per query for a stable CTR read. */
-const CTR_MIN_IMPRESSIONS = 100;
-/** Weekly missed clicks below this aren't worth a queue slot. */
-const CTR_MIN_MISSED_CLICKS = 5;
-/** Cannibalization: query needs this much weekly volume to matter. */
-const CANNIBAL_MIN_QUERY_IMPRESSIONS = 100;
-/** ...and each contender must hold at least this share of it. */
-const CANNIBAL_MIN_SHARE = 0.2;
 
 /**
  * Brand token from SITE_DOMAIN — brand queries follow navigational CTR norms
@@ -147,10 +127,6 @@ interface DesiredAction {
   impressionsAtStake: number;
   clicksAtStake: number;
   source: Record<string, unknown>;
-}
-
-function scoreOf(weight: number, impressions: number): number {
-  return Math.round(weight * (1 + Math.log10(1 + Math.max(0, impressions))) * 10) / 10;
 }
 
 async function loadTitleMap(urls: string[]): Promise<Map<string, string>> {
@@ -490,15 +466,15 @@ async function collectDesiredActions(): Promise<DesiredAction[]> {
     interface Contender {
       key: string;
       url: string;
-      imps: number;
+      impressions: number;
       clicks: number;
-      pos: number;
+      position: number;
     }
     const byQuery = new Map<string, Contender[]>();
     for (const a of byUrlQuery.values()) {
       const pos = a.posW > 0 ? a.posSum / a.posW : 999;
       const list = byQuery.get(a.query) ?? [];
-      list.push({ key: urlKey(a.url), url: a.url, imps: a.imps, clicks: a.clicks, pos });
+      list.push({ key: urlKey(a.url), url: a.url, impressions: a.imps, clicks: a.clicks, position: pos });
       byQuery.set(a.query, list);
     }
     interface CannQuery {
@@ -510,25 +486,22 @@ async function collectDesiredActions(): Promise<DesiredAction[]> {
     }
     const cann = new Map<string, { url: string; imps: number; clicks: number; queries: CannQuery[] }>();
     for (const [query, list] of byQuery) {
-      if (list.length < 2) continue;
-      const total = queryTotalImps.get(query) ?? list.reduce((s, x) => s + x.imps, 0);
-      if (total < CANNIBAL_MIN_QUERY_IMPRESSIONS) continue;
-      const contenders = list.filter((x) => x.imps / total >= CANNIBAL_MIN_SHARE && x.pos <= 20);
-      if (contenders.length < 2) continue;
+      const total = queryTotalImps.get(query) ?? list.reduce((s, x) => s + x.impressions, 0);
       // The page actually earning clicks (then better position) is primary;
       // every other contender is diluting it.
-      contenders.sort((a, b) => b.clicks - a.clicks || a.pos - b.pos);
+      const contenders = pickCannibalContenders(list, total);
+      if (contenders.length < 2) continue;
       const primary = contenders[0]!;
       for (const weak of contenders.slice(1)) {
         const e = cann.get(weak.key) ?? { url: weak.url, imps: 0, clicks: 0, queries: [] };
-        e.imps += weak.imps;
+        e.imps += weak.impressions;
         e.clicks += weak.clicks;
         e.queries.push({
           query,
-          impressions: weak.imps,
+          impressions: weak.impressions,
           competesWith: primary.url,
-          position: Math.round(weak.pos * 10) / 10,
-          strongerPosition: Math.round(primary.pos * 10) / 10,
+          position: Math.round(weak.position * 10) / 10,
+          strongerPosition: Math.round(primary.position * 10) / 10,
         });
         cann.set(weak.key, e);
       }

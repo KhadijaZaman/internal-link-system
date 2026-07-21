@@ -9,8 +9,74 @@ import {
 import { requireAuth } from "../lib/auth";
 import { StartClusterRunBody } from "@workspace/api-zod";
 import { runJob } from "../jobs/runner";
+import { withCache } from "../integrations/gsc";
+import {
+  buildCentroid,
+  ensureQueryEmbeddings,
+  DEFAULT_CORE_THRESHOLD,
+} from "../services/authoritySnapshot";
+import { cosineSim } from "../lib/semanticScorer";
 
 const router: IRouter = Router();
+
+interface ClusterCoreInfo {
+  coreSimilarity: number | null;
+  coreTag: "on_core" | "off_core" | null;
+}
+
+/**
+ * Score each cluster's topical alignment against the site's central-entity
+ * centroid: impression-weighted mean of the cluster's keyword embeddings vs
+ * the pagerank-weighted page centroid. Uses stored query_intel embeddings
+ * (progressively filling missing ones, capped per call — same policy as the
+ * authority snapshot) and requires at least min(3, keywordCount) embedded
+ * keywords before making a claim; otherwise the tag stays null (unknown).
+ */
+async function computeClusterCoreTags(
+  rows: Array<{
+    id: number;
+    clusterKey: number;
+    keywords: Array<{ query: string; impressions: number }>;
+  }>,
+): Promise<Map<number, ClusterCoreInfo>> {
+  const result = new Map<number, ClusterCoreInfo>();
+  const { centroid } = await buildCentroid();
+  if (!centroid) return result;
+
+  const uniqueQueries = new Set<string>();
+  for (const r of rows) {
+    if (r.clusterKey === -1) continue;
+    for (const k of r.keywords) uniqueQueries.add(k.query.trim().toLowerCase());
+  }
+  const embByQuery = await ensureQueryEmbeddings([...uniqueQueries]);
+
+  const dim = centroid.length;
+  for (const r of rows) {
+    if (r.clusterKey === -1) continue;
+    const mean = new Array<number>(dim).fill(0);
+    let weightSum = 0;
+    let embeddedCount = 0;
+    for (const k of r.keywords) {
+      const vec = embByQuery.get(k.query.trim().toLowerCase());
+      if (!vec || vec.length !== dim) continue;
+      embeddedCount++;
+      const w = Math.max(k.impressions, 1);
+      weightSum += w;
+      for (let i = 0; i < dim; i++) mean[i]! += vec[i]! * w;
+    }
+    if (embeddedCount < Math.min(3, r.keywords.length) || weightSum === 0) {
+      result.set(r.id, { coreSimilarity: null, coreTag: null });
+      continue;
+    }
+    for (let i = 0; i < dim; i++) mean[i]! /= weightSum;
+    const sim = Math.round(cosineSim(mean, centroid) * 1000) / 1000;
+    result.set(r.id, {
+      coreSimilarity: sim,
+      coreTag: sim >= DEFAULT_CORE_THRESHOLD ? "on_core" : "off_core",
+    });
+  }
+  return result;
+}
 
 const STALE_MS = 3 * 60_000;
 const STALE_QUEUED_MS = 10 * 60_000;
@@ -244,7 +310,7 @@ router.get("/clustering/runs/:runId/clusters", requireAuth, async (req, res) => 
     return;
   }
   const [run] = await db
-    .select({ id: clusterRunsTable.id })
+    .select({ id: clusterRunsTable.id, finishedAt: clusterRunsTable.finishedAt })
     .from(clusterRunsTable)
     .where(eq(clusterRunsTable.id, runId))
     .limit(1);
@@ -257,6 +323,18 @@ router.get("/clustering/runs/:runId/clusters", requireAuth, async (req, res) => 
     .from(clusterRunClustersTable)
     .where(eq(clusterRunClustersTable.runId, runId))
     .orderBy(desc(clusterRunClustersTable.totalImpressions), asc(clusterRunClustersTable.clusterKey));
+
+  // Cache key includes finishedAt so a rebuild (same runId, new finish time)
+  // invalidates immediately instead of waiting out the TTL.
+  const coreTags = await withCache(
+    `cluster-core:v1|${runId}|${run.finishedAt?.getTime() ?? 0}`,
+    30 * 60 * 1000,
+    () => computeClusterCoreTags(rows),
+  ).catch((e) => {
+    req.log.warn({ err: e }, "cluster core-tag enrichment failed; serving untagged");
+    return new Map<number, ClusterCoreInfo>();
+  });
+
   res.json(
     rows.map((r) => ({
       id: r.id,
@@ -269,6 +347,8 @@ router.get("/clustering/runs/:runId/clusters", requireAuth, async (req, res) => 
       totalImpressions: r.totalImpressions,
       blendedCtr: r.blendedCtr,
       avgPosition: r.avgPosition,
+      coreSimilarity: coreTags.get(r.id)?.coreSimilarity ?? null,
+      coreTag: coreTags.get(r.id)?.coreTag ?? null,
       keywords: r.keywords,
       ownUrls: r.ownUrls,
       competitorUrls: r.competitorUrls,

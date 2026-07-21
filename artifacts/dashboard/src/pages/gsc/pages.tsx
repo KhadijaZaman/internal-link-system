@@ -1,12 +1,23 @@
 import { useMemo, useState } from "react";
-import { useGetGscPages, useGetGscUrlDrilldown, getGetGscUrlDrilldownQueryKey } from "@workspace/api-client-react";
+import { useLocation } from "wouter";
+import {
+  useGetGscPages,
+  useGetGscUrlDrilldown,
+  getGetGscUrlDrilldownQueryKey,
+  useAddOptimizeQueueItem,
+  type GscPageRow,
+} from "@workspace/api-client-react";
 import { GscLayout } from "@/components/gsc/gsc-layout";
 import { useGscRange } from "@/components/gsc/range-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ToastAction } from "@/components/ui/toast";
+import { useToast } from "@/hooks/use-toast";
+import { X, Send } from "lucide-react";
 import { TrendChart } from "@/components/gsc/trend-chart";
 import { SortableHeader, type SortState } from "@/components/gsc/sortable-header";
 import { InfoTip } from "@/components/info-tip";
@@ -14,13 +25,17 @@ import { HowThisWorks } from "@/components/how-this-works";
 import { CopyButton } from "@/components/copy-button";
 import { rowsToTsv } from "@/lib/clipboard";
 
-type SortKey = "url" | "clicks" | "impressions" | "ctr" | "position";
+type SortKey = "url" | "clicks" | "impressions" | "ctr" | "position" | "missedClicks";
 
 function PagesBody() {
   const { range } = useGscRange();
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortState<SortKey>>({ key: "clicks", dir: "desc" });
   const [drilldown, setDrilldown] = useState<string | null>(null);
+  const [onlyOpportunities, setOnlyOpportunities] = useState(false);
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const addOptimize = useAddOptimizeQueueItem();
   const { data, isLoading, error } = useGetGscPages({
     startDate: range.startDate,
     endDate: range.endDate,
@@ -35,7 +50,9 @@ function PagesBody() {
 
   const rows = useMemo(() => {
     if (!data) return [];
-    const filtered = data.rows.filter((r) => (search ? r.url.toLowerCase().includes(search.toLowerCase()) : true));
+    const filtered = data.rows
+      .filter((r) => (search ? r.url.toLowerCase().includes(search.toLowerCase()) : true))
+      .filter((r) => (onlyOpportunities ? r.ctrFlag === "underperforming" : true));
     return filtered.slice().sort((a, b) => {
       const av = a[sort.key] as string | number;
       const bv = b[sort.key] as string | number;
@@ -43,7 +60,33 @@ function PagesBody() {
       if (av > bv) return sort.dir === "asc" ? 1 : -1;
       return 0;
     });
-  }, [data, search, sort]);
+  }, [data, search, sort, onlyOpportunities]);
+
+  const opportunityCount = useMemo(
+    () => (data ? data.rows.filter((r) => r.ctrFlag === "underperforming").length : 0),
+    [data],
+  );
+
+  const handleSendToOptimizer = (r: GscPageRow) => {
+    const expected = r.expectedCtr != null ? `${(r.expectedCtr * 100).toFixed(1)}%` : "n/a";
+    const notes = `GSC Pages (${range.startDate} → ${range.endDate}): CTR ${(r.ctr * 100).toFixed(2)}% vs ~${expected} expected at position ${r.position.toFixed(1)} — ~${r.missedClicks} clicks missed. Rewrite title/meta to close the gap.`;
+    addOptimize.mutate(
+      { data: { url: r.url, priority: r.missedClicks >= 50 ? "high" : "medium", notes } },
+      {
+        onSuccess: () =>
+          toast({
+            title: "Sent to Optimizer",
+            description: r.url,
+            action: (
+              <ToastAction altText="Open Optimizer" onClick={() => setLocation("/optimize")}>
+                Open Optimizer
+              </ToastAction>
+            ),
+          }),
+        onError: () => toast({ variant: "destructive", title: "Failed to send to Optimizer" }),
+      },
+    );
+  };
 
   if (isLoading) return <div className="flex justify-center py-12"><Spinner className="h-8 w-8" /></div>;
   if (error || !data) return <div className="py-12 text-center text-sm text-destructive">Failed to load pages. {error instanceof Error ? error.message : ""}</div>;
@@ -60,23 +103,32 @@ function PagesBody() {
         faqs={[
           { title: "Why don't totals match Overview?", body: "GSC double-counts at finer granularities; per-page totals will sum higher than the deduplicated site total." },
           { title: "What's a good next step from here?", body: "High-impression / low-CTR pages are great candidates for the Optimization Queue — send them to the optimizer for a rewrite brief." },
+          { title: "How is the Opportunity flag computed?", body: "Pages ranking in the top 10 whose CTR is less than half the typical CTR for that position (on 100+ impressions) get flagged, with an estimate of the clicks left on the table in this date range. Same rules as the Action Queue's improve-CTR items." },
         ]}
       />
-      <div className="flex gap-2 items-center">
+      <div className="flex gap-2 items-center flex-wrap">
         <InfoTip>Every page that received clicks or impressions in this date range. Click a row to see its trend and top queries.</InfoTip>
         <Input placeholder="Filter URL..." value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-md h-9" />
+        <Button
+          size="sm"
+          variant={onlyOpportunities ? "default" : "outline"}
+          onClick={() => setOnlyOpportunities((v) => !v)}
+        >
+          Opportunities{opportunityCount > 0 ? ` (${opportunityCount})` : ""}
+        </Button>
         <div className="text-xs text-muted-foreground ml-auto">{rows.length} pages</div>
         <CopyButton
           disabled={rows.length === 0}
           getText={() =>
             rowsToTsv(
-              ["URL", "Clicks", "Impressions", "CTR", "Position"],
+              ["URL", "Clicks", "Impressions", "CTR", "Position", "Missed clicks"],
               rows.slice(0, 500).map((r) => [
                 r.url,
                 r.clicks,
                 r.impressions,
                 `${(r.ctr * 100).toFixed(2)}%`,
                 r.position.toFixed(1),
+                r.missedClicks,
               ]),
             )
           }
@@ -92,6 +144,7 @@ function PagesBody() {
                 <SortableHeader col="impressions" label="Impressions" sort={sort} onChange={setSort} />
                 <SortableHeader col="ctr" label="CTR" sort={sort} onChange={setSort} />
                 <SortableHeader col="position" label="Position" sort={sort} onChange={setSort} />
+                <SortableHeader col="missedClicks" label="Opportunity" sort={sort} onChange={setSort} />
               </tr>
             </thead>
             <tbody>
@@ -106,6 +159,38 @@ function PagesBody() {
                   <td className="p-3 text-right font-mono">{r.impressions}</td>
                   <td className="p-3 text-right font-mono">{(r.ctr * 100).toFixed(2)}%</td>
                   <td className="p-3 text-right font-mono">{r.position.toFixed(1)}</td>
+                  <td className="p-3 text-right whitespace-nowrap">
+                    {r.ctrFlag === "underperforming" ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge variant="destructive" className="text-[10px] cursor-default">
+                              ~{r.missedClicks} clicks missed
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent side="left" className="max-w-xs">
+                            CTR {(r.ctr * 100).toFixed(2)}% vs ~{r.expectedCtr != null ? (r.expectedCtr * 100).toFixed(1) : "?"}% typical at
+                            position {r.position.toFixed(1)}. A title/meta rewrite usually closes this gap.
+                          </TooltipContent>
+                        </Tooltip>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2"
+                          disabled={addOptimize.isPending}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSendToOptimizer(r);
+                          }}
+                        >
+                          <Send className="h-3.5 w-3.5 mr-1" />
+                          Optimize
+                        </Button>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

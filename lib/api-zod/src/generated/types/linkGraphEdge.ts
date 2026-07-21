@@ -5,10 +5,21 @@
  * Wellows internal linking system API
  * OpenAPI spec version: 0.1.0
  */
+import type { LinkGraphEdgeAuditFlagsItem } from './linkGraphEdgeAuditFlagsItem';
 
 export interface LinkGraphEdge {
   source: string;
   target: string;
   /** @nullable */
   anchorText?: string | null;
+  /**
+     * Link-quality flags from the audit_link_quality job. Null = not audited yet (or a chrome edge).
+     * @nullable
+     */
+  auditFlags?: LinkGraphEdgeAuditFlagsItem[] | null;
+  /**
+     * Source→target embedding cosine (null when either page has no embedding or the edge is unaudited).
+     * @nullable
+     */
+  auditSimilarity?: number | null;
 }

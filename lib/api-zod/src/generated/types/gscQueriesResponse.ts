@@ -12,4 +12,9 @@ export interface GscQueriesResponse {
   rows: GscQueryRow[];
   brandedTotals: GscMetricsTotals;
   unbrandedTotals: GscMetricsTotals;
+  /**
+     * Snapshot date the cannibalization flags were computed from
+     * @nullable
+     */
+  cannibalSnapshotDate: string | null;
 }

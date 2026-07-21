@@ -7,6 +7,7 @@
  */
 import type { ClusterKeyword } from './clusterKeyword';
 import type { ClusterUrl } from './clusterUrl';
+import type { KeywordClusterCoreTag } from './keywordClusterCoreTag';
 import type { KeywordClusterQuadrant } from './keywordClusterQuadrant';
 
 export interface KeywordCluster {
@@ -24,6 +25,16 @@ export interface KeywordCluster {
   blendedCtr: number;
   /** @nullable */
   avgPosition: number | null;
+  /**
+     * Cosine similarity between the cluster's impression-weighted keyword centroid and the site's core-topic centroid (null = not enough embedded keywords)
+     * @nullable
+     */
+  coreSimilarity: number | null;
+  /**
+     * Whether this cluster's search demand aligns with the site's core topic (threshold 0.42)
+     * @nullable
+     */
+  coreTag: KeywordClusterCoreTag;
   keywords: ClusterKeyword[];
   ownUrls: ClusterUrl[];
   competitorUrls: ClusterUrl[];

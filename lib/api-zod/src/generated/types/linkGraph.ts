@@ -5,6 +5,7 @@
  * Wellows internal linking system API
  * OpenAPI spec version: 0.1.0
  */
+import type { LinkGraphAuditSummary } from './linkGraphAuditSummary';
 import type { LinkGraphEdge } from './linkGraphEdge';
 import type { LinkGraphNode } from './linkGraphNode';
 
@@ -12,4 +13,5 @@ export interface LinkGraph {
   generatedAt: Date;
   nodes: LinkGraphNode[];
   edges: LinkGraphEdge[];
+  audit: LinkGraphAuditSummary;
 }

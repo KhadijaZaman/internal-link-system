@@ -96,7 +96,7 @@ function pct(part: number, whole: number): number {
  * embedding. Returns the centroid vector plus the anchor pages used as
  * human-readable evidence of what the site is topically "about".
  */
-async function buildCentroid(): Promise<{
+export async function buildCentroid(): Promise<{
   centroid: number[] | null;
   anchorPages: AnchorPage[];
 }> {
@@ -185,7 +185,7 @@ function dominantLabel(
  * missing ones in batch, capped per run). Never re-embeds a query that already
  * has a vector. Returns a Map of query → embedding for those that have one.
  */
-async function ensureQueryEmbeddings(
+export async function ensureQueryEmbeddings(
   queries: string[],
 ): Promise<Map<string, number[]>> {
   const byQuery = new Map<string, number[]>();

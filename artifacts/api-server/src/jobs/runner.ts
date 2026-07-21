@@ -23,7 +23,8 @@ export type JobName =
   | "sync_keyword_sheet"
   | "analyze_similarity"
   | "sync_bing_pages"
-  | "generate_topical_map";
+  | "generate_topical_map"
+  | "audit_link_quality";
 
 export const ALL_JOBS: JobName[] = [
   "crawl_link_map",
@@ -46,6 +47,7 @@ export const ALL_JOBS: JobName[] = [
   "analyze_similarity",
   "sync_bing_pages",
   "generate_topical_map",
+  "audit_link_quality",
 ];
 
 type JobFn = () => Promise<void>;

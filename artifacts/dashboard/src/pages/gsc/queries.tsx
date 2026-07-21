@@ -8,14 +8,15 @@ import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SortableHeader, type SortState } from "@/components/gsc/sortable-header";
 import { InfoTip } from "@/components/info-tip";
 import { HowThisWorks } from "@/components/how-this-works";
 import { CopyButton } from "@/components/copy-button";
 import { rowsToTsv } from "@/lib/clipboard";
 
-type Filter = "all" | "branded" | "unbranded";
-type SortKey = "query" | "clicks" | "impressions" | "ctr" | "position";
+type Filter = "all" | "branded" | "unbranded" | "opportunities";
+type SortKey = "query" | "clicks" | "impressions" | "ctr" | "position" | "missedClicks";
 
 function QueriesBody() {
   const { range } = useGscRange();
@@ -32,7 +33,15 @@ function QueriesBody() {
   const rows = useMemo(() => {
     if (!data) return [];
     const filtered = data.rows
-      .filter((r) => (filter === "branded" ? r.isBranded : filter === "unbranded" ? !r.isBranded : true))
+      .filter((r) =>
+        filter === "branded"
+          ? r.isBranded
+          : filter === "unbranded"
+            ? !r.isBranded
+            : filter === "opportunities"
+              ? r.ctrFlag === "underperforming" || (r.competingUrls?.length ?? 0) > 0
+              : true,
+      )
       .filter((r) => (search ? r.query.toLowerCase().includes(search.toLowerCase()) : true));
     const sorted = filtered.slice().sort((a, b) => {
       const av = a[sort.key] as string | number;
@@ -59,6 +68,7 @@ function QueriesBody() {
         faqs={[
           { title: "Why are some queries hidden?", body: "GSC anonymizes long-tail / personal queries; only queries above their privacy threshold are returned." },
           { title: "How is CTR computed?", body: "GSC clicks divided by impressions for the selected scope — already deduped by Google." },
+          { title: "What do the low CTR and cannibalized badges mean?", body: "Low CTR: the query ranks top-10 but earns less than half the typical CTR for that position (on 100+ impressions) — the title/snippet isn't winning the click. Cannibalized: two or more of your pages each hold a real share of this query's impressions (from the latest weekly snapshot), splitting the ranking signal. Same rules the Action Queue uses." },
         ]}
       />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -93,8 +103,8 @@ function QueriesBody() {
       </div>
 
       <div className="flex gap-2 items-center flex-wrap">
-        <InfoTip>Filter the query list to all, branded-only, or unbranded-only.</InfoTip>
-        {(["all", "branded", "unbranded"] as Filter[]).map((f) => (
+        <InfoTip>Filter the query list to all, branded-only, unbranded-only, or just the rows with a low-CTR / cannibalization flag.</InfoTip>
+        {(["all", "branded", "unbranded", "opportunities"] as Filter[]).map((f) => (
           <Button key={f} size="sm" variant={filter === f ? "default" : "outline"} onClick={() => setFilter(f)} className="capitalize">
             {f}
           </Button>
@@ -105,13 +115,15 @@ function QueriesBody() {
           disabled={rows.length === 0}
           getText={() =>
             rowsToTsv(
-              ["Query", "Clicks", "Impressions", "CTR", "Position"],
+              ["Query", "Clicks", "Impressions", "CTR", "Position", "Missed clicks", "Competing pages"],
               rows.slice(0, 500).map((r) => [
                 r.query,
                 r.clicks,
                 r.impressions,
                 `${(r.ctr * 100).toFixed(2)}%`,
                 r.position.toFixed(1),
+                r.missedClicks,
+                (r.competingUrls ?? []).join(" | "),
               ]),
             )
           }
@@ -133,9 +145,45 @@ function QueriesBody() {
             <tbody>
               {rows.slice(0, 500).map((r) => (
                 <tr key={r.query} className="border-t hover:bg-muted/20">
-                  <td className="p-3 max-w-md truncate">
-                    {r.query}
+                  <td className="p-3 max-w-md">
+                    <span className="truncate inline-block max-w-[24rem] align-bottom">{r.query}</span>
                     {r.isBranded && <Badge variant="secondary" className="ml-2 text-[10px]">brand</Badge>}
+                    {r.ctrFlag === "underperforming" && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Badge variant="destructive" className="ml-2 text-[10px] cursor-default">
+                            low CTR
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-xs">
+                          CTR {(r.ctr * 100).toFixed(2)}% vs ~{r.expectedCtr != null ? (r.expectedCtr * 100).toFixed(1) : "?"}% typical at
+                          position {r.position.toFixed(1)} — roughly {r.missedClicks} clicks missed in this range.
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                    {(r.competingUrls?.length ?? 0) > 0 && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Badge variant="outline" className="ml-2 text-[10px] cursor-default border-amber-500 text-amber-600 dark:text-amber-400">
+                            cannibalized
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-sm">
+                          <div className="space-y-1">
+                            <div>
+                              {r.competingUrls!.length} pages split this query
+                              {data.cannibalSnapshotDate ? ` (snapshot ${data.cannibalSnapshotDate})` : ""}:
+                            </div>
+                            {r.competingUrls!.slice(0, 4).map((u) => (
+                              <div key={u} className="font-mono text-[11px] truncate">{u}</div>
+                            ))}
+                            <div className="text-muted-foreground">
+                              Consolidate or differentiate — the first page listed earns the clicks today.
+                            </div>
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
                   </td>
                   <td className="p-3 text-right font-mono">{r.clicks}</td>
                   <td className="p-3 text-right font-mono">{r.impressions}</td>

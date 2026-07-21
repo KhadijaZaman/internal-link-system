@@ -6,6 +6,8 @@ import {
   linkStatsTable,
   linkGraphTable,
   wpPostsTable,
+  queryLosersTable,
+  actionItemsTable,
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
 import { louvain } from "../lib/louvain";
@@ -110,7 +112,7 @@ function clusterLabel(
 }
 
 router.get("/knowledge-graph", requireAuth, async (_req, res) => {
-  const [stats, inv, contentLinks, semRes, embStats, canonicalPageCount] = await Promise.all([
+  const [stats, inv, contentLinks, semRes, embStats, canonicalPageCount, loserRows, actionRows] = await Promise.all([
     db.select().from(linkStatsTable),
     db.select().from(inventoryTable),
     db
@@ -142,6 +144,20 @@ router.get("/knowledge-graph", requireAuth, async (_req, res) => {
       })
       .from(wpPostsTable),
     countContentPages(),
+    db
+      .select({ url: queryLosersTable.url, severity: queryLosersTable.severity })
+      .from(queryLosersTable)
+      .where(
+        eq(queryLosersTable.weekOf, sql`(SELECT max(week_of) FROM query_losers)`),
+      ),
+    db
+      .select({
+        targetUrl: actionItemsTable.targetUrl,
+        n: sql<number>`count(*)::int`,
+      })
+      .from(actionItemsTable)
+      .where(eq(actionItemsTable.status, "open"))
+      .groupBy(actionItemsTable.targetUrl),
   ]);
 
   const invMap = new Map(inv.map((i) => [i.url, i]));
@@ -159,6 +175,8 @@ router.get("/knowledge-graph", requireAuth, async (_req, res) => {
       clicks: i?.clicks ?? null,
       topQuery: i?.topQuery ?? null,
       hasEmbedding: false, // assigned below
+      loserSeverity: null as string | null, // assigned below
+      openActions: 0, // assigned below
     };
   });
 
@@ -194,6 +212,28 @@ router.get("/knowledge-graph", requireAuth, async (_req, res) => {
   }
   for (const n of nodes) {
     if (embeddedIds.has(n.id)) n.hasEmbedding = true;
+  }
+
+  // ---- Issue overlay: worst latest-week loser severity + open action items. ----
+  const SEV_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
+  const nodeById2 = new Map(nodes.map((n) => [n.id, n]));
+  for (const l of loserRows) {
+    const id = normToId.get(norm(l.url));
+    if (!id) continue;
+    const sev = (l.severity ?? "low").toLowerCase();
+    const rank = SEV_RANK[sev] ?? 0;
+    const node = nodeById2.get(id);
+    if (!node) continue;
+    const cur = node.loserSeverity;
+    if (cur === null || rank > (SEV_RANK[cur] ?? 0)) {
+      node.loserSeverity = sev in SEV_RANK ? sev : "low";
+    }
+  }
+  for (const a of actionRows) {
+    const id = normToId.get(norm(a.targetUrl));
+    if (!id) continue;
+    const node = nodeById2.get(id);
+    if (node) node.openActions += a.n;
   }
 
   // Combined edge list with kind.

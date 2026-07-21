@@ -34,11 +34,43 @@ router.get("/link-graph", requireAuth, async (_req, res) => {
   const nodeIds = new Set(nodes.map((n) => n.id));
   const filteredEdges = edges
     .filter((e) => nodeIds.has(e.sourceUrl) && nodeIds.has(e.targetUrl))
-    .map((e) => ({ source: e.sourceUrl, target: e.targetUrl, anchorText: e.anchorText }));
+    .map((e) => ({
+      source: e.sourceUrl,
+      target: e.targetUrl,
+      anchorText: e.anchorText,
+      // null = not audited yet (or chrome edge — audit only scores content links)
+      auditFlags: e.auditFlags ?? null,
+      auditSimilarity: e.auditSimilarity ?? null,
+    }));
+  // Audit summary over ALL content edges (source of truth, not just the ones
+  // that survive the known-node filter above).
+  const contentEdges = edges.filter((e) => e.placement === "content");
+  let auditedEdges = 0;
+  let offTopic = 0;
+  let tierViolations = 0;
+  let genericAnchors = 0;
+  let latestAudit: Date | null = null;
+  for (const e of contentEdges) {
+    if (!e.auditedAt) continue;
+    auditedEdges++;
+    if (!latestAudit || e.auditedAt > latestAudit) latestAudit = e.auditedAt;
+    const flags = e.auditFlags ?? [];
+    if (flags.includes("off_topic")) offTopic++;
+    if (flags.includes("tier_violation")) tierViolations++;
+    if (flags.includes("generic_anchor")) genericAnchors++;
+  }
   res.json({
     generatedAt: new Date().toISOString(),
     nodes,
     edges: filteredEdges,
+    audit: {
+      auditedAt: latestAudit?.toISOString() ?? null,
+      contentEdges: contentEdges.length,
+      auditedEdges,
+      offTopic,
+      tierViolations,
+      genericAnchors,
+    },
   });
 });
 

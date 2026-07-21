@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import {
   useGetLinkGraph,
+  getGetLinkGraphQueryKey,
   useGetInventoryPage,
   getGetInventoryPageQueryKey,
   useGetLinkGraphFocus,
   getGetLinkGraphFocusQueryKey,
+  useRunJob,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,7 +18,7 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } f
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
-import { Search, Filter, AlertTriangle, Link2, Target, X, Sparkles, ArrowRight, ExternalLink, Network, Table as TableIcon, ArrowUpDown } from "lucide-react";
+import { Search, Filter, AlertTriangle, Link2, Target, X, Sparkles, ArrowRight, ExternalLink, Network, Table as TableIcon, ArrowUpDown, ShieldAlert } from "lucide-react";
 import { InfoTip } from "@/components/info-tip";
 import { HowThisWorks } from "@/components/how-this-works";
 import * as d3 from "d3";
@@ -40,6 +42,24 @@ const DIR_LABEL: Record<LinkGraphFocusNeighbor["direction"], string> = {
   recommended: "Recommended (missing)",
 };
 
+const FLAG_META: Record<string, { label: string; className: string; tip: string }> = {
+  off_topic: {
+    label: "Off-topic",
+    className: "border-red-400/60 text-red-600 dark:text-red-400",
+    tip: "The two pages share almost no topical ground (embedding similarity below 0.35) — the link passes little relevance and may dilute topical signals.",
+  },
+  tier_violation: {
+    label: "Tier violation",
+    className: "border-amber-400/60 text-amber-600 dark:text-amber-400",
+    tip: "The link flows against the tier plan (e.g. a money page linking down to a thin leaf article). Tier flow should push authority toward core pages.",
+  },
+  generic_anchor: {
+    label: "Generic anchor",
+    className: "border-blue-400/60 text-blue-600 dark:text-blue-400",
+    tip: "The anchor text is generic (\"click here\", \"read more\", a bare URL…) — it tells Google nothing about the target page. Rewrite it with descriptive keywords.",
+  },
+};
+
 export default function LinkMap() {
   const { data: graph, isLoading } = useGetLinkGraph();
   const svgRef = useRef<SVGSVGElement>(null);
@@ -49,8 +69,57 @@ export default function LinkMap() {
   const [orphansOnly, setOrphansOnly] = useState(false);
   const [deadEndsOnly, setDeadEndsOnly] = useState(false);
   const [sectionFilter, setSectionFilter] = useState<string>("all");
-  const [searchQuery, setSearchQuery] = useState("");
+  // Deep-link support: /link-map?url=<page> pre-fills the search so other
+  // pages (e.g. keyword clusters) can jump straight to a page's link view.
+  const [searchQuery, setSearchQuery] = useState(
+    () => new URLSearchParams(window.location.search).get("url") ?? "",
+  );
   const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
+
+  // Existing-link quality audit (audit_link_quality job)
+  const runJobMutation = useRunJob();
+  const [auditPending, setAuditPending] = useState(false);
+  const [showFlagged, setShowFlagged] = useState(false);
+  const auditStartedAtRef = useRef<number | null>(null);
+
+  // While an audit is running, poll the graph until auditedAt moves past the
+  // trigger time (job is a few seconds of pure DB + math), with a 2-min cap.
+  useEffect(() => {
+    if (!auditPending) return;
+    const interval = setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey: getGetLinkGraphQueryKey() });
+    }, 4000);
+    const cap = setTimeout(() => setAuditPending(false), 120_000);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(cap);
+    };
+  }, [auditPending, queryClient]);
+
+  useEffect(() => {
+    if (!auditPending) return;
+    const at = graph?.audit?.auditedAt ? new Date(graph.audit.auditedAt).getTime() : null;
+    if (at && auditStartedAtRef.current && at >= auditStartedAtRef.current) {
+      setAuditPending(false);
+    }
+  }, [graph, auditPending]);
+
+  const startAudit = () => {
+    auditStartedAtRef.current = Date.now();
+    setAuditPending(true);
+    runJobMutation.mutate(
+      { jobName: "audit_link_quality" },
+      { onError: () => setAuditPending(false) },
+    );
+  };
+
+  const flaggedEdges = useMemo(
+    () =>
+      (graph?.edges ?? [])
+        .filter((e) => (e.auditFlags?.length ?? 0) > 0)
+        .sort((a, b) => (a.auditSimilarity ?? 1) - (b.auditSimilarity ?? 1)),
+    [graph],
+  );
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery), 400);
@@ -125,9 +194,9 @@ export default function LinkMap() {
       .selectAll("line")
       .data(filteredEdges)
       .join("line")
-      .attr("stroke", "hsl(var(--border))")
-      .attr("stroke-opacity", 0.6)
-      .attr("stroke-width", 1);
+      .attr("stroke", (d: any) => ((d.auditFlags?.length ?? 0) > 0 ? "#dc2626" : "hsl(var(--border))"))
+      .attr("stroke-opacity", (d: any) => ((d.auditFlags?.length ?? 0) > 0 ? 0.85 : 0.6))
+      .attr("stroke-width", (d: any) => ((d.auditFlags?.length ?? 0) > 0 ? 1.6 : 1));
 
     const node = g.append("g")
       .selectAll("circle")
@@ -390,6 +459,67 @@ export default function LinkMap() {
               </>
             )}
 
+            {!focusUrl && (
+              <div className="mt-6 pt-4 border-t space-y-3">
+                <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <ShieldAlert className="h-3.5 w-3.5" /> Link Quality
+                  <InfoTip>
+                    Audits every existing content link with the same rules the suggestion engine
+                    uses for new links: topical similarity between the two pages, tier flow, and
+                    anchor-text quality. Flagged links are drawn in red on the map.
+                  </InfoTip>
+                </h4>
+                {graph?.audit?.auditedAt ? (
+                  <div className="space-y-1.5 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Links audited</span>
+                      <span className="font-medium">{graph.audit.auditedEdges.toLocaleString()} / {graph.audit.contentEdges.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Off-topic</span>
+                      <span className={`font-medium ${graph.audit.offTopic > 0 ? "text-red-600 dark:text-red-400" : ""}`}>{graph.audit.offTopic.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Tier violations</span>
+                      <span className={`font-medium ${graph.audit.tierViolations > 0 ? "text-amber-600 dark:text-amber-400" : ""}`}>{graph.audit.tierViolations.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Generic anchors</span>
+                      <span className={`font-medium ${graph.audit.genericAnchors > 0 ? "text-blue-600 dark:text-blue-400" : ""}`}>{graph.audit.genericAnchors.toLocaleString()}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground pt-1">
+                      Last audit {new Date(graph.audit.auditedAt).toLocaleString()}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Not audited yet — run the audit to score every existing content link.
+                  </p>
+                )}
+                <div className="flex flex-col gap-2">
+                  {flaggedEdges.length > 0 && (
+                    <Button size="sm" variant="secondary" onClick={() => setShowFlagged(true)}>
+                      View {flaggedEdges.length.toLocaleString()} flagged link{flaggedEdges.length === 1 ? "" : "s"}
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={auditPending || runJobMutation.isPending}
+                    onClick={startAudit}
+                  >
+                    {auditPending ? (
+                      <>
+                        <Spinner className="h-3.5 w-3.5 mr-1.5" /> Auditing…
+                      </>
+                    ) : (
+                      "Run link audit"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div className="mt-8 pt-4 border-t space-y-3">
               <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Legend</h4>
               {focusUrl ? (
@@ -425,6 +555,10 @@ export default function LinkMap() {
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <div className="w-3 h-3 rounded-full bg-transparent border-2 border-destructive" /> Orphan / Dead-end
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <div className="w-4 h-0.5 rounded" style={{ background: "#dc2626" }} /> Flagged link
+                    <InfoTip>A content link the quality audit flagged as off-topic, a tier violation, or using a generic anchor.</InfoTip>
                   </div>
                 </>
               )}
@@ -656,6 +790,70 @@ export default function LinkMap() {
                 </div>
               </>
             )}
+          </div>
+        </DrawerContent>
+      </Drawer>
+
+      <Drawer open={showFlagged} onOpenChange={setShowFlagged}>
+        <DrawerContent className="max-h-[85vh]">
+          <DrawerHeader>
+            <DrawerTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-red-600" />
+              Flagged links ({flaggedEdges.length.toLocaleString()})
+            </DrawerTitle>
+            <DrawerDescription>
+              Existing content links the quality audit flagged — sorted worst-first by topical
+              similarity. Fix by rewriting the anchor, moving the link, or removing it.
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="px-4 pb-6 overflow-y-auto">
+            <div className="space-y-3 max-w-4xl mx-auto">
+              {flaggedEdges.map((e, i) => (
+                <div key={i} className="border border-border/60 rounded-lg p-3 text-sm space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {(e.auditFlags ?? []).map((f) => {
+                      const meta = FLAG_META[f];
+                      return meta ? (
+                        <Badge key={f} variant="outline" className={meta.className} title={meta.tip}>
+                          {meta.label}
+                        </Badge>
+                      ) : null;
+                    })}
+                    {e.auditSimilarity !== null && e.auditSimilarity !== undefined && (
+                      <span className="text-xs text-muted-foreground ml-auto">
+                        similarity {e.auditSimilarity.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                    <a
+                      href={e.source}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono text-xs text-primary hover:underline truncate max-w-[45%]"
+                      title={e.source}
+                    >
+                      {e.source.replace(/^https?:\/\/[^/]+/, "")}
+                    </a>
+                    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <a
+                      href={e.target}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono text-xs text-primary hover:underline truncate max-w-[45%]"
+                      title={e.target}
+                    >
+                      {e.target.replace(/^https?:\/\/[^/]+/, "")}
+                    </a>
+                  </div>
+                  {e.anchorText && (
+                    <div className="bg-secondary px-2 py-1 rounded inline-block text-xs font-medium">
+                      {e.anchorText}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </DrawerContent>
       </Drawer>

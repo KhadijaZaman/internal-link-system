@@ -37,6 +37,33 @@ const PALETTE = [
 ];
 const MISC_COLOR = "#94a3b8";
 
+// ---- "Issues & actions" color mode: overlay of last week's ranking losses
+// and open action-queue items on the graph. Fixed ids/colors by severity. ----
+const ISSUE_GROUPS = [
+  { id: 0, label: "Critical ranking loss", color: "#dc2626" },
+  { id: 1, label: "High ranking loss", color: "#ea580c" },
+  { id: 2, label: "Medium ranking loss", color: "#f59e0b" },
+  { id: 3, label: "Low ranking loss", color: "#facc15" },
+  { id: 4, label: "Has open action items", color: "#7c3aed" },
+  { id: 5, label: "No known issues", color: "#cbd5e1" },
+];
+const SEVERITY_ISSUE_ID: Record<string, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
+function issueGroupId(n: KnowledgeGraphNode): number {
+  if (n.loserSeverity != null) return SEVERITY_ISSUE_ID[n.loserSeverity] ?? 3;
+  return n.openActions > 0 ? 4 : 5;
+}
+const SEVERITY_BADGE: Record<string, string> = {
+  critical: "bg-red-600 text-white hover:bg-red-600",
+  high: "bg-orange-600 text-white hover:bg-orange-600",
+  medium: "bg-amber-500 text-white hover:bg-amber-500",
+  low: "bg-yellow-400 text-yellow-950 hover:bg-yellow-400",
+};
+
 type SimNode = d3.SimulationNodeDatum & KnowledgeGraphNode & { r: number };
 type SimEdge = d3.SimulationLinkDatum<SimNode> & {
   kind: KnowledgeGraphEdge["kind"];
@@ -54,7 +81,9 @@ function pathOf(url: string): string {
 export default function KnowledgeGraphPage() {
   const { data, isLoading } = useGetKnowledgeGraph();
 
-  const [colorMode, setColorMode] = useState<"cluster" | "category">("cluster");
+  const [colorMode, setColorMode] = useState<"cluster" | "category" | "issues">(
+    "cluster",
+  );
   const [groupFilter, setGroupFilter] = useState<string>("all");
   const [edgeFilter, setEdgeFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -109,21 +138,43 @@ export default function KnowledgeGraphPage() {
     return { list, byNode };
   }, [data]);
 
-  const groups = colorMode === "cluster" ? (data?.clusters ?? []) : categories.list;
+  // Issue overlay groups (only the ones that actually occur, for the legend).
+  const issueGroups = useMemo(() => {
+    if (!data) return [];
+    const counts = new Array<number>(ISSUE_GROUPS.length).fill(0);
+    for (const n of data.nodes) counts[issueGroupId(n)]++;
+    return ISSUE_GROUPS.filter((g) => counts[g.id]! > 0).map((g) => ({
+      id: g.id,
+      label: g.label,
+      size: counts[g.id]!,
+    }));
+  }, [data]);
+
+  const groups =
+    colorMode === "cluster"
+      ? (data?.clusters ?? [])
+      : colorMode === "category"
+        ? categories.list
+        : issueGroups;
 
   const groupIdOf = useCallback(
     (n: KnowledgeGraphNode): number =>
-      colorMode === "cluster" ? n.clusterId : (categories.byNode.get(n.id) ?? 0),
+      colorMode === "cluster"
+        ? n.clusterId
+        : colorMode === "category"
+          ? (categories.byNode.get(n.id) ?? 0)
+          : issueGroupId(n),
     [colorMode, categories],
   );
 
   const groupColor = useCallback(
     (gid: number): string => {
+      if (colorMode === "issues") return ISSUE_GROUPS[gid]?.color ?? MISC_COLOR;
       const label = groups[gid]?.label;
       if (label === "Miscellaneous" || label === "Other pages") return MISC_COLOR;
       return PALETTE[gid % PALETTE.length];
     },
-    [groups],
+    [colorMode, groups],
   );
 
   const clusterColor = useCallback(
@@ -644,7 +695,7 @@ export default function KnowledgeGraphPage() {
         <Select
           value={colorMode}
           onValueChange={(v) => {
-            setColorMode(v as "cluster" | "category");
+            setColorMode(v as "cluster" | "category" | "issues");
             setGroupFilter("all");
           }}
         >
@@ -654,19 +705,28 @@ export default function KnowledgeGraphPage() {
           <SelectContent>
             <SelectItem value="cluster">Group by: Topic clusters</SelectItem>
             <SelectItem value="category">Group by: Site categories</SelectItem>
+            <SelectItem value="issues">Color by: Issues &amp; actions</SelectItem>
           </SelectContent>
         </Select>
         <Select value={groupFilter} onValueChange={setGroupFilter}>
           <SelectTrigger className="w-[240px]">
             <SelectValue
               placeholder={
-                colorMode === "cluster" ? "All clusters" : "All categories"
+                colorMode === "cluster"
+                  ? "All clusters"
+                  : colorMode === "category"
+                    ? "All categories"
+                    : "All pages"
               }
             />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">
-              {colorMode === "cluster" ? "All clusters" : "All categories"}
+              {colorMode === "cluster"
+                ? "All clusters"
+                : colorMode === "category"
+                  ? "All categories"
+                  : "All pages"}
             </SelectItem>
             {groups.map((g) => (
               <SelectItem key={g.id} value={String(g.id)}>
@@ -745,6 +805,20 @@ export default function KnowledgeGraphPage() {
                       <Sparkles className="h-3 w-3" /> embedded
                     </Badge>
                   )}
+                  {selected.loserSeverity && (
+                    <Badge className={SEVERITY_BADGE[selected.loserSeverity] ?? ""}>
+                      {selected.loserSeverity} ranking loss
+                    </Badge>
+                  )}
+                  {selected.openActions > 0 && (
+                    <Badge
+                      variant="outline"
+                      className="border-violet-300 text-violet-700"
+                    >
+                      {selected.openActions} open action
+                      {selected.openActions === 1 ? "" : "s"}
+                    </Badge>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                   <div className="text-muted-foreground">PageRank</div>
@@ -817,7 +891,11 @@ export default function KnowledgeGraphPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <Layers className="h-4 w-4 text-primary" />
-                  {colorMode === "cluster" ? "Topic clusters" : "Site categories"}
+                  {colorMode === "cluster"
+                    ? "Topic clusters"
+                    : colorMode === "category"
+                      ? "Site categories"
+                      : "Issues & actions"}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-1 max-h-[520px] overflow-y-auto pr-1">
@@ -842,9 +920,16 @@ export default function KnowledgeGraphPage() {
                   </button>
                 ))}
                 <p className="text-[11px] text-muted-foreground pt-2 leading-relaxed">
-                  Click a {colorMode === "cluster" ? "cluster" : "category"} to
-                  isolate it. Click any node on the map for page details.
+                  Click a{" "}
+                  {colorMode === "cluster"
+                    ? "cluster"
+                    : colorMode === "category"
+                      ? "category"
+                      : "group"}{" "}
+                  to isolate it. Click any node on the map for page details.
                   Scroll to zoom, drag to pan.
+                  {colorMode === "issues" &&
+                    " Loss colors come from last week's ranking-loser report; purple pages have open items in the action queue."}
                 </p>
               </CardContent>
             </Card>

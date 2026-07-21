@@ -6,9 +6,11 @@ import {
   useRebuildClusterRun,
   useListClusterRunClusters,
   getListClusterRunClustersQueryKey,
+  useAddOptimizeQueueItem,
   type ClusterRun,
   type KeywordCluster,
 } from "@workspace/api-client-react";
+import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,6 +44,7 @@ import {
   Loader2,
   Play,
   Sparkles,
+  Waypoints,
 } from "lucide-react";
 import {
   ScatterChart,
@@ -766,6 +769,19 @@ function ClusterRows({
   onToggle: () => void;
 }) {
   const meta = cluster.quadrant ? QUADRANT_META[cluster.quadrant] : null;
+  const { toast } = useToast();
+  const addOptimize = useAddOptimizeQueueItem();
+  const sendToOptimizer = (url: string) => {
+    const notes = `From keyword cluster "${cluster.topic}" (${fmtInt(cluster.keywordCount)} keywords, ${fmtInt(cluster.totalImpressions)} impressions${meta ? `, ${meta.label}` : ""}).`;
+    addOptimize.mutate(
+      { data: { url, priority: "medium", notes } },
+      {
+        onSuccess: () => toast({ title: "Sent to Optimizer", description: url }),
+        onError: () =>
+          toast({ variant: "destructive", title: "Failed to send to Optimizer" }),
+      },
+    );
+  };
   return (
     <>
       <TableRow className="cursor-pointer hover:bg-muted/40" onClick={onToggle}>
@@ -786,6 +802,32 @@ function ClusterRows({
           {cluster.isOutlier && (
             <Badge variant="outline" className="ml-1 text-muted-foreground">
               outlier
+            </Badge>
+          )}
+          {cluster.coreTag === "on_core" && (
+            <Badge
+              variant="outline"
+              className="ml-1 bg-emerald-100 text-emerald-800 border-emerald-200"
+              title={
+                cluster.coreSimilarity != null
+                  ? `This demand aligns with your site's core topic (similarity ${cluster.coreSimilarity.toFixed(2)})`
+                  : undefined
+              }
+            >
+              Core topic
+            </Badge>
+          )}
+          {cluster.coreTag === "off_core" && (
+            <Badge
+              variant="outline"
+              className="ml-1 bg-rose-100 text-rose-800 border-rose-200"
+              title={
+                cluster.coreSimilarity != null
+                  ? `This demand sits outside your site's core topic (similarity ${cluster.coreSimilarity.toFixed(2)}) — ranking here is harder and may dilute topical authority`
+                  : undefined
+              }
+            >
+              Off-core
             </Badge>
           )}
         </TableCell>
@@ -834,7 +876,13 @@ function ClusterRows({
                   ) : (
                     <div className="rounded-md border border-emerald-200/60 bg-card divide-y divide-border/50">
                       {cluster.ownUrls.slice(0, 5).map((u) => (
-                        <UrlRow key={u.url} u={u} own />
+                        <UrlRow
+                          key={u.url}
+                          u={u}
+                          own
+                          onOptimize={sendToOptimizer}
+                          optimizePending={addOptimize.isPending}
+                        />
                       ))}
                     </div>
                   )}
@@ -861,9 +909,13 @@ function ClusterRows({
 function UrlRow({
   u,
   own = false,
+  onOptimize,
+  optimizePending = false,
 }: {
   u: KeywordCluster["ownUrls"][number];
   own?: boolean;
+  onOptimize?: (url: string) => void;
+  optimizePending?: boolean;
 }) {
   return (
     <div className="flex items-center gap-2 px-3 py-1.5 text-xs">
@@ -881,6 +933,35 @@ function UrlRow({
         {u.keywordCount} kw
         {u.bestPosition != null && ` · best #${Math.round(u.bestPosition)}`}
       </span>
+      {own && (
+        <span className="flex items-center gap-1 shrink-0">
+          {onOptimize && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-[11px] gap-1"
+              disabled={optimizePending}
+              title="Add this page to the Optimizer queue"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOptimize(u.url);
+              }}
+            >
+              <Sparkles className="h-3 w-3" />
+              Optimize
+            </Button>
+          )}
+          <Link
+            href={`/link-map?url=${encodeURIComponent(u.url)}`}
+            className="inline-flex items-center gap-1 h-6 px-2 rounded-md text-[11px] hover:bg-muted text-muted-foreground hover:text-foreground"
+            title="See this page's internal links on the Link Map"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Waypoints className="h-3 w-3" />
+            Links
+          </Link>
+        </span>
+      )}
     </div>
   );
 }

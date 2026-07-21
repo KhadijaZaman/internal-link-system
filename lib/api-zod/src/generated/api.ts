@@ -116,8 +116,18 @@ export const GetLinkGraphResponse = zod.object({
   "edges": zod.array(zod.object({
   "source": zod.string(),
   "target": zod.string(),
-  "anchorText": zod.string().nullish()
-}))
+  "anchorText": zod.string().nullish(),
+  "auditFlags": zod.array(zod.enum(['off_topic', 'tier_violation', 'generic_anchor'])).nullish().describe('Link-quality flags from the audit_link_quality job. Null = not audited yet (or a chrome edge).'),
+  "auditSimilarity": zod.number().nullish().describe('Source→target embedding cosine (null when either page has no embedding or the edge is unaudited).')
+})),
+  "audit": zod.object({
+  "auditedAt": zod.coerce.date().nullable(),
+  "contentEdges": zod.number(),
+  "auditedEdges": zod.number(),
+  "offTopic": zod.number(),
+  "tierViolations": zod.number(),
+  "genericAnchors": zod.number()
+})
 })
 
 
@@ -174,7 +184,9 @@ export const GetKnowledgeGraphResponse = zod.object({
   "impressions": zod.number().nullish(),
   "clicks": zod.number().nullish(),
   "topQuery": zod.string().nullish(),
-  "hasEmbedding": zod.boolean()
+  "hasEmbedding": zod.boolean(),
+  "loserSeverity": zod.union([zod.literal('critical'),zod.literal('high'),zod.literal('medium'),zod.literal('low'),zod.literal(null)]).nullable().describe('Worst latest-week ranking-loser severity for this page (null = no losses last week)'),
+  "openActions": zod.number().describe('Count of open action-queue items targeting this page')
 })),
   "edges": zod.array(zod.object({
   "source": zod.string(),
@@ -931,6 +943,8 @@ export const ListClusterRunClustersResponseItem = zod.object({
   "totalImpressions": zod.number(),
   "blendedCtr": zod.number().describe('Blended CTR as a percentage'),
   "avgPosition": zod.number().nullable(),
+  "coreSimilarity": zod.number().nullable().describe('Cosine similarity between the cluster\'s impression-weighted keyword centroid and the site\'s core-topic centroid (null = not enough embedded keywords)'),
+  "coreTag": zod.union([zod.literal('on_core'),zod.literal('off_core'),zod.literal(null)]).nullable().describe('Whether this cluster\'s search demand aligns with the site\'s core topic (threshold 0.42)'),
   "keywords": zod.array(zod.object({
   "query": zod.string(),
   "clicks": zod.number(),
@@ -1372,7 +1386,7 @@ export const ListAiCitationUploadsResponse = zod.array(ListAiCitationUploadsResp
  * @summary Manually trigger a background job
  */
 export const RunJobParams = zod.object({
-  "jobName": zod.enum(['crawl_link_map', 'gsc_inventory_and_losers', 'optimize_queued_urls', 'crawl_wordpress', 'reembed_wordpress', 'semantic_linking', 'audit_orphans', 'audit_over_linked', 'audit_broken_links', 'run_full_pipeline', 'recompute_action_queue', 'weekly_digest', 'keyword_clustering', 'migrate_url_hygiene', 'sync_ga4_pages', 'embed_kb_chunks', 'sync_keyword_sheet', 'analyze_similarity', 'sync_bing_pages', 'generate_topical_map'])
+  "jobName": zod.enum(['crawl_link_map', 'gsc_inventory_and_losers', 'optimize_queued_urls', 'crawl_wordpress', 'reembed_wordpress', 'semantic_linking', 'audit_orphans', 'audit_over_linked', 'audit_broken_links', 'run_full_pipeline', 'recompute_action_queue', 'weekly_digest', 'keyword_clustering', 'migrate_url_hygiene', 'sync_ga4_pages', 'embed_kb_chunks', 'sync_keyword_sheet', 'analyze_similarity', 'sync_bing_pages', 'generate_topical_map', 'audit_link_quality'])
 })
 
 
@@ -1521,7 +1535,11 @@ export const GetGscQueriesResponse = zod.object({
   "impressions": zod.number(),
   "ctr": zod.number(),
   "position": zod.number(),
-  "isBranded": zod.boolean()
+  "isBranded": zod.boolean(),
+  "expectedCtr": zod.number().nullable().describe('Benchmark CTR for this position (top 10 only; null for branded queries or positions beyond 10)'),
+  "ctrFlag": zod.union([zod.literal('underperforming'),zod.literal(null)]).nullable().describe('Set when CTR is far below the position norm on meaningful volume'),
+  "missedClicks": zod.number().describe('Estimated clicks lost vs the position benchmark over the selected range (0 when not flagged)'),
+  "competingUrls": zod.array(zod.string()).nullable().describe('Pages splitting rankings on this query (from the latest weekly snapshot); null when not cannibalized')
 })),
   "brandedTotals": zod.object({
   "clicks": zod.number(),
@@ -1534,7 +1552,8 @@ export const GetGscQueriesResponse = zod.object({
   "impressions": zod.number(),
   "ctr": zod.number(),
   "position": zod.number()
-})
+}),
+  "cannibalSnapshotDate": zod.string().nullable().describe('Snapshot date the cannibalization flags were computed from')
 })
 
 
@@ -1558,7 +1577,10 @@ export const GetGscPagesResponse = zod.object({
   "clicks": zod.number(),
   "impressions": zod.number(),
   "ctr": zod.number(),
-  "position": zod.number()
+  "position": zod.number(),
+  "expectedCtr": zod.number().nullable().describe('Benchmark CTR for this position (top 10 only; null beyond position 10)'),
+  "ctrFlag": zod.union([zod.literal('underperforming'),zod.literal(null)]).nullable().describe('Set when CTR is far below the position norm on meaningful volume'),
+  "missedClicks": zod.number().describe('Estimated clicks lost vs the position benchmark over the selected range (0 when not flagged)')
 }))
 })
 
@@ -1632,7 +1654,8 @@ export const GetPagesReportResponse = zod.object({
   "position": zod.number(),
   "impressions": zod.number(),
   "clicks": zod.number()
-}))
+})),
+  "verdicts": zod.array(zod.enum(['low_ctr', 'weak_engagement', 'no_conversions', 'ai_only']))
 })),
   "totals": zod.object({
   "impressions": zod.number(),
@@ -1829,7 +1852,11 @@ export const GetGscUrlDrilldownResponse = zod.object({
   "impressions": zod.number(),
   "ctr": zod.number(),
   "position": zod.number(),
-  "isBranded": zod.boolean()
+  "isBranded": zod.boolean(),
+  "expectedCtr": zod.number().nullable().describe('Benchmark CTR for this position (top 10 only; null for branded queries or positions beyond 10)'),
+  "ctrFlag": zod.union([zod.literal('underperforming'),zod.literal(null)]).nullable().describe('Set when CTR is far below the position norm on meaningful volume'),
+  "missedClicks": zod.number().describe('Estimated clicks lost vs the position benchmark over the selected range (0 when not flagged)'),
+  "competingUrls": zod.array(zod.string()).nullable().describe('Pages splitting rankings on this query (from the latest weekly snapshot); null when not cannibalized')
 })),
   "timeseries": zod.array(zod.object({
   "date": zod.coerce.date(),

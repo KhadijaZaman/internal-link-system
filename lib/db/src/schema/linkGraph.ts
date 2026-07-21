@@ -5,6 +5,8 @@ import {
   timestamp,
   index,
   uniqueIndex,
+  doublePrecision,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -26,6 +28,13 @@ export const linkGraphTable = pgTable(
     surroundingText: text("surrounding_text"),
     placement: text("placement").notNull().default("content"),
     crawledAt: timestamp("crawled_at", { withTimezone: true }).defaultNow(),
+    // Link-quality audit (audit_link_quality job; content edges only).
+    // NULL = not audited yet (new edges after a re-crawl stay NULL until the
+    // next audit run). auditSimilarity is source→target embedding cosine
+    // (NULL when either page has no embedding).
+    auditSimilarity: doublePrecision("audit_similarity"),
+    auditFlags: jsonb("audit_flags").$type<string[]>(),
+    auditedAt: timestamp("audited_at", { withTimezone: true }),
   },
   (t) => ({
     sourceIdx: index("link_graph_source_idx").on(t.sourceUrl),

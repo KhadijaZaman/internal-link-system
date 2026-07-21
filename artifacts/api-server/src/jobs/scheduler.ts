@@ -17,6 +17,7 @@ import { runSyncKeywordSheet } from "./syncKeywordSheet";
 import { runAnalyzeSimilarity } from "./analyzeSimilarity";
 import { runSyncBingPages } from "./syncBingPages";
 import { runGenerateTopicalMap } from "./generateTopicalMap";
+import { runAuditLinkQuality } from "./auditLinkQuality";
 import { logger } from "../lib/logger";
 
 export function setupJobs(): void {
@@ -58,6 +59,9 @@ export function setupJobs(): void {
   // Topical Authority Map generation — triggered by POST /topical-map/generate,
   // never on a cron (Claude + OpenAI embedding spend).
   registerJob("generate_topical_map", runGenerateTopicalMap);
+  // Existing-link quality audit (embeddings × edges, pure DB + math, no API
+  // spend) — manual trigger from the Link Map page; re-run after re-crawls.
+  registerJob("audit_link_quality", runAuditLinkQuality);
 }
 
 export function startScheduler(): void {

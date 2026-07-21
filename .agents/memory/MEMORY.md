@@ -11,7 +11,7 @@
 - [First-fold CTA detection](first-fold-cta-detection.md) — score candidates; exclude nav toggles (aria-haspopup) & /author/ links; prefer hero over global header CTA; tag which zone won.
 - [GA4 Data API](ga4-data-api.md) — service account + Data API (no connector); key events fire on other hosts → fetch unfiltered, merge by path.
 - [Sandbox vs bash env](sandbox-vs-bash-env.md) — code_execution sandbox has no process.env secrets (use listConnections); bash node does; bridge via a /tmp JSON file.
-- [Google Sheets export](google-sheets-export.md) — connector authorized; keyword-movement sheet is PERSISTENT (id in app_state, rewritten in place) — never per-run snapshots; in-place tab-swap pattern inside.
+- [Google Sheets export](google-sheets-export.md) — connector authorized; keyword-movement sheet is PERSISTENT (id in app_state, rewritten in place), never per-run snapshots.
 - [SSE streaming through the Replit proxy](sse-streaming-replit-proxy.md) — needs 16KB padding + keep-alives server-side; clients skip ':' comments, buffer chunks, guard by request identity.
 - [Pipeline DB transient-retry](pipeline-db-retry.md) — autoscale+serverless PG drops connections mid-pipeline; wrap idempotent DB ops in withDbRetry.
 - [Prod→dev DB copy technique](prod-db-copy-technique.md) — bulk-copy prod via read replica: base64 JSON reads + jsonb_populate_recordset, 128KB arg cap, skip vector cols.

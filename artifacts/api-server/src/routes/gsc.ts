@@ -19,8 +19,85 @@ import {
   gscSiteUrl,
 } from "../integrations/gsc";
 import { fetchCrux } from "../integrations/crux";
+import { ctrInsight, pickCannibalContenders } from "../lib/insights";
+import { urlKey } from "../services/actionQueue";
 
 const router: IRouter = Router();
+
+/**
+ * Query → competing URLs, from the latest weekly GSC snapshot (page x query
+ * joins only exist there — live GSC calls per range would burn quota).
+ * Mirrors the action queue's fix_cannibalization rules via insights.ts.
+ */
+async function loadCannibalizedQueries(): Promise<{
+  snapshotDate: string | null;
+  byQuery: Map<string, string[]>;
+}> {
+  const latestSnap = await db
+    .select({ d: sql<string | null>`max(${gscSnapshotsTable.snapshotDate})::text` })
+    .from(gscSnapshotsTable);
+  const snapshotDate = latestSnap[0]?.d ?? null;
+  const byQuery = new Map<string, string[]>();
+  if (!snapshotDate) return { snapshotDate, byQuery };
+
+  const snapRows = await db
+    .select({
+      url: gscSnapshotsTable.url,
+      query: gscSnapshotsTable.query,
+      position: sql<number>`avg(${gscSnapshotsTable.position})`,
+      impressions: sql<number>`max(${gscSnapshotsTable.impressions})::int`,
+      clicks: sql<number>`max(${gscSnapshotsTable.clicks})::int`,
+    })
+    .from(gscSnapshotsTable)
+    .where(sql`${gscSnapshotsTable.snapshotDate} = ${snapshotDate}`)
+    .groupBy(gscSnapshotsTable.url, gscSnapshotsTable.query);
+
+  interface Agg {
+    url: string;
+    impressions: number;
+    clicks: number;
+    posSum: number;
+    posW: number;
+  }
+  // GSC reports /page/#anchor variants as separate pages — SUM by urlKey.
+  const byUrlQuery = new Map<string, Agg>();
+  const queryTotals = new Map<string, number>();
+  for (const r of snapRows) {
+    const imps = r.impressions ?? 0;
+    queryTotals.set(r.query, (queryTotals.get(r.query) ?? 0) + imps);
+    if (imps < 10) continue; // long-tail noise floor
+    const k = `${urlKey(r.url)}||${r.query}`;
+    const e = byUrlQuery.get(k) ?? { url: r.url, impressions: 0, clicks: 0, posSum: 0, posW: 0 };
+    e.impressions += imps;
+    e.clicks += r.clicks ?? 0;
+    e.posSum += (r.position ?? 0) * Math.max(imps, 1);
+    e.posW += Math.max(imps, 1);
+    if (r.url.length < e.url.length) e.url = r.url; // keep fragment-free variant
+    byUrlQuery.set(k, e);
+  }
+  const candidates = new Map<
+    string,
+    { url: string; impressions: number; clicks: number; position: number }[]
+  >();
+  for (const [k, e] of byUrlQuery) {
+    const query = k.slice(k.indexOf("||") + 2);
+    const list = candidates.get(query) ?? [];
+    list.push({
+      url: e.url,
+      impressions: e.impressions,
+      clicks: e.clicks,
+      position: e.posW > 0 ? e.posSum / e.posW : 999,
+    });
+    candidates.set(query, list);
+  }
+  for (const [query, list] of candidates) {
+    const contenders = pickCannibalContenders(list, queryTotals.get(query) ?? 0);
+    if (contenders.length >= 2) {
+      byQuery.set(query, contenders.map((c) => c.url));
+    }
+  }
+  return { snapshotDate, byQuery };
+}
 
 const BRAND_TERMS = (process.env["GSC_BRAND_TERMS"] ?? "wellows")
   .split(",")
@@ -146,23 +223,39 @@ router.get("/gsc/queries", requireAuth, async (req, res) => {
   const { startDate, endDate, url } = v;
   const limit = parseLimit(req.query["limit"], 500, 5000);
   try {
-    const key = `queries|${startDate}|${endDate}|${url ?? ""}|${limit}`;
+    // v2: per-row CTR insight (expected CTR / flag / missed clicks) and
+    // cannibalization from the latest weekly snapshot.
+    const key = `queries:v2|${startDate}|${endDate}|${url ?? ""}|${limit}`;
     const data = await withCache(key, GSC_CACHE_TTL_MS, async () => {
-      const rows = await queryGscDimension({
-        startDate,
-        endDate,
-        dimension: "query",
-        pageFilter: url,
-        rowLimit: limit,
+      const [rows, cannibal] = await Promise.all([
+        queryGscDimension({
+          startDate,
+          endDate,
+          dimension: "query",
+          pageFilter: url,
+          rowLimit: limit,
+        }),
+        loadCannibalizedQueries(),
+      ]);
+      const enriched = rows.map((r) => {
+        const branded = isBranded(r.key);
+        // Brand queries follow navigational CTR norms — never flag them.
+        const insight = branded
+          ? { expectedCtr: null, ctrFlag: null, missedClicks: 0 }
+          : ctrInsight(r.position, r.ctr, r.impressions);
+        return {
+          query: r.key,
+          clicks: r.clicks,
+          impressions: r.impressions,
+          ctr: r.ctr,
+          position: r.position,
+          isBranded: branded,
+          expectedCtr: insight.expectedCtr,
+          ctrFlag: insight.ctrFlag,
+          missedClicks: insight.missedClicks,
+          competingUrls: cannibal.byQuery.get(r.key) ?? null,
+        };
       });
-      const enriched = rows.map((r) => ({
-        query: r.key,
-        clicks: r.clicks,
-        impressions: r.impressions,
-        ctr: r.ctr,
-        position: r.position,
-        isBranded: isBranded(r.key),
-      }));
       enriched.sort((a, b) => b.impressions - a.impressions);
       const brandedRows = enriched.filter((r) => r.isBranded);
       const unbrandedRows = enriched.filter((r) => !r.isBranded);
@@ -170,6 +263,7 @@ router.get("/gsc/queries", requireAuth, async (req, res) => {
         rows: enriched,
         brandedTotals: aggregateTotals(brandedRows),
         unbrandedTotals: aggregateTotals(unbrandedRows),
+        cannibalSnapshotDate: cannibal.snapshotDate,
       };
     });
     res.json(data);
@@ -190,7 +284,8 @@ router.get("/gsc/pages", requireAuth, async (req, res) => {
   try {
     // v2: rows collapse onto canonical paths (fragment/slash variants merge,
     // blocklisted paths drop) so totals match the Page Report exactly.
-    const key = `pages:v2|${startDate}|${endDate}|${url ?? ""}|${limit}`;
+    // v3: per-row CTR insight (expected CTR / flag / missed clicks).
+    const key = `pages:v3|${startDate}|${endDate}|${url ?? ""}|${limit}`;
     const data = await withCache(key, GSC_CACHE_TTL_MS, async () => {
       const [rows, block] = await Promise.all([
         queryGscDimension({
@@ -213,13 +308,19 @@ router.get("/gsc/pages", requireAuth, async (req, res) => {
         block,
       );
       const mapped = Array.from(grouped.entries())
-        .map(([path, g]) => ({
-          url: canonicalUrl(path),
-          clicks: g.merged.clicks,
-          impressions: g.merged.impressions,
-          ctr: g.merged.ctr,
-          position: g.merged.position,
-        }))
+        .map(([path, g]) => {
+          const insight = ctrInsight(g.merged.position, g.merged.ctr, g.merged.impressions);
+          return {
+            url: canonicalUrl(path),
+            clicks: g.merged.clicks,
+            impressions: g.merged.impressions,
+            ctr: g.merged.ctr,
+            position: g.merged.position,
+            expectedCtr: insight.expectedCtr,
+            ctrFlag: insight.ctrFlag,
+            missedClicks: insight.missedClicks,
+          };
+        })
         .sort((a, b) => b.impressions - a.impressions);
       return { rows: mapped };
     });

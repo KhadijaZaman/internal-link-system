@@ -1,15 +1,18 @@
 import { Fragment, useMemo, useState } from "react";
 import { ChevronRight, ChevronDown } from "lucide-react";
-import { useGetPagesReport } from "@workspace/api-client-react";
+import { useGetPagesReport, type PageReportRowVerdictsItem } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SortableHeader, type SortState } from "@/components/gsc/sortable-header";
 import { InfoTip } from "@/components/info-tip";
 import { HowThisWorks } from "@/components/how-this-works";
 import { CopyButton } from "@/components/copy-button";
+import { DataNarrative, Num } from "@/components/data-narrative";
 import { rowsToTsv } from "@/lib/clipboard";
 
 type SortKey =
@@ -62,6 +65,64 @@ function fmtTime(sec: number, sessions: number): string {
   return m > 0 ? `${m}m ${r}s` : `${r}s`;
 }
 
+const VERDICT_META: Record<
+  PageReportRowVerdictsItem,
+  { label: string; tip: string; className: string }
+> = {
+  low_ctr: {
+    label: "Low CTR",
+    tip: "Ranks in the top 10 but earns far fewer clicks than pages at this position usually get — the title/snippet is losing the click.",
+    className:
+      "border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300",
+  },
+  weak_engagement: {
+    label: "Weak engagement",
+    tip: "Google ranks this page well, but under 40% of visitors engage — the content isn't delivering what the search promised.",
+    className:
+      "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+  },
+  no_conversions: {
+    label: "No key events",
+    tip: "Real search traffic in this window but zero key events — visitors never take the next step (missing CTA or intent mismatch).",
+    className:
+      "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+  },
+  ai_only: {
+    label: "AI-only",
+    tip: "AI assistants (ChatGPT, Perplexity, etc.) send visitors here, but Google search sends zero clicks — worth checking how it appears in classic results.",
+    className:
+      "border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-300",
+  },
+};
+
+const VERDICT_ORDER: PageReportRowVerdictsItem[] = [
+  "low_ctr",
+  "weak_engagement",
+  "no_conversions",
+  "ai_only",
+];
+
+function VerdictBadges({ verdicts }: { verdicts: PageReportRowVerdictsItem[] }) {
+  if (verdicts.length === 0) return null;
+  return (
+    <span className="inline-flex gap-1 ml-2 align-middle">
+      {verdicts.map((v) => {
+        const m = VERDICT_META[v];
+        return (
+          <Tooltip key={v}>
+            <TooltipTrigger asChild>
+              <Badge variant="outline" className={`text-[10px] cursor-default ${m.className}`}>
+                {m.label}
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">{m.tip}</TooltipContent>
+          </Tooltip>
+        );
+      })}
+    </span>
+  );
+}
+
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="border rounded-lg p-4 bg-card">
@@ -80,13 +141,16 @@ export default function PageReport() {
   const [channel, setChannel] = useState<Channel>("organic");
   const [sort, setSort] = useState<SortState<SortKey>>({ key: "impressions", dir: "desc" });
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [onlyFlagged, setOnlyFlagged] = useState(false);
 
   const { data, isLoading, error } = useGetPagesReport({ startDate, endDate, channel });
 
   const rows = useMemo(() => {
     if (!data) return [];
-    const filtered = data.rows.filter((r) =>
-      search ? r.path.toLowerCase().includes(search.toLowerCase()) : true,
+    const filtered = data.rows.filter(
+      (r) =>
+        (search ? r.path.toLowerCase().includes(search.toLowerCase()) : true) &&
+        (onlyFlagged ? r.verdicts.length > 0 : true),
     );
     return filtered.slice().sort((a, b) => {
       const av = a[sort.key] as string | number;
@@ -95,7 +159,28 @@ export default function PageReport() {
       if (av > bv) return sort.dir === "asc" ? 1 : -1;
       return 0;
     });
-  }, [data, search, sort]);
+  }, [data, search, sort, onlyFlagged]);
+
+  const narrative = useMemo(() => {
+    if (!data) return null;
+    const counts: Record<PageReportRowVerdictsItem, number> = {
+      low_ctr: 0,
+      weak_engagement: 0,
+      no_conversions: 0,
+      ai_only: 0,
+    };
+    const example: Partial<Record<PageReportRowVerdictsItem, string>> = {};
+    let withTraffic = 0;
+    for (const r of data.rows) {
+      if (r.impressions > 0) withTraffic += 1;
+      for (const v of r.verdicts) {
+        counts[v] += 1;
+        // rows are impression-sorted server-side, so first hit = biggest example
+        if (!example[v]) example[v] = r.path;
+      }
+    }
+    return { counts, example, withTraffic, flaggedTotal: data.rows.filter((r) => r.verdicts.length > 0).length };
+  }, [data]);
 
   const applyPreset = (p: Preset) => {
     setPreset(p);
@@ -205,6 +290,10 @@ export default function PageReport() {
             title: "Why do some pages show — for position or engagement?",
             body: "A dash means that page had no Search Console impressions (position) or no GA4 sessions (engagement) in the selected window. Every known page is listed so you can spot the gaps.",
           },
+          {
+            title: "What do the colored badges next to a page mean?",
+            body: "They flag mismatches between ranking and behavior: Low CTR (ranks top-10 but loses the click), Weak engagement (ranks well but visitors leave fast), No key events (real traffic, zero conversions), and AI-only (AI assistants cite it but Google sends no clicks). Hover a badge for the full explanation, or press Needs attention to see only flagged pages.",
+          },
         ]}
       />
 
@@ -235,6 +324,45 @@ export default function PageReport() {
             />
           </div>
 
+          {narrative ? (
+            <DataNarrative
+              paragraphs={[
+                <>
+                  Over this window, <Num>{narrative.withTraffic.toLocaleString()}</Num> pages
+                  appeared in Google search, earning{" "}
+                  <Num>{data.totals.impressions.toLocaleString()}</Num> impressions and{" "}
+                  <Num>{data.totals.clicks.toLocaleString()}</Num> clicks.{" "}
+                  {narrative.flaggedTotal > 0 ? (
+                    <>
+                      <Num>{narrative.flaggedTotal.toLocaleString()}</Num>{" "}
+                      {narrative.flaggedTotal === 1 ? "page shows" : "pages show"} a mismatch
+                      between how Google ranks them and what visitors do next — those are the
+                      badges in the table below.
+                    </>
+                  ) : (
+                    <>No ranking-vs-behavior mismatches were detected in this window.</>
+                  )}
+                </>,
+              ]}
+              insights={VERDICT_ORDER.filter((v) => narrative.counts[v] > 0).map((v) => ({
+                tone: v === "ai_only" ? ("neutral" as const) : ("warn" as const),
+                text: (
+                  <>
+                    <Num>{narrative.counts[v]}</Num>{" "}
+                    {narrative.counts[v] === 1 ? "page" : "pages"}:{" "}
+                    {VERDICT_META[v].tip.split(" — ")[0]}
+                    {narrative.example[v] ? (
+                      <>
+                        {" "}
+                        (biggest: <span className="font-mono text-xs">{narrative.example[v]}</span>)
+                      </>
+                    ) : null}
+                  </>
+                ),
+              }))}
+            />
+          ) : null}
+
           <div className="flex gap-2 items-center">
             <InfoTip>Every known page — including those with no traffic in this window.</InfoTip>
             <Input
@@ -243,6 +371,13 @@ export default function PageReport() {
               onChange={(e) => setSearch(e.target.value)}
               className="max-w-md h-9"
             />
+            <Button
+              size="sm"
+              variant={onlyFlagged ? "default" : "outline"}
+              onClick={() => setOnlyFlagged((v) => !v)}
+            >
+              Needs attention{narrative && narrative.flaggedTotal > 0 ? ` (${narrative.flaggedTotal})` : ""}
+            </Button>
             <div className="text-xs text-muted-foreground ml-auto">{rows.length} pages</div>
             <CopyButton
               disabled={rows.length === 0}
@@ -260,6 +395,7 @@ export default function PageReport() {
                     "Key Events",
                     "AI Sessions",
                     "Query Count",
+                    "Flags",
                     "Top Queries",
                   ],
                   rows.map((r) => [
@@ -274,6 +410,7 @@ export default function PageReport() {
                     r.keyEvents,
                     r.aiSessions,
                     r.queryCount,
+                    r.verdicts.map((v) => VERDICT_META[v].label).join(", "),
                     r.topQueries.map((q) => q.query).join(" | "),
                   ]),
                 )
@@ -318,8 +455,9 @@ export default function PageReport() {
                               )
                             ) : null}
                           </td>
-                          <td className="p-3 max-w-md truncate text-primary" title={r.title || r.path}>
-                            {r.path}
+                          <td className="p-3 max-w-md text-primary" title={r.title || r.path}>
+                            <span className="inline-block max-w-[22rem] truncate align-middle">{r.path}</span>
+                            <VerdictBadges verdicts={r.verdicts} />
                           </td>
                           <td className="p-3 text-right font-mono">{pos(r.position, r.impressions)}</td>
                           <td className="p-3 text-right font-mono">{r.impressions.toLocaleString()}</td>
