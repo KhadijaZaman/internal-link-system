@@ -9,4 +9,6 @@
 export interface MovementSheetInfo {
   /** @nullable */
   url: string | null;
+  /** True when the sheet is link-viewable (anyone with the link), so owners won't hit Google's "Request access" page */
+  shared: boolean;
 }

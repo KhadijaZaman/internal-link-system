@@ -985,7 +985,8 @@ export const GetTrackedSubmissionPerformanceResponse = zod.object({
  * @summary URL of the site's persistent Target Keyword Daily Movement Google Sheet, if one exists
  */
 export const GetMovementSheetInfoResponse = zod.object({
-  "url": zod.string().nullable()
+  "url": zod.string().nullable(),
+  "shared": zod.boolean().describe('True when the sheet is link-viewable (anyone with the link), so owners won\'t hit Google\'s \"Request access\" page')
 })
 
 
@@ -1005,7 +1006,8 @@ export const ExportSubmissionsSheetBody = zod.object({
 export const ExportSubmissionsSheetResponse = zod.object({
   "url": zod.string(),
   "title": zod.string(),
-  "keywordCount": zod.number()
+  "keywordCount": zod.number(),
+  "sheetShared": zod.boolean().describe('True when the sheet is link-viewable (anyone with the link)')
 })
 
 

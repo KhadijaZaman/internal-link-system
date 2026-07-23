@@ -22,7 +22,10 @@ import {
   keywordExactRegex,
   type GscDimensionRow,
 } from "../integrations/gsc";
-import { sheetsRequest } from "../integrations/googleSheets";
+import {
+  sheetsRequest,
+  shareSheetWithAnyone,
+} from "../integrations/googleSheets";
 
 interface KeywordSeries {
   keyword: string;
@@ -294,6 +297,61 @@ async function storeSheetId(id: string, siteId: number): Promise<void> {
     });
 }
 
+// The sheet lives in the operator's Google Drive, so owners clicking the
+// dashboard link would hit "Request access" unless the sheet is shared as
+// anyone-with-link viewer (Drive permissions API). We record WHICH spreadsheet
+// id was successfully shared so the daily rewrite doesn't re-call Drive every
+// run, and so the UI can warn when sharing hasn't happened yet (e.g. the
+// google-drive connector isn't authorized).
+function sharedStateKey(siteId: number): string {
+  return `${sheetStateKey(siteId)}:shared`;
+}
+
+async function loadSharedSheetId(siteId: number): Promise<string | null> {
+  const [row] = await db
+    .select()
+    .from(appStateTable)
+    .where(eq(appStateTable.key, sharedStateKey(siteId)))
+    .limit(1);
+  return row?.value ?? null;
+}
+
+async function storeSharedSheetId(id: string, siteId: number): Promise<void> {
+  await db
+    .insert(appStateTable)
+    .values({ key: sharedStateKey(siteId), value: id, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: appStateTable.key,
+      set: { value: id, updatedAt: new Date() },
+    });
+}
+
+/**
+ * Best-effort: ensure the site's movement sheet is link-viewable. Skips the
+ * Drive call when this spreadsheet id was already shared; retries on every
+ * export/daily run otherwise (covers pre-existing sheets and the connector
+ * being authorized later). Never throws.
+ */
+async function ensureSheetShared(
+  spreadsheetId: string,
+  siteId: number,
+): Promise<boolean> {
+  const alreadyShared = await loadSharedSheetId(siteId);
+  if (alreadyShared === spreadsheetId) return true;
+  const ok = await shareSheetWithAnyone(spreadsheetId);
+  if (ok) await storeSharedSheetId(spreadsheetId, siteId);
+  return ok;
+}
+
+/** Whether the stored movement sheet is known to be link-viewable. */
+export async function isStoredSheetShared(siteId: number): Promise<boolean> {
+  const [sheetId, sharedId] = await Promise.all([
+    loadStoredSheetId(siteId),
+    loadSharedSheetId(siteId),
+  ]);
+  return sheetId != null && sheetId === sharedId;
+}
+
 interface ExistingSheetMeta {
   spreadsheetUrl?: string;
   sheets?: Array<{ properties?: { sheetId?: number; title?: string } }>;
@@ -324,6 +382,7 @@ export async function exportKeywordMovementSheet(
   url: string;
   title: string;
   keywordCount: number;
+  sheetShared: boolean;
 }> {
   const siteId = site.id;
   const subs = await db
@@ -550,10 +609,15 @@ export async function exportKeywordMovementSheet(
     },
   });
 
+  // Make the sheet openable by the site owner (not just the operator's
+  // Google account). Best-effort — export still succeeds if Drive isn't
+  // connected; existing sheets pick this up on their next rewrite.
+  const sheetShared = await ensureSheetShared(spreadsheetId, siteId);
+
   // Strip the account-specific ?ouid=... param — hand back a clean /edit URL.
   const cleanUrl = spreadsheetUrl
     ? spreadsheetUrl.split("?")[0]!
     : `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
 
-  return { url: cleanUrl, title, keywordCount: tracked.length };
+  return { url: cleanUrl, title, keywordCount: tracked.length, sheetShared };
 }

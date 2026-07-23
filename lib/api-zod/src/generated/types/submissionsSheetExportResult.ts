@@ -10,4 +10,6 @@ export interface SubmissionsSheetExportResult {
   url: string;
   title: string;
   keywordCount: number;
+  /** True when the sheet is link-viewable (anyone with the link) */
+  sheetShared: boolean;
 }

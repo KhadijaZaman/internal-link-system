@@ -309,6 +309,7 @@ export default function Submissions() {
     query: { queryKey: getGetMovementSheetInfoQueryKey() },
   });
   const movementSheetUrl = sheetInfoQ.data?.url ?? null;
+  const movementSheetShared = sheetInfoQ.data?.shared ?? false;
 
   const createMutation = useCreateTrackedSubmissions();
   const updateMutation = useUpdateTrackedSubmission();
@@ -529,20 +530,33 @@ export default function Submissions() {
           </div>
           <div className="flex items-center gap-2">
             {movementSheetUrl && (
-              <Button
-                variant="ghost"
-                asChild
-                title="Opens this site's persistent daily-movement Google Sheet (refreshed every morning by the daily sync job)"
-              >
-                <a
-                  href={movementSheetUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  asChild
+                  title="Opens this site's persistent daily-movement Google Sheet (refreshed every morning by the daily sync job)"
                 >
-                  <FileSpreadsheet className="h-4 w-4" /> View daily movement
-                  sheet <ExternalLink className="h-3.5 w-3.5" />
-                </a>
-              </Button>
+                  <a
+                    href={movementSheetUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <FileSpreadsheet className="h-4 w-4" /> View daily movement
+                    sheet <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                </Button>
+                {!movementSheetShared && (
+                  <InfoTip>
+                    This sheet lives in the operator's Google account and
+                    hasn't been made link-viewable yet, so Google may show a
+                    "Request access" page. Use that page to request access
+                    with your Google account, or ask the operator to connect
+                    Google Drive in Replit — once connected, every export and
+                    nightly refresh shares the sheet automatically (anyone
+                    with the link can view).
+                  </InfoTip>
+                )}
+              </div>
             )}
             <Button
               variant={showAdd ? "secondary" : "default"}

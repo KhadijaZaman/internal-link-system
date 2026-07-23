@@ -11,6 +11,7 @@ import {
 import {
   exportKeywordMovementSheet,
   getStoredSheetUrl,
+  isStoredSheetShared,
   NoTrackedKeywordsError,
 } from "../services/keywordMovementSheet";
 import {
@@ -217,8 +218,11 @@ router.get(
   requireSite,
   async (req, res) => {
     const site = getSite(req);
-    const url = await getStoredSheetUrl(site.id);
-    res.json({ url });
+    const [url, shared] = await Promise.all([
+      getStoredSheetUrl(site.id),
+      isStoredSheetShared(site.id),
+    ]);
+    res.json({ url, shared });
   },
 );
 

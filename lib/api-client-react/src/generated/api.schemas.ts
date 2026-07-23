@@ -1130,12 +1130,16 @@ export interface SubmissionsSheetExportInput {
 export interface MovementSheetInfo {
   /** @nullable */
   url: string | null;
+  /** True when the sheet is link-viewable (anyone with the link), so owners won't hit Google's "Request access" page */
+  shared: boolean;
 }
 
 export interface SubmissionsSheetExportResult {
   url: string;
   title: string;
   keywordCount: number;
+  /** True when the sheet is link-viewable (anyone with the link) */
+  sheetShared: boolean;
 }
 
 export interface TrackedQueryRow {

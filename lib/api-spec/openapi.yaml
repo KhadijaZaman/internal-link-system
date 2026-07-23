@@ -3080,16 +3080,22 @@ components:
           default: 90
     MovementSheetInfo:
       type: object
-      required: [url]
+      required: [url, shared]
       properties:
         url: { type: ["string", "null"] }
+        shared:
+          type: boolean
+          description: True when the sheet is link-viewable (anyone with the link), so owners won't hit Google's "Request access" page
     SubmissionsSheetExportResult:
       type: object
-      required: [url, title, keywordCount]
+      required: [url, title, keywordCount, sheetShared]
       properties:
         url: { type: string }
         title: { type: string }
         keywordCount: { type: integer }
+        sheetShared:
+          type: boolean
+          description: True when the sheet is link-viewable (anyone with the link)
     TrackedQueryRow:
       type: object
       required: [query, clicks, impressions, ctr, position, isTracked]
