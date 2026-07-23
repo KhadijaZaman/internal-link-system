@@ -153,6 +153,10 @@ const MAX_ATTEMPTS = 5; // per user|ip
 const MAX_ATTEMPTS_PER_IP = 10; // across all accounts from one IP
 const MAX_ATTEMPTS_GLOBAL = 30; // endpoint-wide, all users and IPs combined
 const WINDOW_MS = 15 * 60 * 1000;
+// Exponential backoff: each exhausted window doubles the next lockout,
+// capped at 16x the base window (15m → 30m → 1h → 2h → 4h).
+const MAX_STRIKES = 4;
+const MAX_LOCKOUT_MS = WINDOW_MS * 2 ** MAX_STRIKES;
 
 // Once claimed, the endpoint is permanently disabled (410). In-memory flag is
 // a fast-path; the DB ownership check below remains authoritative across
@@ -163,15 +167,36 @@ let legacyClaimed = false;
 // its budget. The counters live in the claim_attempts table so restarts and
 // Autoscale instance recycling never reset the budget. When the fixed window
 // has elapsed the counter resets to 1 and a fresh window begins.
+// Exponential backoff on top of the fixed window: the first time an attempt
+// pushes the counter past its budget, the key earns a "strike" and the
+// current window is extended to WINDOW_MS * 2^strikes (capped at
+// MAX_LOCKOUT_MS). Further attempts during the lockout do NOT extend it
+// again (count is already past max+1), so an attacker cannot lock a shared
+// key forever, but each fully exhausted window doubles the next lockout.
+// Strikes persist in the same claim_attempts row across restarts.
 async function bumpAndCheck(key: string, max: number): Promise<boolean> {
   const rows = await db
     .insert(claimAttemptsTable)
-    .values({ key, count: 1, resetAt: sql`now() + make_interval(secs => ${WINDOW_MS / 1000})` })
+    .values({
+      key,
+      count: 1,
+      strikes: 0,
+      resetAt: sql`now() + make_interval(secs => ${WINDOW_MS / 1000})`,
+    })
     .onConflictDoUpdate({
       target: claimAttemptsTable.key,
       set: {
         count: sql`CASE WHEN ${claimAttemptsTable.resetAt} <= now() THEN 1 ELSE ${claimAttemptsTable.count} + 1 END`,
-        resetAt: sql`CASE WHEN ${claimAttemptsTable.resetAt} <= now() THEN now() + make_interval(secs => ${WINDOW_MS / 1000}) ELSE ${claimAttemptsTable.resetAt} END`,
+        strikes: sql`CASE
+          WHEN ${claimAttemptsTable.resetAt} <= now() THEN ${claimAttemptsTable.strikes}
+          WHEN ${claimAttemptsTable.count} + 1 = ${max + 1} THEN LEAST(${claimAttemptsTable.strikes} + 1, ${MAX_STRIKES})
+          ELSE ${claimAttemptsTable.strikes}
+        END`,
+        resetAt: sql`CASE
+          WHEN ${claimAttemptsTable.resetAt} <= now() THEN now() + make_interval(secs => ${WINDOW_MS / 1000})
+          WHEN ${claimAttemptsTable.count} + 1 = ${max + 1} THEN now() + make_interval(secs => ${WINDOW_MS / 1000} * LEAST(POWER(2, ${claimAttemptsTable.strikes} + 1), ${2 ** MAX_STRIKES}))
+          ELSE ${claimAttemptsTable.resetAt}
+        END`,
       },
     })
     .returning({ count: claimAttemptsTable.count });
@@ -183,8 +208,10 @@ async function bumpAndCheck(key: string, max: number): Promise<boolean> {
 // endpoint-wide cap. All three counters are bumped on every attempt.
 async function rateLimited(userId: string, ip: string): Promise<boolean> {
   // Opportunistic cleanup of long-expired counter rows (fire-and-forget).
+  // Rows are kept for the maximum lockout after expiry so accumulated
+  // strikes (escalating-backoff history) only decay after a long quiet gap.
   db.delete(claimAttemptsTable)
-    .where(lt(claimAttemptsTable.resetAt, sql`now() - make_interval(secs => ${WINDOW_MS / 1000})`))
+    .where(lt(claimAttemptsTable.resetAt, sql`now() - make_interval(secs => ${MAX_LOCKOUT_MS / 1000})`))
     .catch(() => {});
   const [perUser, perIp, global] = await Promise.all([
     bumpAndCheck(`u|${userId}|${ip}`, MAX_ATTEMPTS),

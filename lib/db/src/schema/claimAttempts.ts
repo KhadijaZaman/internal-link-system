@@ -9,6 +9,14 @@ export const claimAttemptsTable = pgTable("claim_attempts", {
   key: text("key").primaryKey(),
   count: integer("count").notNull(),
   resetAt: timestamp("reset_at", { withTimezone: true }).notNull(),
+  /**
+   * Consecutive exhausted windows for this key. Each strike doubles the next
+   * lockout (exponential backoff), capped in route code. Not reset when a
+   * fresh window starts, so a patient attacker keeps paying the longer
+   * lockout; it only decays when the row is garbage-collected after sitting
+   * expired for longer than the maximum lockout.
+   */
+  strikes: integer("strikes").notNull().default(0),
 });
 
 export type ClaimAttempt = typeof claimAttemptsTable.$inferSelect;
