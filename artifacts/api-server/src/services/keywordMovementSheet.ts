@@ -15,7 +15,7 @@
 // rolls forward every day instead of going stale.
 import { db, trackedSubmissionsTable, appStateTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { LEGACY_SITE_ID } from "../lib/site";
+import { LEGACY_SITE_ID, type SiteContext } from "../lib/site";
 import {
   queryGscDimension,
   pageVariantsRegex,
@@ -308,12 +308,13 @@ async function fetchExistingSheet(id: string): Promise<ExistingSheetMeta | null>
 
 export async function exportKeywordMovementSheet(
   days: number,
-  siteId: number,
+  site: Pick<SiteContext, "id" | "displayName">,
 ): Promise<{
   url: string;
   title: string;
   keywordCount: number;
 }> {
+  const siteId = site.id;
   const subs = await db
     .select()
     .from(trackedSubmissionsTable)
@@ -367,7 +368,10 @@ export async function exportKeywordMovementSheet(
   const sortedSummaries = order.map((o) => o.s);
 
   const rangeLabel = days === 90 ? "3mo" : `${days}d`;
-  const title = `Wellows — Target Keyword Daily Movement (${startDate} to ${endDate})`;
+  // Legacy site keeps the exact historical title the operator bookmarked.
+  const titlePrefix =
+    siteId === LEGACY_SITE_ID ? "Wellows" : site.displayName || `Site ${siteId}`;
+  const title = `${titlePrefix} — Target Keyword Daily Movement (${startDate} to ${endDate})`;
   const tabTitles = dedupeTabTitles(
     sortedSeries.map((s) => sanitizeTabTitle(s.keyword)),
   );

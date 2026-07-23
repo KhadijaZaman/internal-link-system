@@ -217,7 +217,7 @@ router.post("/tracked-submissions/export-sheet", requireAuth, requireSite, async
   }
   const days = parsed.data.days ?? 90;
   try {
-    const result = await exportKeywordMovementSheet(days, site.id);
+    const result = await exportKeywordMovementSheet(days, site);
     req.log.info(
       { keywordCount: result.keywordCount, days },
       "exported keyword movement sheet",

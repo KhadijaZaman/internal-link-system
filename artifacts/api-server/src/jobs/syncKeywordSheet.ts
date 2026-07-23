@@ -1,32 +1,28 @@
-// Daily refresh of the persistent "Target Keyword Daily Movement" Google
-// Sheet. GSC + Sheets only — no crawling, no paid fetches, no AI (see the
-// tracked-submissions cost rule). No-ops when no tracked URL has a keyword.
+// Daily refresh of the per-site persistent "Target Keyword Daily Movement"
+// Google Sheet. GSC + Sheets only — no crawling, no paid fetches, no AI (see
+// the tracked-submissions cost rule). No-ops when no tracked URL has a keyword.
+// Each site has its own spreadsheet id (app_state key keyword_movement_sheet_id
+// for the legacy site, keyword_movement_sheet_id:<siteId> for others).
 import {
   exportKeywordMovementSheet,
   NoTrackedKeywordsError,
 } from "../services/keywordMovementSheet";
-import { LEGACY_SITE_ID, type SiteContext } from "../lib/site";
+import type { SiteContext } from "../lib/site";
 import { logger } from "../lib/logger";
 
 export async function runSyncKeywordSheet(site: SiteContext): Promise<void> {
-  // The persistent movement sheet is legacy-bound (a single operator-owned
-  // spreadsheet keyed on the legacy site). Non-legacy sites are a no-op.
-  if (site.id !== LEGACY_SITE_ID) {
-    logger.info(
-      { siteId: site.id },
-      "sync_keyword_sheet skipped — legacy-bound sheet, non-legacy site",
-    );
-    return;
-  }
   try {
-    const result = await exportKeywordMovementSheet(90, site.id);
+    const result = await exportKeywordMovementSheet(90, site);
     logger.info(
-      { keywordCount: result.keywordCount, title: result.title },
+      { siteId: site.id, keywordCount: result.keywordCount, title: result.title },
       "Keyword movement sheet refreshed",
     );
   } catch (e) {
     if (e instanceof NoTrackedKeywordsError) {
-      logger.info("sync_keyword_sheet skipped — no tracked keywords");
+      logger.info(
+        { siteId: site.id },
+        "sync_keyword_sheet skipped — no tracked keywords",
+      );
       return;
     }
     throw e;
