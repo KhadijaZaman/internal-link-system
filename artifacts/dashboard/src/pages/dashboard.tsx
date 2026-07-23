@@ -95,7 +95,17 @@ const BUDGET_KIND_LABELS: Record<string, string> = {
   crawlPages: "crawled pages",
 };
 
-function SpendCapBadge({ budget, testId }: { budget: JobBudgetUsage; testId: string }) {
+function SpendCapBadge({
+  budget,
+  testId,
+  onRunAgain,
+  runDisabled,
+}: {
+  budget: JobBudgetUsage;
+  testId: string;
+  onRunAgain?: () => void;
+  runDisabled?: boolean;
+}) {
   const capped = budget.kinds.filter((k) => k.capHit);
   if (capped.length === 0) return null;
   const detail = capped
@@ -107,10 +117,23 @@ function SpendCapBadge({ budget, testId }: { budget: JobBudgetUsage; testId: str
       data-testid={testId}
     >
       <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
-      <span className="leading-snug">
+      <div className="flex-1 leading-snug">
         <span className="font-semibold">Hit spend cap</span> — stopped early at {detail}. Results are
         partial; run again to continue, or raise the site's per-run limits.
-      </span>
+        {onRunAgain && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-1.5 flex h-6 px-2 text-[11px] border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 bg-amber-100/50 dark:bg-amber-950/50 hover:bg-amber-100 hover:text-amber-900 dark:hover:bg-amber-900/50"
+            onClick={onRunAgain}
+            disabled={runDisabled}
+            data-testid={`${testId}-run-again`}
+          >
+            <Activity className="h-3 w-3 mr-1.5" />
+            Run again
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -853,7 +876,12 @@ export default function Dashboard() {
                   </div>
                 )}
                 {pipelineHistory?.lastBudget?.capped && (
-                  <SpendCapBadge budget={pipelineHistory.lastBudget} testId="badge-spend-cap-pipeline" />
+                  <SpendCapBadge
+                    budget={pipelineHistory.lastBudget}
+                    testId="badge-spend-cap-pipeline"
+                    onRunAgain={() => handleRunJob(PIPELINE_JOB)}
+                    runDisabled={pipelineRunning || anyJobRunning || runJob.isPending}
+                  />
                 )}
                 {pipelineHistory?.lastError && (
                   <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/30 p-2 rounded-md border border-red-200 dark:border-red-900 mt-2 line-clamp-2">
@@ -919,7 +947,16 @@ export default function Dashboard() {
                       {(() => {
                         const budget = live?.lastBudget ?? job.lastBudget;
                         return budget?.capped ? (
-                          <SpendCapBadge budget={budget} testId={`badge-spend-cap-${job.name}`} />
+                          <SpendCapBadge
+                            budget={budget}
+                            testId={`badge-spend-cap-${job.name}`}
+                            onRunAgain={
+                              isRunnableJobName(job.name)
+                                ? () => handleRunJob(job.name as RunnableJobName)
+                                : undefined
+                            }
+                            runDisabled={isRunning || runJob.isPending}
+                          />
                         ) : null;
                       })()}
                     </div>
