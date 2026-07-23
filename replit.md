@@ -25,7 +25,7 @@ _Replace the heading above with the project's name, and this line with one sente
 ## Where things live
 
 - `artifacts/api-server/src/lib/auth.ts` — Clerk session verification: `requireAuth` sets `req.userId` and lazily upserts the local `users` row
-- `artifacts/api-server/src/lib/site.ts` — multi-tenancy core: `requireSite` (X-Site-Id header + ownership check → `req.site`, read via `getSite`/`getSiteId`), `requireLegacySiteOwner` (gates legacy-bound spend/data surfaces: job triggers, GSC bulk queries, content writer), `getLegacySite()` for background jobs, 30s in-memory site cache invalidated on claim
+- `artifacts/api-server/src/lib/site.ts` — multi-tenancy core: `requireSite` (X-Site-Id header + ownership check → `req.site`, read via `getSite`/`getSiteId`), `requireLegacySiteOwner` (gates remaining legacy-bound surfaces: GSC bulk queries, content writer), `listSchedulableSites()` for the job scheduler, 30s in-memory site cache invalidated on claim
 - `artifacts/api-server/src/routes/sites.ts` — `GET /api/sites` (user's sites) + `POST /api/sites/claim-legacy` (old admin password, timing-safe SHA-256 compare, rate-limited, single-claim via conditional UPDATE)
 - `lib/db/src/schema/siteIntegrations.ts` + `artifacts/api-server/src/lib/siteIntegrations.ts` — per-site data-source credentials (`site_integrations` table: provider gsc/ga4/bing, credentials+config jsonb, unique(siteId,provider)); resolvers `getGscCreds`/`getGa4Creds`/`getBingApiKey(siteId)` prefer the per-site row and fall back to env vars ONLY for legacy site id 1; 30s cache invalidated on connect/disconnect
 - `artifacts/api-server/src/routes/integrations.ts` — `/api/integrations` status + connect endpoints: GSC via shared Google OAuth app (GSC_CLIENT_ID/SECRET) with HMAC-signed state {siteId,userId,exp} (public callback, auto-matches property to site host), GA4 pasted service-account JSON (verified live before store), Bing pasted API key (verified live); credentials are never returned by any endpoint
@@ -74,10 +74,13 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-- `requireAuth` means "any self-registered Clerk user", NOT "the operator" — every new data route must also mount `requireSite` (and filter every query by `eq(table.siteId, site.id)`); spend-bearing or legacy-bound surfaces (job triggers, GSC bulk queries, content writer) must use `requireLegacySiteOwner`
+- `requireAuth` means "any self-registered Clerk user", NOT "the operator" — every new data route must also mount `requireSite` (and filter every query by `eq(table.siteId, site.id)`); remaining legacy-bound surfaces (GSC bulk queries, content writer) must use `requireLegacySiteOwner`
 - All `withCache` keys on site-scoped routes must be prefixed `s${site.id}|` or responses leak across tenants
-- Background jobs are legacy-site-only (`getLegacySite()`) until per-site job scheduling lands; new job code must thread the site through explicitly, never assume a global site
-- `job_runs` is keyed `(name, site_id)` — every runner/pipeline read+write must include `siteId` (currently `LEGACY_SITE_ID`) in values, `where`, and `onConflict` targets, or upserts hit the wrong composite key
+- Background jobs are per-site: every job fn takes `site: SiteContext` as its first param; crons iterate owned sites sequentially via `runJobForAllSites` (scheduler.ts); the running-lock and `job_runs` rows are keyed `name:siteId`. Never call `getLegacySite()` in job code — it only remains for legacy integration edge cases
+- Spend-bearing jobs must gate paid work through `lib/jobBudget.ts` (`budgetForSite(site)` → `take("llmCalls" | "serpQueries" | "crawlPages")`); per-site caps live on the sites table (maxCrawlPages/maxLlmCallsPerRun/maxSerpQueriesPerRun). When a cap trims a crawl set, skip reconcile-deletes (a truncated set would mass-delete inventory)
+- Manual job triggers (`POST /api/jobs/:name/run`) are `requireSite` (any site owner), no longer `requireLegacySiteOwner`; job status is per-site via `loadJobStatuses(siteId)`
+- `sync_keyword_sheet` is a graceful no-op for non-legacy sites (the persistent Google Sheet is legacy-bound)
+- `job_runs` is keyed `(name, site_id)` — every runner/pipeline read+write must include the job's `site.id` in values, `where`, and `onConflict` targets, or upserts hit the wrong composite key
 - Raw `fetch` calls in the dashboard (outside generated hooks) must manually attach the `x-site-id` header via `getActiveSiteId()` (see ask.tsx SSE stream, bulk-queries.tsx)
 - Every ingestion path (GSC, GA4, crawler, WordPress sync) and every live read that joins on URL/path MUST go through `urlCanon.ts` (`canonicalPath` + blocklist) — never store or compare raw URLs
 - When rows collapse onto one canonical path, metrics must be MERGED (sum clicks/impressions, impression-weighted position), never overwritten

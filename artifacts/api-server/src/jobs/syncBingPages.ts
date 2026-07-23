@@ -12,7 +12,7 @@ import {
   loadBlockRegexes,
 } from "../lib/urlCanon";
 import { withDbRetry } from "../lib/dbRetry";
-import { getLegacySite } from "../lib/site";
+import type { SiteContext } from "../lib/site";
 import { logger } from "../lib/logger";
 
 /**
@@ -28,9 +28,7 @@ import { logger } from "../lib/logger";
  * clicks/impressions, impression-weighted position). Rollups are UPDATE-only
  * — Bing pages never grow the registry.
  */
-export async function runSyncBingPages(): Promise<void> {
-  // Bing sync stays legacy-site-only until per-site job scheduling (task #20).
-  const site = await getLegacySite();
+export async function runSyncBingPages(site: SiteContext): Promise<void> {
   const [pageRows, queryRows, blockRegexes] = await Promise.all([
     fetchBingPageStats(site.id, site.host),
     fetchBingQueryStats(site.id, site.host),

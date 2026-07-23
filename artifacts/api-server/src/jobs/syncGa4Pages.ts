@@ -2,7 +2,7 @@ import { db, pagesTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { queryGa4Pages } from "../integrations/ga4";
 import { withDbRetry } from "../lib/dbRetry";
-import { getLegacySite } from "../lib/site";
+import type { SiteContext } from "../lib/site";
 import { logger } from "../lib/logger";
 
 function dateOffset(days: number): string {
@@ -18,9 +18,7 @@ function dateOffset(days: number): string {
  * WP/GSC/sitemap ingestion paths, all of which share the canonical
  * normalizer, so GA4 paths join cleanly here.
  */
-export async function runSyncGa4Pages(): Promise<void> {
-  // GA4 sync stays legacy-site-only until per-site job scheduling lands.
-  const site = await getLegacySite();
+export async function runSyncGa4Pages(site: SiteContext): Promise<void> {
   const startDate = dateOffset(28);
   const endDate = dateOffset(1);
   // channel:"all" — stored rollups are all-channel totals; the per-channel

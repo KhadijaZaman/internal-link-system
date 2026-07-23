@@ -14,7 +14,7 @@ import {
   mergeMetricRows,
 } from "../lib/urlCanon";
 import { sectionFor } from "../lib/sections";
-import { getLegacySite } from "../lib/site";
+import type { SiteContext } from "../lib/site";
 import { chainActionQueueRecompute } from "../services/actionQueue";
 import { logger } from "../lib/logger";
 
@@ -103,9 +103,7 @@ function collapseRows(
   return out;
 }
 
-export async function runGscInventoryAndLosers(): Promise<void> {
-  // GSC ingestion stays legacy-site-only until per-site job scheduling lands.
-  const site = await getLegacySite();
+export async function runGscInventoryAndLosers(site: SiteContext): Promise<void> {
   // GSC data for the most recent ~2-3 days is incomplete (processing lag), so
   // both windows end 3 days back. 7-day windows keep weekday mix identical.
   const currStart = dateOffset(9);

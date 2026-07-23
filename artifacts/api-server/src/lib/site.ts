@@ -19,6 +19,10 @@ export interface SiteContext {
   host: string;
   displayName: string;
   sitemapUrl: string | null;
+  // Per-site job guardrails (spend caps), enforced per job run.
+  maxCrawlPages: number;
+  maxLlmCallsPerRun: number;
+  maxSerpQueriesPerRun: number;
 }
 
 export interface SiteScopedRequest extends AuthedRequest {
@@ -48,6 +52,9 @@ async function fetchSite(siteId: number): Promise<SiteContext | undefined> {
       host: sitesTable.host,
       displayName: sitesTable.displayName,
       sitemapUrl: sitesTable.sitemapUrl,
+      maxCrawlPages: sitesTable.maxCrawlPages,
+      maxLlmCallsPerRun: sitesTable.maxLlmCallsPerRun,
+      maxSerpQueriesPerRun: sitesTable.maxSerpQueriesPerRun,
     })
     .from(sitesTable)
     .where(eq(sitesTable.id, siteId))
@@ -139,9 +146,9 @@ export function requireLegacySiteOwner(
 }
 
 /**
- * The migrated legacy site (id 1). Background jobs are legacy-only until
- * per-site job scheduling lands (task #20); they resolve this once at start
- * and thread it through explicitly.
+ * The migrated legacy site (id 1). Kept for legacy-bound integrations (e.g.
+ * the persistent keyword-movement Google Sheet). Background jobs are now
+ * per-site — new job code must take the site as a parameter, never call this.
  */
 export async function getLegacySite(): Promise<SiteContext> {
   const site = await fetchSite(LEGACY_SITE_ID);
@@ -149,4 +156,30 @@ export async function getLegacySite(): Promise<SiteContext> {
     throw new Error("Legacy site (id 1) not found — migration has not run");
   }
   return site;
+}
+
+/**
+ * All sites eligible for scheduled background jobs: claimed (owned) sites.
+ * A site whose integrations aren't configured will simply fail its own run;
+ * failures are isolated per site by the scheduler.
+ */
+export async function listSchedulableSites(): Promise<SiteContext[]> {
+  const { db, sitesTable } = await import("@workspace/db");
+  const { isNotNull, asc } = await import("drizzle-orm");
+  const rows = await db
+    .select({
+      id: sitesTable.id,
+      ownerUserId: sitesTable.ownerUserId,
+      domain: sitesTable.domain,
+      host: sitesTable.host,
+      displayName: sitesTable.displayName,
+      sitemapUrl: sitesTable.sitemapUrl,
+      maxCrawlPages: sitesTable.maxCrawlPages,
+      maxLlmCallsPerRun: sitesTable.maxLlmCallsPerRun,
+      maxSerpQueriesPerRun: sitesTable.maxSerpQueriesPerRun,
+    })
+    .from(sitesTable)
+    .where(isNotNull(sitesTable.ownerUserId))
+    .orderBy(asc(sitesTable.id));
+  return rows;
 }

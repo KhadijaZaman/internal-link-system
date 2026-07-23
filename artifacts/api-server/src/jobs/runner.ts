@@ -2,7 +2,7 @@ import { db, jobRunsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { withDbRetry } from "../lib/dbRetry";
-import { LEGACY_SITE_ID } from "../lib/site";
+import type { SiteContext } from "../lib/site";
 
 export type JobName =
   | "crawl_link_map"
@@ -51,10 +51,17 @@ export const ALL_JOBS: JobName[] = [
   "audit_link_quality",
 ];
 
-type JobFn = () => Promise<void>;
+/** Every job function receives the site it must operate on. */
+type JobFn = (site: SiteContext) => Promise<void>;
 
 const registry: Partial<Record<JobName, JobFn>> = {};
-const running = new Set<JobName>();
+// Concurrency lock is per (job, site): the same job may run for two different
+// sites at once, but never twice for the same site.
+const running = new Map<string, { name: JobName; siteId: number }>();
+
+function runKey(name: JobName, siteId: number): string {
+  return `${name}:${siteId}`;
+}
 
 // While a job is running we (a) heartbeat its DB row so other instances /
 // future boots can tell it's alive, and (b) self-ping the public URL in
@@ -84,7 +91,7 @@ async function heartbeatTick(): Promise<void> {
     }
     return;
   }
-  for (const name of running) {
+  for (const { name, siteId } of running.values()) {
     try {
       await withDbRetry(
         () =>
@@ -94,14 +101,14 @@ async function heartbeatTick(): Promise<void> {
             .where(
               and(
                 eq(jobRunsTable.name, name),
-                eq(jobRunsTable.siteId, LEGACY_SITE_ID),
+                eq(jobRunsTable.siteId, siteId),
                 eq(jobRunsTable.lastStatus, "running"),
               ),
             ),
         { label: `job_heartbeat:${name}` },
       );
     } catch (e) {
-      logger.warn({ err: e, jobName: name }, "Job heartbeat update failed");
+      logger.warn({ err: e, jobName: name, siteId }, "Job heartbeat update failed");
     }
   }
   await selfPing();
@@ -126,7 +133,7 @@ async function selfPing(): Promise<void> {
   }
 }
 
-async function recordJobStart(name: JobName): Promise<void> {
+async function recordJobStart(name: JobName, siteId: number): Promise<void> {
   const values = {
     lastRunAt: new Date(),
     lastStatus: "running",
@@ -138,12 +145,12 @@ async function recordJobStart(name: JobName): Promise<void> {
       () =>
         db
           .insert(jobRunsTable)
-          .values({ name, siteId: LEGACY_SITE_ID, ...values })
+          .values({ name, siteId, ...values })
           .onConflictDoUpdate({ target: [jobRunsTable.name, jobRunsTable.siteId], set: values }),
       { label: `record_job_start:${name}` },
     );
   } catch (e) {
-    logger.warn({ err: e, jobName: name }, "Failed to record job start");
+    logger.warn({ err: e, jobName: name, siteId }, "Failed to record job start");
   }
 }
 
@@ -151,12 +158,15 @@ export function registerJob(name: JobName, fn: JobFn): void {
   registry[name] = fn;
 }
 
-export function isRunning(name: JobName): boolean {
-  return running.has(name);
+export function isRunning(name: JobName, siteId: number): boolean {
+  return running.has(runKey(name, siteId));
 }
 
-export async function runJob(name: JobName): Promise<
-  { started: true } | { started: false; reason: string }
+export async function runJob(
+  name: JobName,
+  site: SiteContext,
+): Promise<
+  { started: true; completion: Promise<void> } | { started: false; reason: string }
 > {
   // Hardening: only allow names from the static `ALL_JOBS` allow-list. Without
   // this, a value like "toString" or "constructor" would walk the prototype
@@ -170,20 +180,21 @@ export async function runJob(name: JobName): Promise<
     ? registry[name]
     : undefined;
   if (!fn) return { started: false, reason: `Unknown job ${name}` };
-  if (running.has(name)) return { started: false, reason: "Already running" };
-  running.add(name);
+  const key = runKey(name, site.id);
+  if (running.has(key)) return { started: false, reason: "Already running" };
+  running.set(key, { name, siteId: site.id });
   const startedAt = Date.now();
-  (async () => {
+  const completion = (async () => {
     let status = "ok";
     let err: string | null = null;
     try {
-      await recordJobStart(name);
+      await recordJobStart(name, site.id);
       ensureHeartbeat();
-      await fn();
+      await fn(site);
     } catch (e) {
       status = "error";
       err = e instanceof Error ? `${e.message}\n${e.stack ?? ""}` : String(e);
-      logger.error({ jobName: name, err: e }, "Job failed");
+      logger.error({ jobName: name, siteId: site.id, err: e }, "Job failed");
     } finally {
       const duration = Date.now() - startedAt;
       try {
@@ -197,7 +208,7 @@ export async function runJob(name: JobName): Promise<
           () =>
             db
               .insert(jobRunsTable)
-              .values({ name, siteId: LEGACY_SITE_ID, ...finalValues })
+              .values({ name, siteId: site.id, ...finalValues })
               .onConflictDoUpdate({
                 target: [jobRunsTable.name, jobRunsTable.siteId],
                 set: finalValues,
@@ -207,14 +218,20 @@ export async function runJob(name: JobName): Promise<
       } catch (e) {
         logger.error({ err: e }, "Failed to record job run");
       }
-      running.delete(name);
-      logger.info({ jobName: name, status, durationMs: duration }, "Job complete");
+      running.delete(key);
+      logger.info(
+        { jobName: name, siteId: site.id, status, durationMs: duration },
+        "Job complete",
+      );
     }
   })();
-  return { started: true };
+  // Callers that fire-and-forget must not crash on an unhandled rejection —
+  // the runner already caught and recorded everything.
+  completion.catch(() => {});
+  return { started: true, completion };
 }
 
-export async function loadJobStatuses(): Promise<
+export async function loadJobStatuses(siteId: number): Promise<
   Array<{
     name: string;
     running: boolean;
@@ -227,13 +244,13 @@ export async function loadJobStatuses(): Promise<
   const rows = await db
     .select()
     .from(jobRunsTable)
-    .where(eq(jobRunsTable.siteId, LEGACY_SITE_ID));
+    .where(eq(jobRunsTable.siteId, siteId));
   const map = new Map(rows.map((r) => [r.name, r]));
   const now = Date.now();
   const statuses = [];
   for (const name of ALL_JOBS) {
     const r = map.get(name);
-    let isRunningNow = running.has(name);
+    let isRunningNow = running.has(runKey(name, siteId));
     let lastStatus = r?.lastStatus ?? null;
     let lastError = r?.lastError ?? null;
     if (!isRunningNow && lastStatus === "running") {
@@ -252,12 +269,15 @@ export async function loadJobStatuses(): Promise<
             .where(
               and(
                 eq(jobRunsTable.name, name),
-                eq(jobRunsTable.siteId, LEGACY_SITE_ID),
+                eq(jobRunsTable.siteId, siteId),
                 eq(jobRunsTable.lastStatus, "running"),
               ),
             );
         } catch (e) {
-          logger.warn({ err: e, jobName: name }, "Failed to persist interrupted job status");
+          logger.warn(
+            { err: e, jobName: name, siteId },
+            "Failed to persist interrupted job status",
+          );
         }
       }
     }
@@ -273,11 +293,11 @@ export async function loadJobStatuses(): Promise<
   return statuses;
 }
 
-export async function lastRunAt(name: JobName): Promise<Date | null> {
+export async function lastRunAt(name: JobName, siteId: number): Promise<Date | null> {
   const r = await db
     .select()
     .from(jobRunsTable)
-    .where(and(eq(jobRunsTable.name, name), eq(jobRunsTable.siteId, LEGACY_SITE_ID)))
+    .where(and(eq(jobRunsTable.name, name), eq(jobRunsTable.siteId, siteId)))
     .limit(1);
   return r[0]?.lastRunAt ?? null;
 }

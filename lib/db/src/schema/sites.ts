@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { usersTable } from "./users";
 
 /**
@@ -18,6 +18,10 @@ export const sitesTable = pgTable(
     host: text("host").notNull(), // canonical bare host, e.g. "wellows.com"
     displayName: text("display_name").notNull(),
     sitemapUrl: text("sitemap_url"),
+    // Per-site job guardrails (spend caps). Enforced per job run.
+    maxCrawlPages: integer("max_crawl_pages").notNull().default(2000),
+    maxLlmCallsPerRun: integer("max_llm_calls_per_run").notNull().default(500),
+    maxSerpQueriesPerRun: integer("max_serp_queries_per_run").notNull().default(100),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({

@@ -1,4 +1,4 @@
-import { isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import {
   db,
   wpPostsTable,
@@ -13,7 +13,8 @@ import {
   type LinkingSettings,
 } from "@workspace/db";
 import { chainActionQueueRecompute } from "../services/actionQueue";
-import { getLegacySite } from "../lib/site";
+import type { SiteContext } from "../lib/site";
+import { budgetForSite } from "../lib/jobBudget";
 import { logger } from "../lib/logger";
 import { withDbRetry } from "../lib/dbRetry";
 import { checkContextualConsistency } from "../integrations/claude";
@@ -67,16 +68,28 @@ export function isExcluded(url: string, regexes: RegExp[]): boolean {
   return regexes.some((re) => re.test(path) || re.test(url));
 }
 
-export async function loadSettings(): Promise<LinkingSettings> {
-  const rows = await db.select().from(linkingSettingsTable).limit(1);
+export async function loadSettings(siteId?: number): Promise<LinkingSettings> {
+  const rows = siteId
+    ? await db
+        .select()
+        .from(linkingSettingsTable)
+        .where(eq(linkingSettingsTable.siteId, siteId))
+        .limit(1)
+    : await db.select().from(linkingSettingsTable).limit(1);
   if (rows.length > 0) return rows[0]!;
   const [row] = await db
     .insert(linkingSettingsTable)
-    .values({ id: 1 })
+    .values(siteId ? { id: 1, siteId } : { id: 1 })
     .onConflictDoNothing()
     .returning();
   if (row) return row;
-  const again = await db.select().from(linkingSettingsTable).limit(1);
+  const again = siteId
+    ? await db
+        .select()
+        .from(linkingSettingsTable)
+        .where(eq(linkingSettingsTable.siteId, siteId))
+        .limit(1)
+    : await db.select().from(linkingSettingsTable).limit(1);
   return again[0]!;
 }
 
@@ -181,26 +194,34 @@ export function scorePair(opts: {
   };
 }
 
-export async function runSemanticLinking(): Promise<void> {
+export async function runSemanticLinking(site: SiteContext): Promise<void> {
   logger.info({ crsEnabled: CRS_ENABLED }, "Semantic linking: starting");
-  const settings = await withDbRetry(() => loadSettings(), {
+  const budget = budgetForSite(site);
+  const settings = await withDbRetry(() => loadSettings(site.id), {
     label: "semantic_linking:settings",
   });
   const [posts, classifications, excludes, stats, edges, existingSuggestions] = await withDbRetry(
     () =>
       Promise.all([
-        db.select().from(wpPostsTable).where(isNotNull(wpPostsTable.embedding)),
-        db.select().from(pageClassificationsTable),
-        db.select().from(linkExcludeListTable),
-        db.select().from(linkStatsTable),
-        db.select().from(linkGraphTable),
+        db
+          .select()
+          .from(wpPostsTable)
+          .where(and(eq(wpPostsTable.siteId, site.id), isNotNull(wpPostsTable.embedding))),
+        db
+          .select()
+          .from(pageClassificationsTable)
+          .where(eq(pageClassificationsTable.siteId, site.id)),
+        db.select().from(linkExcludeListTable).where(eq(linkExcludeListTable.siteId, site.id)),
+        db.select().from(linkStatsTable).where(eq(linkStatsTable.siteId, site.id)),
+        db.select().from(linkGraphTable).where(eq(linkGraphTable.siteId, site.id)),
         db
           .select({
             donorUrl: linkSuggestionsTable.donorUrl,
             receiverUrl: linkSuggestionsTable.receiverUrl,
             status: linkSuggestionsTable.status,
           })
-          .from(linkSuggestionsTable),
+          .from(linkSuggestionsTable)
+          .where(eq(linkSuggestionsTable.siteId, site.id)),
       ]),
     { label: "semantic_linking:reads" },
   );
@@ -383,6 +404,13 @@ export async function runSemanticLinking(): Promise<void> {
   if (CRS_ENABLED) {
     let dropped = 0;
     for (const p of top) {
+      if (!budget.take("llmCalls")) {
+        logger.warn(
+          { checked: top.length },
+          "Semantic linking: LLM budget exhausted, stopping CRS gate",
+        );
+        break;
+      }
       const verdict = await checkContextualConsistency({
         donorExcerpt: p.donor.post.bodyText ?? "",
         targetUrl: p.receiver.post.url,
@@ -415,6 +443,7 @@ export async function runSemanticLinking(): Promise<void> {
           db
             .insert(linkSuggestionsTable)
             .values({
+              siteId: site.id,
               donorUrl: p.donor.post.url,
               receiverUrl: p.receiver.post.url,
               anchorText: p.anchorPrimary,
@@ -443,8 +472,10 @@ export async function runSemanticLinking(): Promise<void> {
   }
   logger.info({ inserted, suppressed: suppressedPairs.size }, "Semantic linking: done");
 
+  if (budget.anyExhausted()) {
+    logger.warn({ budget: budget.summary() }, "Semantic linking: budget exhausted");
+  }
+
   // New pending suggestions feed the action queue — refresh it.
-  // Legacy-site-only until per-site job scheduling lands.
-  const site = await getLegacySite();
   await chainActionQueueRecompute("semantic_linking", site.id);
 }

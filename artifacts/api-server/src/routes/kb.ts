@@ -112,7 +112,7 @@ router.post("/kb/documents", requireAuth, requireSite, async (req, res) => {
 
   // Fire-and-forget: the job drain-loops until no pending documents remain,
   // so "Already running" is fine — the running instance will pick this up.
-  const startResult = await runJob("embed_kb_chunks");
+  const startResult = await runJob("embed_kb_chunks", site);
   req.log.info(
     {
       documentId: doc.id,

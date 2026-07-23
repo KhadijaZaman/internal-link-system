@@ -1,5 +1,5 @@
 import cron from "node-cron";
-import { registerJob, runJob } from "./runner";
+import { registerJob, runJob, type JobName } from "./runner";
 import { runCrawlLinkMap } from "./crawlLinkMap";
 import { runGscInventoryAndLosers } from "./gscInventory";
 import { runOptimizeQueuedUrls } from "./optimizeUrls";
@@ -18,6 +18,7 @@ import { runAnalyzeSimilarity } from "./analyzeSimilarity";
 import { runSyncBingPages } from "./syncBingPages";
 import { runGenerateTopicalMap } from "./generateTopicalMap";
 import { runAuditLinkQuality } from "./auditLinkQuality";
+import { listSchedulableSites } from "../lib/site";
 import { logger } from "../lib/logger";
 
 export function setupJobs(): void {
@@ -27,7 +28,7 @@ export function setupJobs(): void {
   // registered. The semantic linking engine (semantic-v1) replaces it.
   // Legacy suggestion rows are preserved in the DB tagged engineVersion=legacy-v0.
   registerJob("optimize_queued_urls", runOptimizeQueuedUrls);
-  registerJob("crawl_wordpress", runCrawlWordpress);
+  registerJob("crawl_wordpress", (site) => runCrawlWordpress(site));
   registerJob("reembed_wordpress", runReembedAll);
   registerJob("semantic_linking", runSemanticLinking);
   registerJob("audit_orphans", runAuditOrphans);
@@ -64,20 +65,57 @@ export function setupJobs(): void {
   registerJob("audit_link_quality", runAuditLinkQuality);
 }
 
+/**
+ * Run a scheduled job for every claimed site, one site at a time. Sequential
+ * so N sites never multiply concurrent external-API load, and each site's
+ * failure is recorded on its own job_runs row without blocking the next site
+ * (runJob catches, records, and never rethrows).
+ */
+export async function runJobForAllSites(name: JobName): Promise<void> {
+  let sites;
+  try {
+    sites = await listSchedulableSites();
+  } catch (e) {
+    logger.error({ err: e, jobName: name }, "Scheduler: failed to list sites");
+    return;
+  }
+  if (sites.length === 0) {
+    logger.info({ jobName: name }, "Scheduler: no claimed sites; skipping");
+    return;
+  }
+  for (const site of sites) {
+    try {
+      const result = await runJob(name, site);
+      if (result.started) {
+        await result.completion;
+      } else {
+        logger.warn(
+          { jobName: name, siteId: site.id, reason: result.reason },
+          "Scheduler: job not started for site",
+        );
+      }
+    } catch (e) {
+      // Defensive: runJob shouldn't throw, but one site must never block the rest.
+      logger.error({ err: e, jobName: name, siteId: site.id }, "Scheduler: site run failed");
+    }
+  }
+}
+
 export function startScheduler(): void {
+  const all = (name: JobName) => () => void runJobForAllSites(name);
   // Sunday 02:00 UTC — WordPress crawl (replaces sitemap-only crawl)
-  cron.schedule("0 2 * * 0", () => void runJob("crawl_wordpress"), { timezone: "UTC" });
+  cron.schedule("0 2 * * 0", all("crawl_wordpress"), { timezone: "UTC" });
   // Monday 03:00 UTC
-  cron.schedule("0 3 * * 1", () => void runJob("gsc_inventory_and_losers"), { timezone: "UTC" });
+  cron.schedule("0 3 * * 1", all("gsc_inventory_and_losers"), { timezone: "UTC" });
   // Monday 03:30 UTC — GA4 rollups after the GSC sync has refreshed pages
-  cron.schedule("30 3 * * 1", () => void runJob("sync_ga4_pages"), { timezone: "UTC" });
+  cron.schedule("30 3 * * 1", all("sync_ga4_pages"), { timezone: "UTC" });
   // Tuesday 06:00 UTC — semantic linking engine (SOP §7.2). This replaces
   // the legacy `find_link_suggestions` Claude-only weekly job.
-  cron.schedule("0 6 * * 2", () => void runJob("semantic_linking"), { timezone: "UTC" });
+  cron.schedule("0 6 * * 2", all("semantic_linking"), { timezone: "UTC" });
   // Weekly audits — Thursday 07:00–09:00 UTC, staggered
-  cron.schedule("0 7 * * 4", () => void runJob("audit_orphans"), { timezone: "UTC" });
-  cron.schedule("0 8 * * 4", () => void runJob("audit_over_linked"), { timezone: "UTC" });
-  cron.schedule("0 9 * * 4", () => void runJob("audit_broken_links"), { timezone: "UTC" });
+  cron.schedule("0 7 * * 4", all("audit_orphans"), { timezone: "UTC" });
+  cron.schedule("0 8 * * 4", all("audit_over_linked"), { timezone: "UTC" });
+  cron.schedule("0 9 * * 4", all("audit_broken_links"), { timezone: "UTC" });
   // NOTE: `optimize_queued_urls` (brief generation) is NO LONGER on a cron.
   // Briefs are an on-demand, paid-token operation — they only run when an
   // admin explicitly clicks "Run now" on the dashboard or POSTs to
@@ -91,22 +129,22 @@ export function startScheduler(): void {
   // "partial" docs (per-chunk embed failures) an automatic retry. It exits
   // immediately when there is nothing to do, so the cost of the cron is one
   // cheap SELECT.
-  cron.schedule("*/10 * * * *", () => void runJob("embed_kb_chunks"), { timezone: "UTC" });
+  cron.schedule("*/10 * * * *", all("embed_kb_chunks"), { timezone: "UTC" });
   // Monthly: 1st of month 01:00 UTC — full re-embed (also re-crawls + re-classifies)
-  cron.schedule("0 1 1 * *", () => void runJob("reembed_wordpress"), { timezone: "UTC" });
+  cron.schedule("0 1 1 * *", all("reembed_wordpress"), { timezone: "UTC" });
   // Sitemap crawl kept as fallback weekly cross-check, Saturday 02:00 UTC
-  cron.schedule("0 2 * * 6", () => void runJob("crawl_link_map"), { timezone: "UTC" });
+  cron.schedule("0 2 * * 6", all("crawl_link_map"), { timezone: "UTC" });
   // Daily 06:00 UTC — refresh the persistent keyword-movement Google Sheet
   // (GSC daily data through today-2 is settled by then).
-  cron.schedule("0 6 * * *", () => void runJob("sync_keyword_sheet"), { timezone: "UTC" });
+  cron.schedule("0 6 * * *", all("sync_keyword_sheet"), { timezone: "UTC" });
   // Friday 10:00 UTC — weekly digest (after Thursday's audits have refreshed signals)
-  cron.schedule("0 10 * * 5", () => void runJob("weekly_digest"), { timezone: "UTC" });
+  cron.schedule("0 10 * * 5", all("weekly_digest"), { timezone: "UTC" });
   // Daily 04:00 UTC — Bing Webmaster stats (free API, one key; full-window
   // delete+reinsert so daily cadence just keeps the rolling window fresh).
-  cron.schedule("0 4 * * *", () => void runJob("sync_bing_pages"), { timezone: "UTC" });
+  cron.schedule("0 4 * * *", all("sync_bing_pages"), { timezone: "UTC" });
   logger.info(
     "Cron schedules registered (UTC: Sun02 WP crawl, Mon03 GSC, Tue06 semantic_linking, " +
       "Thu07/08/09 audits (orphans/over_linked/broken_links), Sat02 sitemap, monthly-01 reembed). " +
-      "optimize_queued_urls is on-demand only — no cron.",
+      "Jobs run per claimed site, sequentially. optimize_queued_urls is on-demand only — no cron.",
   );
 }

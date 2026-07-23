@@ -21,7 +21,8 @@ import {
   loadBlockRegexes,
 } from "../lib/urlCanon";
 import { sectionFor } from "../lib/sections";
-import { getLegacySite } from "../lib/site";
+import { LEGACY_SITE_ID, type SiteContext } from "../lib/site";
+import { budgetForSite } from "../lib/jobBudget";
 import { chainActionQueueRecompute } from "../services/actionQueue";
 import { logger } from "../lib/logger";
 
@@ -373,17 +374,39 @@ export async function recomputeStats(siteId: number): Promise<void> {
   }
 }
 
-export async function runCrawlLinkMap(): Promise<void> {
-  // Link-map crawl stays legacy-site-only until per-site job scheduling lands.
-  const site = await getLegacySite();
-  const domain = getDomain();
-  const sitemapUrl = getSitemap();
+export async function runCrawlLinkMap(site: SiteContext): Promise<void> {
+  const budget = budgetForSite(site);
+  // Allowed-domain guard is per-site. The legacy site keeps its env-configured
+  // domain; every other site derives the allowed host from its own record.
+  const domain = site.id === LEGACY_SITE_ID ? getDomain() : site.host;
+  // Sitemap URL is per-site. Legacy falls back to the env config; any other
+  // site MUST have its own sitemapUrl configured.
+  const sitemapUrl =
+    site.sitemapUrl ??
+    (site.id === LEGACY_SITE_ID
+      ? getSitemap()
+      : (() => {
+          throw new Error(
+            `Site ${site.id} (${site.host}) has no sitemapUrl configured; cannot crawl link map`,
+          );
+        })());
   if (!isAllowedUrl(sitemapUrl, domain)) {
-    throw new Error(`SITEMAP_URL "${sitemapUrl}" is not allowed for domain "${domain}"`);
+    throw new Error(`Sitemap URL "${sitemapUrl}" is not allowed for domain "${domain}"`);
   }
   logger.info({ sitemapUrl }, "Crawl: fetching sitemap");
-  const allUrls = await fetchSitemapUrls(sitemapUrl, domain);
+  let allUrls = await fetchSitemapUrls(sitemapUrl, domain);
   logger.info({ count: allUrls.length }, "Crawl: sitemap urls");
+
+  // Spend cap: never process more than the site's crawlPages budget per run.
+  if (!budget.take("crawlPages", allUrls.length)) {
+    const cap = budget.remaining("crawlPages");
+    logger.warn(
+      { total: allUrls.length, cap },
+      "Crawl: trimming sitemap URLs to crawlPages budget",
+    );
+    allUrls = allUrls.slice(0, cap);
+    budget.take("crawlPages", allUrls.length);
+  }
 
   await db
     .insert(crawlProgressTable)
@@ -520,4 +543,8 @@ export async function runCrawlLinkMap(): Promise<void> {
 
   // Orphan/dead-end flags may have changed — refresh the action queue.
   await chainActionQueueRecompute("crawl_link_map", site.id);
+
+  if (budget.anyExhausted()) {
+    logger.warn({ budget: budget.summary() }, "Crawl: spend cap hit this run");
+  }
 }

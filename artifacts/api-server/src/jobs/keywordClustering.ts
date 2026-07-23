@@ -17,6 +17,8 @@ import {
 } from "../services/clustering";
 import { generateClusterLabels } from "../integrations/openaiClusterLabels";
 import { withDbRetry } from "../lib/dbRetry";
+import { budgetForSite, type JobBudget } from "../lib/jobBudget";
+import type { SiteContext } from "../lib/site";
 import { logger } from "../lib/logger";
 
 const STALE_MS = 3 * 60_000;
@@ -34,14 +36,6 @@ function sleep(ms: number): Promise<void> {
 
 function isoDay(d: Date): string {
   return d.toISOString().slice(0, 10);
-}
-
-function siteHost(): string {
-  return (process.env["SITE_DOMAIN"] ?? "")
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .replace(/\/.*$/, "");
 }
 
 function hostOf(url: string): string {
@@ -82,7 +76,7 @@ async function updateRun(
 }
 
 /** Mark runs whose process died (stale heartbeat) as interrupted. */
-async function reconcileStaleRuns(): Promise<void> {
+async function reconcileStaleRuns(siteId: number): Promise<void> {
   const cutoff = new Date(Date.now() - STALE_MS);
   await withDbRetry(
     () =>
@@ -95,6 +89,7 @@ async function reconcileStaleRuns(): Promise<void> {
         })
         .where(
           and(
+            eq(clusterRunsTable.siteId, siteId),
             eq(clusterRunsTable.status, "running"),
             or(
               lt(clusterRunsTable.heartbeatAt, cutoff),
@@ -106,8 +101,9 @@ async function reconcileStaleRuns(): Promise<void> {
   );
 }
 
-export async function runKeywordClustering(): Promise<void> {
-  await reconcileStaleRuns();
+export async function runKeywordClustering(site: SiteContext): Promise<void> {
+  await reconcileStaleRuns(site.id);
+  const budget = budgetForSite(site);
   // Process queued runs one at a time until the queue is empty.
   for (;;) {
     const [run] = await withDbRetry(
@@ -115,16 +111,21 @@ export async function runKeywordClustering(): Promise<void> {
         db
           .select()
           .from(clusterRunsTable)
-          .where(eq(clusterRunsTable.status, "queued"))
+          .where(
+            and(
+              eq(clusterRunsTable.siteId, site.id),
+              eq(clusterRunsTable.status, "queued"),
+            ),
+          )
           .orderBy(asc(clusterRunsTable.createdAt))
           .limit(1),
       { label: "cluster_runs_pick" },
     );
-    if (!run) return;
+    if (!run) break;
     const isRebuild = run.params.reprocess === true;
     try {
-      if (isRebuild) await reprocessRun(run);
-      else await processRun(run);
+      if (isRebuild) await reprocessRun(run, site);
+      else await processRun(run, site, budget);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       logger.error({ err: e, runId: run.id, isRebuild }, "Clustering run failed");
@@ -147,6 +148,9 @@ export async function runKeywordClustering(): Promise<void> {
         });
       }
     }
+  }
+  if (budget.anyExhausted()) {
+    logger.warn({ budget: budget.summary() }, "Clustering: spend budget exhausted");
   }
 }
 
@@ -228,6 +232,7 @@ async function clusterLabelAndPersist(
   run: ClusterRun,
   entries: ClusterKeywordEntry[],
   baseStats: Record<string, number>,
+  site: SiteContext,
 ): Promise<void> {
   await updateRun(run.id, { phase: "clustering" });
 
@@ -243,11 +248,11 @@ async function clusterLabelAndPersist(
   }
   const unclustered = entries.filter((e) => !clusteredQueries.has(e.query));
 
-  const site = siteHost();
+  const host = site.host;
   const clusters = components.map((comp) =>
     aggregate(
       comp.map((idx) => clusterable[idx]!),
-      site,
+      host,
     ),
   );
 
@@ -276,6 +281,7 @@ async function clusterLabelAndPersist(
   const rows: Array<typeof clusterRunClustersTable.$inferInsert> = clusters
     .map((c, i) => ({
       runId: run.id,
+      siteId: site.id,
       clusterKey: i,
       topic: c.topic,
       quadrant: quadrants[i]!,
@@ -293,9 +299,10 @@ async function clusterLabelAndPersist(
     .map((row, i) => ({ ...row, clusterKey: i }));
 
   if (unclustered.length > 0) {
-    const u = aggregate(unclustered, site);
+    const u = aggregate(unclustered, host);
     rows.push({
       runId: run.id,
+      siteId: site.id,
       clusterKey: -1,
       topic: "Unclustered",
       quadrant: null,
@@ -351,7 +358,7 @@ async function clusterLabelAndPersist(
 }
 
 /** Rebuild an existing run from its stored SERP data — no GSC or DataForSEO calls. */
-async function reprocessRun(run: ClusterRun): Promise<void> {
+async function reprocessRun(run: ClusterRun, site: SiteContext): Promise<void> {
   await updateRun(run.id, {
     status: "running",
     phase: "clustering",
@@ -364,7 +371,12 @@ async function reprocessRun(run: ClusterRun): Promise<void> {
       db
         .select()
         .from(clusterRunClustersTable)
-        .where(eq(clusterRunClustersTable.runId, run.id)),
+        .where(
+          and(
+            eq(clusterRunClustersTable.siteId, site.id),
+            eq(clusterRunClustersTable.runId, run.id),
+          ),
+        ),
     { label: `cluster_rows_load:${run.id}` },
   );
   const byQuery = new Map<string, ClusterKeywordEntry>();
@@ -394,10 +406,14 @@ async function reprocessRun(run: ClusterRun): Promise<void> {
     serpsFetched,
     serpsFailed: run.stats?.["serpsFailed"] ?? 0,
     operatorFiltered,
-  });
+  }, site);
 }
 
-async function processRun(run: ClusterRun): Promise<void> {
+async function processRun(
+  run: ClusterRun,
+  site: SiteContext,
+  budget: JobBudget,
+): Promise<void> {
   const p = run.params;
   await updateRun(run.id, {
     status: "running",
@@ -421,7 +437,7 @@ async function processRun(run: ClusterRun): Promise<void> {
     ...(p.country ? { countryFilter: p.country } : {}),
   });
 
-  const brandToken = p.excludeBrand ? siteHost().split(".")[0] ?? "" : "";
+  const brandToken = p.excludeBrand ? site.host.split(".")[0] ?? "" : "";
   const byImpressions = [...gscRows].sort((a, b) => b.impressions - a.impressions);
   const seen = new Set<string>();
   const selected: GscDimensionRow[] = [];
@@ -445,6 +461,26 @@ async function processRun(run: ClusterRun): Promise<void> {
       `Only ${selected.length} usable queries found in Search Console for this range — nothing to cluster.`,
     );
   }
+  // Spend cap: one paid DataForSEO SERP task per query. Trim to the remaining
+  // serpQueries budget (paid scraping) before posting; a run needs ≥2 queries
+  // to cluster, so if the cap leaves fewer than that, fail with a clear error.
+  let capApplied = false;
+  if (!budget.take("serpQueries", selected.length)) {
+    const allowed = budget.remaining("serpQueries");
+    if (allowed < 2) {
+      throw new Error(
+        `SERP quota cap reached — only ${allowed} of the per-run SERP budget remains; a clustering run needs at least 2 queries.`,
+      );
+    }
+    logger.warn(
+      { runId: run.id, requested: selected.length, allowed },
+      "Clustering: SERP quota cap — trimming keyword set to budget",
+    );
+    selected.length = allowed;
+    budget.take("serpQueries", allowed);
+    capApplied = true;
+  }
+
   const queries = selected.map((r) => r.key.trim().toLowerCase());
   const gscByQuery = new Map(selected.map((r) => [r.key.trim().toLowerCase(), r]));
 
@@ -521,5 +557,6 @@ async function processRun(run: ClusterRun): Promise<void> {
     serpsFetched: serpByKeyword.size,
     serpsFailed: failed,
     operatorFiltered,
-  });
+    serpCapApplied: capApplied ? 1 : 0,
+  }, site);
 }

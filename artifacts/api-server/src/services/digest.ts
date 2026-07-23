@@ -1,7 +1,7 @@
 import { sql, desc, gte, and, lt, isNotNull, eq } from "drizzle-orm";
 import { db, actionItemsTable, digestsTable, healthSnapshotsTable } from "@workspace/db";
 import { computeImpactWins } from "./impact";
-import { getLegacySite } from "../lib/site";
+import type { SiteContext } from "../lib/site";
 import { logger } from "../lib/logger";
 import { withDbRetry } from "../lib/dbRetry";
 
@@ -200,8 +200,7 @@ export async function computeWeeklyDigest(siteId: number, now = new Date()): Pro
 }
 
 /** Job entrypoint — upserts this ISO week's digest row. */
-export async function runWeeklyDigest(): Promise<void> {
-  const site = await getLegacySite();
+export async function runWeeklyDigest(site: SiteContext): Promise<void> {
   const payload = await computeWeeklyDigest(site.id);
   await withDbRetry(
     () =>

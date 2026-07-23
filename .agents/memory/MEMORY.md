@@ -23,3 +23,4 @@
 - [GSC operator junk queries](gsc-operator-junk-queries.md) — AI-scraper operator queries pollute GSC top-N; filter structurally before paid spend; requeued jobs need heartbeat-based staleness.
 - [Multi-tenant auth gates](multi-tenant-auth-gates.md) — after swapping admin-password for self-signup auth, audit every auth-only route for missing ownership gates; spend/proxy routes evade scoping sweeps.
 - [Orval inline body collision](orval-inline-body-collision.md) — inline requestBody schemas make orval emit a zod const and TS type with the same *Body name → star-export clash; always $ref a named component.
+- [Per-site background jobs](per-site-jobs.md) — crons iterate sites sequentially with isolated failures; budget-truncated crawls must skip reconcile-deletes or they mass-delete inventory.

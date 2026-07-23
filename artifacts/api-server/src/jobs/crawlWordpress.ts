@@ -14,7 +14,8 @@ import {
   loadBlockRegexes,
 } from "../lib/urlCanon";
 import { sectionFor } from "../lib/sections";
-import { getLegacySite } from "../lib/site";
+import { type SiteContext } from "../lib/site";
+import { budgetForSite } from "../lib/jobBudget";
 import { embedText } from "../integrations/openaiEmbed";
 import {
   classifyPage,
@@ -52,11 +53,13 @@ async function processConcurrent<T>(
   );
 }
 
-export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
-  // Content crawl stays legacy-site-only until per-site job scheduling lands.
-  const site = await getLegacySite();
+export async function runCrawlWordpress(
+  site: SiteContext,
+  opts: RunOptions = {},
+): Promise<void> {
+  const budget = budgetForSite(site);
   logger.info("Content crawl: starting (sitemap source)");
-  const rawItems = await fetchAllSitemapContent();
+  const rawItems = await fetchAllSitemapContent(site);
 
   // URL hygiene: every URL entering wp_posts / link_graph is canonicalized
   // (no fragment/query/trailing slash, lowercase) and blocklisted paths are
@@ -85,6 +88,21 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
     { raw: rawItems.length, canonical: items.length },
     "Content crawl: fetched (raw → canonical)",
   );
+
+  // Spend cap: never process more posts than the site's crawlPages budget per
+  // run. When trimmed we also skip the reconcile-delete below, so a low cap can
+  // never mass-delete real inventory just because we processed a subset.
+  let crawlCapped = false;
+  if (!budget.take("crawlPages", items.length)) {
+    const cap = budget.remaining("crawlPages");
+    logger.warn(
+      { total: items.length, cap },
+      "Content crawl: trimming posts to crawlPages budget (reconcile skipped)",
+    );
+    items.length = cap;
+    budget.take("crawlPages", items.length);
+    crawlCapped = true;
+  }
 
   // Guard against partial crawls: the reconcile below deletes every post and
   // link-graph edge not present in `items`, so acting on a suspiciously small
@@ -182,7 +200,7 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
   // Without this, deleted pages would linger forever in the embedding pool
   // and the semantic linker would keep proposing links to/from dead URLs.
   const currentUrls = items.map((it) => it.url);
-  if (currentUrls.length > 0) {
+  if (currentUrls.length > 0 && !crawlCapped) {
     const removed = await db
       .delete(wpPostsTable)
       .where(and(eq(wpPostsTable.siteId, site.id), notInArray(wpPostsTable.url, currentUrls)))
@@ -287,12 +305,21 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
       .filter(Boolean)
       .join("\n\n");
     if (!text.trim()) return;
+    // Spend cap: each embedding is a paid call. Once the budget is exhausted,
+    // stop embedding gracefully — remaining posts keep their prior embedding.
+    if (!budget.take("llmCalls")) return;
     const vec = await embedText(text);
     await db
       .update(wpPostsTable)
       .set({ embedding: vec, embeddedAt: new Date() })
       .where(and(eq(wpPostsTable.siteId, site.id), eq(wpPostsTable.url, it.url)));
   });
+  if (budget.exhausted("llmCalls")) {
+    logger.warn(
+      { budget: budget.summary() },
+      "Content crawl: llm budget exhausted; some posts left un-embedded",
+    );
+  }
   logger.info("Content crawl: embeddings done");
 
   // Classify pages that don't already have manual edits
@@ -357,6 +384,6 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
   logger.info("Content crawl: done");
 }
 
-export async function runReembedAll(): Promise<void> {
-  await runCrawlWordpress({ reembedAll: true });
+export async function runReembedAll(site: SiteContext): Promise<void> {
+  await runCrawlWordpress(site, { reembedAll: true });
 }

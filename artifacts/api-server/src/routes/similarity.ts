@@ -154,7 +154,7 @@ router.post("/similarity/runs", requireAuth, requireSite, async (req, res) => {
     return;
   }
 
-  const result = await runJob("analyze_similarity");
+  const result = await runJob("analyze_similarity", site);
   if (!result.started) {
     // Orphan-row race guard: nothing will pick this row up, so remove it.
     await db

@@ -13,7 +13,7 @@ import {
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { withDbRetry } from "../lib/dbRetry";
-import { getLegacySite } from "../lib/site";
+import type { SiteContext } from "../lib/site";
 import { persistHealthSnapshot } from "./health";
 import {
   EXPECTED_CTR,
@@ -677,9 +677,8 @@ export async function recomputeActionQueue(siteId: number): Promise<RecomputeRes
   return result;
 }
 
-/** Job entrypoint — legacy-site-only until per-site job scheduling lands. */
-export async function runRecomputeActionQueue(): Promise<void> {
-  const site = await getLegacySite();
+/** Job entrypoint — recomputes the action queue for the given site. */
+export async function runRecomputeActionQueue(site: SiteContext): Promise<void> {
   await recomputeActionQueue(site.id);
 }
 

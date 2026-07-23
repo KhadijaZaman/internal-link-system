@@ -8,13 +8,14 @@ import { db, crawlProgressTable, jobRunsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { withDbRetry } from "../lib/dbRetry";
-import { LEGACY_SITE_ID } from "../lib/site";
+import type { SiteContext } from "../lib/site";
 import type { JobName } from "./runner";
 
-type Step = { name: JobName; fn: () => Promise<void> };
+type Step = { name: JobName; fn: (site: SiteContext) => Promise<void> };
 
 async function recordJobRun(
   name: JobName,
+  siteId: number,
   status: "ok" | "error",
   durationMs: number,
   err: string | null,
@@ -26,7 +27,7 @@ async function recordJobRun(
           .insert(jobRunsTable)
           .values({
             name,
-            siteId: LEGACY_SITE_ID,
+            siteId,
             lastRunAt: new Date(),
             lastStatus: status,
             lastDurationMs: durationMs,
@@ -50,16 +51,16 @@ async function recordJobRun(
 
 const MAX_LINK_MAP_CHUNKS = 200;
 
-async function runFullCrawlWordpress(): Promise<void> {
-  await runCrawlWordpress({ reembedAll: true });
+async function runFullCrawlWordpress(site: SiteContext): Promise<void> {
+  await runCrawlWordpress(site, { reembedAll: true });
 }
 
-async function runFullCrawlLinkMap(): Promise<void> {
+async function runFullCrawlLinkMap(site: SiteContext): Promise<void> {
   await withDbRetry(
     () =>
       db
         .insert(crawlProgressTable)
-        .values({ id: 1, siteId: LEGACY_SITE_ID, lastOffset: 0 })
+        .values({ id: 1, siteId: site.id, lastOffset: 0 })
         .onConflictDoUpdate({
           target: [crawlProgressTable.id, crawlProgressTable.siteId],
           set: { lastOffset: 0, lastRunAt: new Date() },
@@ -67,13 +68,13 @@ async function runFullCrawlLinkMap(): Promise<void> {
     { label: "crawl_link_map:reset_progress" },
   );
   for (let i = 0; i < MAX_LINK_MAP_CHUNKS; i++) {
-    await runCrawlLinkMap();
+    await runCrawlLinkMap(site);
     const progress = await withDbRetry(
       () =>
         db
           .select()
           .from(crawlProgressTable)
-          .where(and(eq(crawlProgressTable.id, 1), eq(crawlProgressTable.siteId, LEGACY_SITE_ID)))
+          .where(and(eq(crawlProgressTable.id, 1), eq(crawlProgressTable.siteId, site.id)))
           .limit(1),
       { label: "crawl_link_map:read_progress" },
     );
@@ -98,22 +99,22 @@ const STEPS: Step[] = [
   { name: "optimize_queued_urls", fn: runOptimizeQueuedUrls },
 ];
 
-export async function runFullPipeline(): Promise<void> {
+export async function runFullPipeline(site: SiteContext): Promise<void> {
   logger.info({ steps: STEPS.length }, "Full pipeline: starting (forced full rerun)");
   const failures: Array<{ name: string; error: string }> = [];
   for (const step of STEPS) {
     const start = Date.now();
     try {
       logger.info({ step: step.name }, "Full pipeline: step start");
-      await step.fn();
+      await step.fn(site);
       const duration = Date.now() - start;
       logger.info({ step: step.name, durationMs: duration }, "Full pipeline: step ok");
-      await recordJobRun(step.name, "ok", duration, null);
+      await recordJobRun(step.name, site.id, "ok", duration, null);
     } catch (err) {
       const duration = Date.now() - start;
       const msg = err instanceof Error ? err.message : String(err);
       logger.error({ step: step.name, err }, "Full pipeline: step failed; continuing");
-      await recordJobRun(step.name, "error", duration, msg);
+      await recordJobRun(step.name, site.id, "error", duration, msg);
       failures.push({ name: step.name, error: msg });
     }
   }

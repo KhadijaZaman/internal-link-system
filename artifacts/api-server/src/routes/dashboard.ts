@@ -56,7 +56,7 @@ router.get("/dashboard/summary", requireAuth, requireSite, async (req, res) => {
         .from(inventoryTable)
         .where(and(eq(inventoryTable.siteId, site.id), eq(inventoryTable.section, "outer"))),
     ]);
-  const jobs = await loadJobStatuses();
+  const jobs = await loadJobStatuses(site.id);
   res.json({
     totalPages: pages,
     pageFilterLabel: CONTENT_PAGES_FILTER_LABEL,

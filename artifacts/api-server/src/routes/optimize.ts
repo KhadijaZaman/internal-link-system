@@ -78,7 +78,7 @@ router.post("/optimize-queue/:id/run", requireAuth, requireSite, async (req, res
     res.status(409).json({ error: "Already running" });
     return;
   }
-  void processOptimizeItem(item).catch((err) => {
+  void processOptimizeItem(item, site).catch((err) => {
     logger.error({ err, id }, "processOptimizeItem (per-row) failed");
   });
   res.status(202).json({ ...serialize(item), status: "optimizing" });

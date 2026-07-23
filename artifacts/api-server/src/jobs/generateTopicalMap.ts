@@ -20,7 +20,8 @@ import {
 } from "../integrations/claudeTopicalMap";
 import { embedBatch } from "../integrations/openaiEmbed";
 import { canonicalPath } from "../lib/urlCanon";
-import { getLegacySite } from "../lib/site";
+import type { SiteContext } from "../lib/site";
+import { budgetForSite, type JobBudget } from "../lib/jobBudget";
 import { cosineSim } from "../lib/semanticScorer";
 import { withDbRetry } from "../lib/dbRetry";
 import { logger } from "../lib/logger";
@@ -106,20 +107,31 @@ export async function reconcileStaleTopicalMaps(): Promise<void> {
   );
 }
 
-export async function runGenerateTopicalMap(): Promise<void> {
+export async function runGenerateTopicalMap(site: SiteContext): Promise<void> {
   await reconcileStaleTopicalMaps();
+  const budget = budgetForSite(site);
   for (;;) {
     const [map] = await withDbRetry(
       () =>
         db
           .select()
           .from(topicalMapsTable)
-          .where(eq(topicalMapsTable.status, "queued"))
+          .where(
+            and(
+              eq(topicalMapsTable.siteId, site.id),
+              eq(topicalMapsTable.status, "queued"),
+            ),
+          )
           .orderBy(asc(topicalMapsTable.createdAt))
           .limit(1),
       { label: "topical_map_next_queued" },
     );
-    if (!map) return;
+    if (!map) {
+      if (budget.anyExhausted()) {
+        logger.warn({ budget: budget.summary() }, "Topical map: budget exhausted");
+      }
+      return;
+    }
 
     await updateMap(map.id, {
       status: "running",
@@ -130,7 +142,7 @@ export async function runGenerateTopicalMap(): Promise<void> {
       progressTotal: 3,
     });
     try {
-      const stats = await processMap(map);
+      const stats = await processMap(map, site, budget);
       await updateMap(map.id, {
         status: "complete",
         phase: null,
@@ -152,11 +164,16 @@ export async function runGenerateTopicalMap(): Promise<void> {
 }
 
 /** Site-demand digest: latest complete cluster run + page sections + titles. */
-async function buildDemandDigest(): Promise<SiteDemandDigest> {
+async function buildDemandDigest(site: SiteContext): Promise<SiteDemandDigest> {
   const [latestClusterRun] = await db
     .select({ id: clusterRunsTable.id })
     .from(clusterRunsTable)
-    .where(eq(clusterRunsTable.status, "complete"))
+    .where(
+      and(
+        eq(clusterRunsTable.siteId, site.id),
+        eq(clusterRunsTable.status, "complete"),
+      ),
+    )
     .orderBy(desc(clusterRunsTable.finishedAt))
     .limit(1);
 
@@ -171,6 +188,7 @@ async function buildDemandDigest(): Promise<SiteDemandDigest> {
           .from(clusterRunClustersTable)
           .where(
             and(
+              eq(clusterRunClustersTable.siteId, site.id),
               eq(clusterRunClustersTable.runId, latestClusterRun.id),
               sql`${clusterRunClustersTable.clusterKey} >= 0`,
             ),
@@ -186,13 +204,14 @@ async function buildDemandDigest(): Promise<SiteDemandDigest> {
       pageCount: sql<number>`count(*)::int`,
     })
     .from(pagesTable)
+    .where(eq(pagesTable.siteId, site.id))
     .groupBy(sql`coalesce(${pagesTable.section}, 'uncategorized')`)
     .orderBy(desc(sql`count(*)`));
 
   const titleRows = await db
     .select({ title: pagesTable.title })
     .from(pagesTable)
-    .where(isNotNull(pagesTable.title))
+    .where(and(eq(pagesTable.siteId, site.id), isNotNull(pagesTable.title)))
     .orderBy(desc(pagesTable.impressions))
     .limit(60);
 
@@ -214,11 +233,18 @@ function charterOf(map: TopicalMap): TopicalMapCharter {
   };
 }
 
-async function processMap(map: TopicalMap): Promise<Record<string, number>> {
+async function processMap(
+  map: TopicalMap,
+  site: SiteContext,
+  budget: JobBudget,
+): Promise<Record<string, number>> {
   const charter = charterOf(map);
-  const demand = await buildDemandDigest();
+  const demand = await buildDemandDigest(site);
 
   // ---- Phase A: skeleton -------------------------------------------------
+  if (!budget.take("llmCalls")) {
+    throw new Error("LLM budget exhausted before skeleton generation.");
+  }
   const skeleton = await generateSkeleton(charter, demand);
   const pillars = skeleton.pillars;
   await updateMap(map.id, {
@@ -258,6 +284,13 @@ async function processMap(map: TopicalMap): Promise<Record<string, number>> {
     const pillar = pillars[pi]!;
     const pillarIdx = pushNode(pillar, "pillar", pillar.section, -1, pi);
     if (pillarIdx < 0) break;
+    if (!budget.take("llmCalls")) {
+      logger.warn(
+        { mapId: map.id, pillar: pillar.suggested_slug },
+        "LLM budget exhausted; keeping bare pillar node and stopping expansion",
+      );
+      break;
+    }
     try {
       const expansion = await expandPillar(charter, demand, pillar, pillars);
       expansion.core_topics.forEach((core, ci) => {
@@ -294,7 +327,7 @@ async function processMap(map: TopicalMap): Promise<Record<string, number>> {
 
   // ---- Matching: existing coverage ----------------------------------------
   await updateMap(map.id, { phase: "matching" });
-  await matchNodes(nodes);
+  await matchNodes(nodes, site, budget);
   await updateMap(map.id, { progressDone: done + 1 });
 
   // ---- Persist (transactional) ---------------------------------------------
@@ -309,6 +342,7 @@ async function processMap(map: TopicalMap): Promise<Record<string, number>> {
           const [row] = await tx
             .insert(topicalMapNodesTable)
             .values({
+              siteId: site.id,
               mapId: map.id,
               parentId: n.parentIdx >= 0 ? idxToDbId[n.parentIdx]! : null,
               level: n.level,
@@ -346,6 +380,7 @@ async function processMap(map: TopicalMap): Promise<Record<string, number>> {
           if (seenPairs.has(key)) continue;
           seenPairs.add(key);
           await tx.insert(topicalMapBridgesTable).values({
+            siteId: site.id,
             mapId: map.id,
             sourceNodeId: sourceId,
             targetNodeId: targetId,
@@ -390,9 +425,11 @@ function normQuery(q: string): string {
  *     wp_posts body embeddings; best match above threshold wins.
  * Mutates `nodes` in place. Embedding tier is fail-soft.
  */
-async function matchNodes(nodes: FlatNode[]): Promise<void> {
-  // Topical maps stay legacy-site-only until per-site job scheduling lands.
-  const site = await getLegacySite();
+async function matchNodes(
+  nodes: FlatNode[],
+  site: SiteContext,
+  budget: JobBudget,
+): Promise<void> {
   const pages = await db
     .select({
       path: pagesTable.path,
@@ -451,6 +488,13 @@ async function matchNodes(nodes: FlatNode[]): Promise<void> {
       );
     if (sitePosts.length === 0) return;
 
+    if (!budget.take("llmCalls")) {
+      logger.warn(
+        { unmatched: unmatched.length },
+        "LLM budget exhausted; skipping embedding match tier, leaving nodes unmatched",
+      );
+      return;
+    }
     const inputs = unmatched.map((n, i) => ({
       id: i,
       text: `${n.meta.canonical_query}\n${n.meta.suggested_title}`,

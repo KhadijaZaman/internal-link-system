@@ -1,6 +1,8 @@
 import { and, eq, inArray, isNull, isNotNull, sql } from "drizzle-orm";
 import { db, kbDocumentsTable, kbChunksTable } from "@workspace/db";
 import { embedBatch } from "../integrations/openaiEmbed";
+import { budgetForSite } from "../lib/jobBudget";
+import type { SiteContext } from "../lib/site";
 import { logger } from "../lib/logger";
 
 /**
@@ -18,10 +20,12 @@ import { logger } from "../lib/logger";
  *                 are retried once at the start of each run, but not re-looped
  *                 within a run, so a permanently failing chunk can't spin.
  */
-export async function runEmbedKbChunks(): Promise<void> {
+export async function runEmbedKbChunks(site: SiteContext): Promise<void> {
+  const budget = budgetForSite(site);
   let firstPass = true;
   let totalEmbedded = 0;
-  for (;;) {
+  let capped = false;
+  drain: for (;;) {
     const statuses = firstPass ? ["pending", "partial"] : ["pending"];
     firstPass = false;
     const docs = await db
@@ -31,7 +35,12 @@ export async function runEmbedKbChunks(): Promise<void> {
         chunkCount: kbDocumentsTable.chunkCount,
       })
       .from(kbDocumentsTable)
-      .where(inArray(kbDocumentsTable.embedStatus, statuses))
+      .where(
+        and(
+          eq(kbDocumentsTable.siteId, site.id),
+          inArray(kbDocumentsTable.embedStatus, statuses),
+        ),
+      )
       .orderBy(kbDocumentsTable.id);
     if (docs.length === 0) break;
 
@@ -39,11 +48,33 @@ export async function runEmbedKbChunks(): Promise<void> {
       const missing = await db
         .select({ id: kbChunksTable.id, content: kbChunksTable.content })
         .from(kbChunksTable)
-        .where(and(eq(kbChunksTable.documentId, doc.id), isNull(kbChunksTable.embedding)))
+        .where(
+          and(
+            eq(kbChunksTable.siteId, site.id),
+            eq(kbChunksTable.documentId, doc.id),
+            isNull(kbChunksTable.embedding),
+          ),
+        )
         .orderBy(kbChunksTable.chunkIndex);
 
       let embedded = 0;
       if (missing.length > 0) {
+        // Spend cap: one embedding call per missing chunk. If the batch would
+        // exceed the remaining LLM budget, stop the drain gracefully — the
+        // 10-min sweep resumes the rest on the next run.
+        if (!budget.take("llmCalls", missing.length)) {
+          capped = true;
+          logger.warn(
+            {
+              documentId: doc.id,
+              title: doc.title,
+              needed: missing.length,
+              remaining: budget.remaining("llmCalls"),
+            },
+            "KB embed: LLM budget cap reached; stopping drain (sweep will resume)",
+          );
+          break drain;
+        }
         const embMap = await embedBatch(missing.map((c) => ({ id: c.id, text: c.content })));
         for (const c of missing) {
           const emb = embMap.get(c.id);
@@ -61,7 +92,13 @@ export async function runEmbedKbChunks(): Promise<void> {
       const [counted] = await db
         .select({ embeddedNow: sql<number>`count(*)::int` })
         .from(kbChunksTable)
-        .where(and(eq(kbChunksTable.documentId, doc.id), isNotNull(kbChunksTable.embedding)));
+        .where(
+          and(
+            eq(kbChunksTable.siteId, site.id),
+            eq(kbChunksTable.documentId, doc.id),
+            isNotNull(kbChunksTable.embedding),
+          ),
+        );
       const embeddedNow = counted?.embeddedNow ?? 0;
       const status = doc.chunkCount > 0 && embeddedNow >= doc.chunkCount ? "ready" : "partial";
       await db
@@ -82,5 +119,8 @@ export async function runEmbedKbChunks(): Promise<void> {
       );
     }
   }
-  logger.info({ totalEmbedded }, "KB embed: drain complete");
+  logger.info({ totalEmbedded, capped }, "KB embed: drain complete");
+  if (budget.anyExhausted()) {
+    logger.warn({ budget: budget.summary() }, "KB embed: spend budget exhausted");
+  }
 }

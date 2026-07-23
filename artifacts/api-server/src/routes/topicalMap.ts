@@ -229,7 +229,7 @@ router.post("/topical-map/generate", requireAuth, requireSite, async (req, res) 
     return;
   }
 
-  const result = await runJob("generate_topical_map");
+  const result = await runJob("generate_topical_map", site);
   if (!result.started) {
     // Orphan-row race guard: nothing will pick this row up, so remove it.
     await db

@@ -8,7 +8,7 @@ import {
 import { cosineSim, tierAllowed, isBannedAnchor } from "../lib/semanticScorer";
 import { linkQualityFlags } from "../lib/insights";
 import { canonicalPath } from "../lib/urlCanon";
-import { getLegacySite } from "../lib/site";
+import type { SiteContext } from "../lib/site";
 import { logger } from "../lib/logger";
 import { withDbRetry } from "../lib/dbRetry";
 
@@ -32,9 +32,7 @@ function urlJoinKey(url: string, siteHost: string): string {
  * Idempotent: every content edge is re-scored on each run; edges created by
  * a later re-crawl stay NULL (= not audited yet) until the next run.
  */
-export async function runAuditLinkQuality(): Promise<void> {
-  // Audit stays legacy-site-only until per-site job scheduling lands.
-  const site = await getLegacySite();
+export async function runAuditLinkQuality(site: SiteContext): Promise<void> {
   const [posts, classifications, edges] = await withDbRetry(
     () =>
       Promise.all([

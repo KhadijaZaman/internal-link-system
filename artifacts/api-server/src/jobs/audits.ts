@@ -1,4 +1,6 @@
 import { db, auditReportsTable, inventoryTable, linkGraphTable, linkStatsTable, wpPostsTable, linkExcludeListTable } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
+import type { SiteContext } from "../lib/site";
 import { logger } from "../lib/logger";
 import { withDbRetry } from "../lib/dbRetry";
 
@@ -55,7 +57,7 @@ interface BrokenItem {
   linkingPages?: LinkingPage[];
 }
 
-async function record(type: string, payload: unknown, itemCount: number): Promise<void> {
+async function record(siteId: number, type: string, payload: unknown, itemCount: number): Promise<void> {
   // Audit steps run at the tail of the long full-pipeline job, where stale
   // serverless-PG connections are most likely — retry transient drops. This is
   // a plain INSERT, but a rare duplicate audit report on a dropped ack is
@@ -63,6 +65,7 @@ async function record(type: string, payload: unknown, itemCount: number): Promis
   await withDbRetry(
     () =>
       db.insert(auditReportsTable).values({
+        siteId,
         type,
         payload: payload as unknown,
         itemCount,
@@ -123,14 +126,14 @@ function isSafeUrl(url: string, allowed: Set<string>): boolean {
   return allowed.has(host);
 }
 
-export async function runAuditOrphans(): Promise<void> {
+export async function runAuditOrphans(site: SiteContext): Promise<void> {
   const [stats, posts, excludes, inventoryUrls] = await withDbRetry(
     () =>
       Promise.all([
-        db.select().from(linkStatsTable),
-        db.select().from(wpPostsTable),
-        db.select().from(linkExcludeListTable),
-        db.select({ url: inventoryTable.url }).from(inventoryTable),
+        db.select().from(linkStatsTable).where(eq(linkStatsTable.siteId, site.id)),
+        db.select().from(wpPostsTable).where(eq(wpPostsTable.siteId, site.id)),
+        db.select().from(linkExcludeListTable).where(eq(linkExcludeListTable.siteId, site.id)),
+        db.select({ url: inventoryTable.url }).from(inventoryTable).where(eq(inventoryTable.siteId, site.id)),
       ]),
     { label: "audit_orphans:reads" },
   );
@@ -155,19 +158,19 @@ export async function runAuditOrphans(): Promise<void> {
       title: titleByUrl.get(s.url) ?? null,
       inboundCount: 0,
     }));
-  await record("orphans", orphans, orphans.length);
+  await record(site.id, "orphans", orphans, orphans.length);
   logger.info(
     { count: orphans.length, excludePatterns: excludeRegexes.length },
     "Audit orphans: done",
   );
 }
 
-export async function runAuditOverLinked(): Promise<void> {
+export async function runAuditOverLinked(site: SiteContext): Promise<void> {
   const [edges, posts] = await withDbRetry(
     () =>
       Promise.all([
-        db.select().from(linkGraphTable),
-        db.select().from(wpPostsTable),
+        db.select().from(linkGraphTable).where(eq(linkGraphTable.siteId, site.id)),
+        db.select().from(wpPostsTable).where(eq(wpPostsTable.siteId, site.id)),
       ]),
     { label: "audit_over_linked:reads" },
   );
@@ -223,6 +226,7 @@ export async function runAuditOverLinked(): Promise<void> {
   }
   const items = [...overTargets, ...overAnchors].sort((a, b) => b.count - a.count);
   await record(
+    site.id,
     "over_linked",
     items.map((i) => ({ ...i, title: i.url ? titleByUrl.get(i.url) ?? null : null })),
     items.length,
@@ -230,14 +234,14 @@ export async function runAuditOverLinked(): Promise<void> {
   logger.info({ count: items.length }, "Audit over-linked: done");
 }
 
-export async function runAuditBrokenLinks(): Promise<void> {
+export async function runAuditBrokenLinks(site: SiteContext): Promise<void> {
   const [edges, excludes, stats, posts] = await withDbRetry(
     () =>
       Promise.all([
-        db.select().from(linkGraphTable),
-        db.select().from(linkExcludeListTable),
-        db.select().from(linkStatsTable),
-        db.select().from(wpPostsTable),
+        db.select().from(linkGraphTable).where(eq(linkGraphTable.siteId, site.id)),
+        db.select().from(linkExcludeListTable).where(eq(linkExcludeListTable.siteId, site.id)),
+        db.select().from(linkStatsTable).where(eq(linkStatsTable.siteId, site.id)),
+        db.select().from(wpPostsTable).where(eq(wpPostsTable.siteId, site.id)),
       ]),
     { label: "audit_broken_links:reads" },
   );
@@ -330,6 +334,6 @@ export async function runAuditBrokenLinks(): Promise<void> {
     }
   }
   await Promise.all(Array.from({ length: BROKEN_CONCURRENCY }, () => worker()));
-  await record("broken_links", broken, broken.length);
+  await record(site.id, "broken_links", broken, broken.length);
   logger.info({ checked: list.length, broken: broken.length }, "Audit broken links: done");
 }

@@ -1,4 +1,4 @@
-import { sql, eq, inArray } from "drizzle-orm";
+import { sql, and, eq, inArray } from "drizzle-orm";
 import {
   db,
   gscSnapshotsTable,
@@ -18,7 +18,7 @@ import {
   BLOCKLIST_SEEDS,
 } from "../lib/urlCanon";
 import { sectionFor } from "../lib/sections";
-import { getLegacySite } from "../lib/site";
+import type { SiteContext } from "../lib/site";
 import { recomputeStats } from "./crawlLinkMap";
 import { withDbRetry } from "../lib/dbRetry";
 import { logger } from "../lib/logger";
@@ -35,9 +35,7 @@ import { logger } from "../lib/logger";
  * impression-weighting position), deletes blocklisted paths, and seeds the
  * canonical `pages` registry from what remains.
  */
-export async function runMigrateUrlHygiene(): Promise<void> {
-  // Retroactive migration only ever applies to the legacy site's data.
-  const site = await getLegacySite();
+export async function runMigrateUrlHygiene(site: SiteContext): Promise<void> {
   logger.info("URL hygiene migration: starting");
 
   // ---- 0. (Re-)seed blocklist patterns; safe on every run.
@@ -85,11 +83,15 @@ export async function runMigrateUrlHygiene(): Promise<void> {
   {
     const distinct = await db
       .selectDistinct({ url: gscSnapshotsTable.url })
-      .from(gscSnapshotsTable);
+      .from(gscSnapshotsTable)
+      .where(eq(gscSnapshotsTable.siteId, site.id));
     const { toDelete, toRewrite } = planFor(distinct.map((r) => r.url));
     for (const c of chunk(toDelete, 200)) {
       await withDbRetry(
-        () => db.delete(gscSnapshotsTable).where(inArray(gscSnapshotsTable.url, c)),
+        () =>
+          db
+            .delete(gscSnapshotsTable)
+            .where(and(eq(gscSnapshotsTable.siteId, site.id), inArray(gscSnapshotsTable.url, c))),
         { label: "snapshots delete blocked" },
       );
     }
@@ -99,7 +101,7 @@ export async function runMigrateUrlHygiene(): Promise<void> {
           db
             .update(gscSnapshotsTable)
             .set({ url: r.to })
-            .where(eq(gscSnapshotsTable.url, r.from)),
+            .where(and(eq(gscSnapshotsTable.siteId, site.id), eq(gscSnapshotsTable.url, r.from))),
         { label: "snapshots rewrite url" },
       );
     }
@@ -111,6 +113,7 @@ export async function runMigrateUrlHygiene(): Promise<void> {
           WITH dup AS (
             SELECT snapshot_date, url, query
             FROM gsc_snapshots
+            WHERE site_id = ${site.id}
             GROUP BY snapshot_date, url, query
             HAVING count(*) > 1
           ),
@@ -124,6 +127,7 @@ export async function runMigrateUrlHygiene(): Promise<void> {
             FROM gsc_snapshots s
             JOIN dup d ON d.snapshot_date = s.snapshot_date
                       AND d.url = s.url AND d.query = s.query
+            WHERE s.site_id = ${site.id}
             GROUP BY s.snapshot_date, s.url, s.query
           ),
           upd AS (
@@ -135,6 +139,7 @@ export async function runMigrateUrlHygiene(): Promise<void> {
                            THEN m.clicks::float / m.impressions ELSE 0 END
             FROM merged m
             WHERE g.id = m.keep_id
+              AND g.site_id = ${site.id}
             RETURNING g.id
           )
           DELETE FROM gsc_snapshots g
@@ -142,6 +147,7 @@ export async function runMigrateUrlHygiene(): Promise<void> {
           WHERE g.snapshot_date = m.snapshot_date
             AND g.url = m.url AND g.query = m.query
             AND g.id <> m.keep_id
+            AND g.site_id = ${site.id}
         `),
       { label: "snapshots merge duplicates" },
     );
@@ -155,11 +161,15 @@ export async function runMigrateUrlHygiene(): Promise<void> {
   {
     const distinct = await db
       .selectDistinct({ url: queryLosersTable.url })
-      .from(queryLosersTable);
+      .from(queryLosersTable)
+      .where(eq(queryLosersTable.siteId, site.id));
     const { toDelete, toRewrite } = planFor(distinct.map((r) => r.url));
     for (const c of chunk(toDelete, 200)) {
       await withDbRetry(
-        () => db.delete(queryLosersTable).where(inArray(queryLosersTable.url, c)),
+        () =>
+          db
+            .delete(queryLosersTable)
+            .where(and(eq(queryLosersTable.siteId, site.id), inArray(queryLosersTable.url, c))),
         { label: "losers delete blocked" },
       );
     }
@@ -169,7 +179,7 @@ export async function runMigrateUrlHygiene(): Promise<void> {
           db
             .update(queryLosersTable)
             .set({ url: r.to })
-            .where(eq(queryLosersTable.url, r.from)),
+            .where(and(eq(queryLosersTable.siteId, site.id), eq(queryLosersTable.url, r.from))),
         { label: "losers rewrite url" },
       );
     }
@@ -185,6 +195,8 @@ export async function runMigrateUrlHygiene(): Promise<void> {
             AND q.url = keep.url
             AND q.query = keep.query
             AND q.id <> keep.id
+            AND q.site_id = ${site.id}
+            AND keep.site_id = ${site.id}
             AND (coalesce(keep.curr_impressions, 0) > coalesce(q.curr_impressions, 0)
                  OR (coalesce(keep.curr_impressions, 0) = coalesce(q.curr_impressions, 0)
                      AND keep.id < q.id))
@@ -199,7 +211,10 @@ export async function runMigrateUrlHygiene(): Promise<void> {
 
   // ---- 3. inventory (url PK): rewrite with merge-on-collision.
   {
-    const rows = await db.select().from(inventoryTable);
+    const rows = await db
+      .select()
+      .from(inventoryTable)
+      .where(eq(inventoryTable.siteId, site.id));
     const byCanon = new Map<string, typeof rows>();
     const dropUrls: string[] = [];
     for (const r of rows) {
@@ -214,7 +229,10 @@ export async function runMigrateUrlHygiene(): Promise<void> {
     }
     for (const c of chunk(dropUrls, 200)) {
       await withDbRetry(
-        () => db.delete(inventoryTable).where(inArray(inventoryTable.url, c)),
+        () =>
+          db
+            .delete(inventoryTable)
+            .where(and(eq(inventoryTable.siteId, site.id), inArray(inventoryTable.url, c))),
         { label: "inventory delete blocked" },
       );
     }
@@ -238,7 +256,10 @@ export async function runMigrateUrlHygiene(): Promise<void> {
       const variantUrls = group.map((g) => g.url).filter((u) => u !== canon);
       if (variantUrls.length > 0) {
         await withDbRetry(
-          () => db.delete(inventoryTable).where(inArray(inventoryTable.url, variantUrls)),
+          () =>
+            db
+              .delete(inventoryTable)
+              .where(and(eq(inventoryTable.siteId, site.id), inArray(inventoryTable.url, variantUrls))),
           { label: "inventory delete variants" },
         );
       }
@@ -279,11 +300,15 @@ export async function runMigrateUrlHygiene(): Promise<void> {
   {
     const rows = await db
       .select({ url: wpPostsTable.url })
-      .from(wpPostsTable);
+      .from(wpPostsTable)
+      .where(eq(wpPostsTable.siteId, site.id));
     const { toDelete, toRewrite } = planFor(rows.map((r) => r.url));
     for (const c of chunk(toDelete, 200)) {
       await withDbRetry(
-        () => db.delete(wpPostsTable).where(inArray(wpPostsTable.url, c)),
+        () =>
+          db
+            .delete(wpPostsTable)
+            .where(and(eq(wpPostsTable.siteId, site.id), inArray(wpPostsTable.url, c))),
         { label: "wp_posts delete blocked" },
       );
     }
@@ -291,13 +316,19 @@ export async function runMigrateUrlHygiene(): Promise<void> {
     for (const r of toRewrite) {
       if (existing.has(r.to)) {
         await withDbRetry(
-          () => db.delete(wpPostsTable).where(eq(wpPostsTable.url, r.from)),
+          () =>
+            db
+              .delete(wpPostsTable)
+              .where(and(eq(wpPostsTable.siteId, site.id), eq(wpPostsTable.url, r.from))),
           { label: "wp_posts drop variant" },
         );
       } else {
         await withDbRetry(
           () =>
-            db.update(wpPostsTable).set({ url: r.to }).where(eq(wpPostsTable.url, r.from)),
+            db
+              .update(wpPostsTable)
+              .set({ url: r.to })
+              .where(and(eq(wpPostsTable.siteId, site.id), eq(wpPostsTable.url, r.from))),
           { label: "wp_posts rewrite url" },
         );
         existing.add(r.to);
@@ -313,14 +344,15 @@ export async function runMigrateUrlHygiene(): Promise<void> {
   {
     const rows = await db
       .select({ url: pageClassificationsTable.url })
-      .from(pageClassificationsTable);
+      .from(pageClassificationsTable)
+      .where(eq(pageClassificationsTable.siteId, site.id));
     const { toDelete, toRewrite } = planFor(rows.map((r) => r.url));
     for (const c of chunk(toDelete, 200)) {
       await withDbRetry(
         () =>
           db
             .delete(pageClassificationsTable)
-            .where(inArray(pageClassificationsTable.url, c)),
+            .where(and(eq(pageClassificationsTable.siteId, site.id), inArray(pageClassificationsTable.url, c))),
         { label: "classifications delete blocked" },
       );
     }
@@ -331,7 +363,7 @@ export async function runMigrateUrlHygiene(): Promise<void> {
           () =>
             db
               .delete(pageClassificationsTable)
-              .where(eq(pageClassificationsTable.url, r.from)),
+              .where(and(eq(pageClassificationsTable.siteId, site.id), eq(pageClassificationsTable.url, r.from))),
           { label: "classifications drop variant" },
         );
       } else {
@@ -340,7 +372,7 @@ export async function runMigrateUrlHygiene(): Promise<void> {
             db
               .update(pageClassificationsTable)
               .set({ url: r.to })
-              .where(eq(pageClassificationsTable.url, r.from)),
+              .where(and(eq(pageClassificationsTable.siteId, site.id), eq(pageClassificationsTable.url, r.from))),
           { label: "classifications rewrite url" },
         );
         existing.add(r.to);
@@ -353,19 +385,27 @@ export async function runMigrateUrlHygiene(): Promise<void> {
   {
     const sources = await db
       .selectDistinct({ u: linkGraphTable.sourceUrl })
-      .from(linkGraphTable);
+      .from(linkGraphTable)
+      .where(eq(linkGraphTable.siteId, site.id));
     const targets = await db
       .selectDistinct({ u: linkGraphTable.targetUrl })
-      .from(linkGraphTable);
+      .from(linkGraphTable)
+      .where(eq(linkGraphTable.siteId, site.id));
     const all = Array.from(new Set([...sources.map((r) => r.u), ...targets.map((r) => r.u)]));
     const { toDelete, toRewrite } = planFor(all);
     for (const c of chunk(toDelete, 200)) {
       await withDbRetry(
-        () => db.delete(linkGraphTable).where(inArray(linkGraphTable.sourceUrl, c)),
+        () =>
+          db
+            .delete(linkGraphTable)
+            .where(and(eq(linkGraphTable.siteId, site.id), inArray(linkGraphTable.sourceUrl, c))),
         { label: "link_graph delete blocked sources" },
       );
       await withDbRetry(
-        () => db.delete(linkGraphTable).where(inArray(linkGraphTable.targetUrl, c)),
+        () =>
+          db
+            .delete(linkGraphTable)
+            .where(and(eq(linkGraphTable.siteId, site.id), inArray(linkGraphTable.targetUrl, c))),
         { label: "link_graph delete blocked targets" },
       );
     }
@@ -381,6 +421,8 @@ export async function runMigrateUrlHygiene(): Promise<void> {
               AND k.source_url = ${r.to}
               AND v.target_url = k.target_url
               AND v.anchor_text IS NOT DISTINCT FROM k.anchor_text
+              AND v.site_id = ${site.id}
+              AND k.site_id = ${site.id}
           `),
         { label: "link_graph pre-dedupe source" },
       );
@@ -389,7 +431,7 @@ export async function runMigrateUrlHygiene(): Promise<void> {
           db
             .update(linkGraphTable)
             .set({ sourceUrl: r.to })
-            .where(eq(linkGraphTable.sourceUrl, r.from)),
+            .where(and(eq(linkGraphTable.siteId, site.id), eq(linkGraphTable.sourceUrl, r.from))),
         { label: "link_graph rewrite source" },
       );
       await withDbRetry(
@@ -401,6 +443,8 @@ export async function runMigrateUrlHygiene(): Promise<void> {
               AND k.target_url = ${r.to}
               AND v.source_url = k.source_url
               AND v.anchor_text IS NOT DISTINCT FROM k.anchor_text
+              AND v.site_id = ${site.id}
+              AND k.site_id = ${site.id}
           `),
         { label: "link_graph pre-dedupe target" },
       );
@@ -409,14 +453,14 @@ export async function runMigrateUrlHygiene(): Promise<void> {
           db
             .update(linkGraphTable)
             .set({ targetUrl: r.to })
-            .where(eq(linkGraphTable.targetUrl, r.from)),
+            .where(and(eq(linkGraphTable.siteId, site.id), eq(linkGraphTable.targetUrl, r.from))),
         { label: "link_graph rewrite target" },
       );
     }
     // Drop self-links produced by variant collapse.
     await withDbRetry(
       () =>
-        db.execute(sql`DELETE FROM link_graph WHERE source_url = target_url`),
+        db.execute(sql`DELETE FROM link_graph WHERE source_url = target_url AND site_id = ${site.id}`),
       { label: "link_graph drop self-links" },
     );
     logger.info(

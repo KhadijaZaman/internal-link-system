@@ -185,7 +185,7 @@ router.post("/clustering/runs", requireAuth, requireSite, async (req, res) => {
     return;
   }
 
-  const result = await runJob("keyword_clustering");
+  const result = await runJob("keyword_clustering", site);
   if (!result.started) {
     // Orphan-row race guard: nothing will pick this row up, so remove it.
     await db
@@ -273,7 +273,7 @@ router.post("/clustering/runs/:runId/rebuild", requireAuth, requireSite, async (
     .where(and(eq(clusterRunsTable.siteId, site.id), eq(clusterRunsTable.id, runId)))
     .returning();
 
-  const result = await runJob("keyword_clustering");
+  const result = await runJob("keyword_clustering", site);
   if (!result.started) {
     // Never delete the run — restore it so its stored (paid) data stays usable.
     await db

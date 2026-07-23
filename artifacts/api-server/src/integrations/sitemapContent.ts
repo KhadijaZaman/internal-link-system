@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { logger } from "../lib/logger";
+import { LEGACY_SITE_ID } from "../lib/site";
 import {
   classifyPlacement,
   placementRank,
@@ -310,9 +311,23 @@ async function processConcurrent<T, R>(
   return out;
 }
 
-export async function fetchAllSitemapContent(): Promise<SitemapItem[]> {
-  const domain = getDomain();
-  const sitemap = getSitemap();
+export async function fetchAllSitemapContent(site: {
+  id: number;
+  host: string;
+  sitemapUrl: string | null;
+}): Promise<SitemapItem[]> {
+  // Host/sitemap are per-site. The legacy site keeps its env-configured
+  // values; every other site derives them from its own record.
+  const domain = site.id === LEGACY_SITE_ID ? getDomain() : site.host;
+  const sitemap =
+    site.sitemapUrl ??
+    (site.id === LEGACY_SITE_ID
+      ? getSitemap()
+      : (() => {
+          throw new Error(
+            `Site ${site.id} (${site.host}) has no sitemapUrl configured; cannot crawl content`,
+          );
+        })());
   const entries = await fetchSitemapEntries(sitemap, domain);
   logger.info({ count: entries.length }, "Sitemap content: urls discovered");
 

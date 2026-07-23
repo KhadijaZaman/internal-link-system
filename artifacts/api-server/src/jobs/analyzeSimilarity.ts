@@ -17,6 +17,8 @@ import { generateClusterLabels } from "../integrations/openaiClusterLabels";
 import { cosineSim } from "../lib/semanticScorer";
 import { louvain } from "../lib/louvain";
 import { withDbRetry } from "../lib/dbRetry";
+import { budgetForSite, type JobBudget } from "../lib/jobBudget";
+import type { SiteContext } from "../lib/site";
 import { logger } from "../lib/logger";
 
 const STALE_MS = 3 * 60_000;
@@ -55,8 +57,12 @@ async function updateRun(
   );
 }
 
-/** Mark runs whose process died (stale heartbeat) as interrupted. */
-export async function reconcileStaleSimilarityRuns(): Promise<void> {
+/**
+ * Mark runs whose process died (stale heartbeat) as interrupted. When a
+ * siteId is given, only that site's runs are reconciled; called with no
+ * argument (e.g. on boot) it reconciles across all sites.
+ */
+export async function reconcileStaleSimilarityRuns(siteId?: number): Promise<void> {
   const cutoff = new Date(Date.now() - STALE_MS);
   await withDbRetry(
     () =>
@@ -69,6 +75,9 @@ export async function reconcileStaleSimilarityRuns(): Promise<void> {
         })
         .where(
           and(
+            ...(siteId !== undefined
+              ? [eq(similarityRunsTable.siteId, siteId)]
+              : []),
             eq(similarityRunsTable.status, "running"),
             or(
               lt(similarityRunsTable.heartbeatAt, cutoff),
@@ -80,8 +89,9 @@ export async function reconcileStaleSimilarityRuns(): Promise<void> {
   );
 }
 
-export async function runAnalyzeSimilarity(): Promise<void> {
-  await reconcileStaleSimilarityRuns();
+export async function runAnalyzeSimilarity(site: SiteContext): Promise<void> {
+  await reconcileStaleSimilarityRuns(site.id);
+  const budget = budgetForSite(site);
   // Drain queued runs one at a time until the queue is empty.
   for (;;) {
     const [run] = await withDbRetry(
@@ -89,12 +99,17 @@ export async function runAnalyzeSimilarity(): Promise<void> {
         db
           .select()
           .from(similarityRunsTable)
-          .where(eq(similarityRunsTable.status, "queued"))
+          .where(
+            and(
+              eq(similarityRunsTable.siteId, site.id),
+              eq(similarityRunsTable.status, "queued"),
+            ),
+          )
           .orderBy(asc(similarityRunsTable.createdAt))
           .limit(1),
       { label: "similarity_next_queued" },
     );
-    if (!run) return;
+    if (!run) break;
 
     await updateRun(run.id, {
       status: "running",
@@ -104,7 +119,7 @@ export async function runAnalyzeSimilarity(): Promise<void> {
       progressTotal: run.urls.length,
     });
     try {
-      const results = await processRun(run);
+      const results = await processRun(run, budget);
       await updateRun(run.id, {
         status: "complete",
         results,
@@ -125,9 +140,15 @@ export async function runAnalyzeSimilarity(): Promise<void> {
       });
     }
   }
+  if (budget.anyExhausted()) {
+    logger.warn({ budget: budget.summary() }, "Similarity: spend budget exhausted");
+  }
 }
 
-async function processRun(run: SimilarityRun): Promise<SimilarityResults> {
+async function processRun(
+  run: SimilarityRun,
+  budget: JobBudget,
+): Promise<SimilarityResults> {
   const urls = run.urls;
   const articles: WorkingArticle[] = urls.map((url) => ({
     url,
@@ -150,6 +171,19 @@ async function processRun(run: SimilarityRun): Promise<SimilarityResults> {
       const idx = next++;
       if (idx >= articles.length) return;
       const a = articles[idx]!;
+      // Spend cap: fetch+embed+analyze is one LLM/embedding unit per URL.
+      // When the budget is exhausted, record the remaining URLs as a soft
+      // failure (same per-article fail-soft pattern) instead of spending.
+      if (!budget.take("llmCalls")) {
+        a.error = "Skipped — per-run LLM budget cap reached";
+        logger.warn(
+          { url: a.url, remaining: budget.remaining("llmCalls") },
+          "Similarity: LLM budget cap reached; skipping remaining URLs",
+        );
+        done++;
+        await updateRun(run.id, { progressDone: done });
+        continue;
+      }
       try {
         const page = await fetchPageInHouse(a.url);
         a.finalUrl = page.url;
