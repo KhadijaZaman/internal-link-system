@@ -21,6 +21,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Search, Filter, AlertTriangle, Link2, Target, X, Sparkles, ArrowRight, ExternalLink, Network, Table as TableIcon, ArrowUpDown, ShieldAlert } from "lucide-react";
 import { InfoTip } from "@/components/info-tip";
 import { HowThisWorks } from "@/components/how-this-works";
+import { JobSpendCapNotice } from "@/components/spend-cap-badge";
 import * as d3 from "d3";
 import type { LinkGraphNode, LinkGraphFocusNeighbor, LinkGraphFocus } from "@workspace/api-client-react";
 
@@ -359,6 +360,7 @@ export default function LinkMap() {
           <InfoTip>Force-directed visualization of your site's internal link graph. Enter a full URL in Search URL to see a focused view of that page's neighbors, with scores combining semantic relevance, popularity, and prominence.</InfoTip>
         </h2>
         <p className="text-muted-foreground mt-1 text-sm">Interactive visualization of site structure</p>
+        <JobSpendCapNotice jobName="crawl_link_map" />
         <div className="mt-3">
           <HowThisWorks
             summary="Force-directed view of every internal link on your site. Nodes are pages, edges are content-area links. Focused mode shows one page's neighborhood ranked by combined semantic / popularity / prominence score."

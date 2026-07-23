@@ -16,6 +16,7 @@ import { OptimizeQueueInputPriority } from "@workspace/api-client-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InfoTip } from "@/components/info-tip";
 import { HowThisWorks } from "@/components/how-this-works";
+import { JobSpendCapNotice } from "@/components/spend-cap-badge";
 
 export default function Optimize() {
   const { data: queue, isLoading } = useListOptimizeQueue({
@@ -188,6 +189,8 @@ export default function Optimize() {
           </div>
         </div>
       </div>
+
+      <JobSpendCapNotice jobName="optimize_queued_urls" />
 
       <HowThisWorks
         defaultOpen
