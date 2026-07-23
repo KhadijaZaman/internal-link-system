@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useClerk, useUser } from "@clerk/react";
 import {
@@ -36,6 +36,16 @@ function formatWait(seconds: number): string {
   return `${hours} hours`;
 }
 
+function formatCountdown(seconds: number): string {
+  const s = Math.max(0, seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const mm = h > 0 ? String(m).padStart(2, "0") : String(m);
+  const ss = String(sec).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
 export function WelcomePage() {
   const { legacyClaimable, switchSite } = useSiteContext();
   const { signOut } = useClerk();
@@ -44,6 +54,25 @@ export function WelcomePage() {
   const { toast } = useToast();
   const [claimOpen, setClaimOpen] = useState(false);
   const [password, setPassword] = useState("");
+  const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (lockoutUntil === null) return;
+    if (Date.now() >= lockoutUntil) {
+      setLockoutUntil(null);
+      return;
+    }
+    const timer = setInterval(() => {
+      setNow(Date.now());
+      if (Date.now() >= lockoutUntil) setLockoutUntil(null);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lockoutUntil]);
+
+  const lockoutSecondsLeft =
+    lockoutUntil !== null ? Math.ceil((lockoutUntil - now) / 1000) : 0;
+  const lockedOut = lockoutUntil !== null && lockoutSecondsLeft > 0;
 
   const claim = useClaimLegacySite({
     mutation: {
@@ -63,9 +92,13 @@ export function WelcomePage() {
           const retryAfterSeconds = (
             err as { data?: { retryAfterSeconds?: number } }
           )?.data?.retryAfterSeconds;
-          message = retryAfterSeconds
-            ? `Too many attempts — try again in ${formatWait(retryAfterSeconds)}.`
-            : "Too many attempts — try again later.";
+          if (retryAfterSeconds && retryAfterSeconds > 0) {
+            message = `Too many attempts — try again in ${formatWait(retryAfterSeconds)}.`;
+            setLockoutUntil(Date.now() + retryAfterSeconds * 1000);
+            setNow(Date.now());
+          } else {
+            message = "Too many attempts — try again later.";
+          }
         } else {
           message = "Claim failed. Try again.";
         }
@@ -236,7 +269,7 @@ export function WelcomePage() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (password.length === 0 || claim.isPending) return;
+              if (password.length === 0 || claim.isPending || lockedOut) return;
               claim.mutate({ data: { password } });
             }}
             className="space-y-4"
@@ -252,14 +285,26 @@ export function WelcomePage() {
                 data-testid="input-claim-password"
               />
             </div>
-            <DialogFooter>
+            <DialogFooter className="sm:flex-col sm:items-end gap-2">
               <Button
                 type="submit"
-                disabled={password.length === 0 || claim.isPending}
+                disabled={password.length === 0 || claim.isPending || lockedOut}
                 data-testid="button-submit-claim"
               >
-                {claim.isPending ? "Verifying…" : "Claim site"}
+                {lockedOut
+                  ? `Try again in ${formatCountdown(lockoutSecondsLeft)}`
+                  : claim.isPending
+                    ? "Verifying…"
+                    : "Claim site"}
               </Button>
+              {lockedOut ? (
+                <p
+                  className="text-xs text-muted-foreground"
+                  data-testid="text-claim-lockout"
+                >
+                  Too many attempts. Claiming is temporarily locked.
+                </p>
+              ) : null}
             </DialogFooter>
           </form>
         </DialogContent>
