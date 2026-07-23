@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useGetGa4Pages } from "@workspace/api-client-react";
+import { NotConnectedNotice, notConnectedProvider } from "@/components/not-connected-notice";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
@@ -197,9 +198,13 @@ export default function Ga4PagesPage() {
           <Spinner className="h-8 w-8" />
         </div>
       ) : error || !data ? (
-        <div className="py-12 text-center text-sm text-destructive">
-          Failed to load GA4 data. {error instanceof Error ? error.message : ""}
-        </div>
+        notConnectedProvider(error) ? (
+          <NotConnectedNotice provider={notConnectedProvider(error)!} />
+        ) : (
+          <div className="py-12 text-center text-sm text-destructive">
+            Failed to load GA4 data. {error instanceof Error ? error.message : ""}
+          </div>
+        )
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">

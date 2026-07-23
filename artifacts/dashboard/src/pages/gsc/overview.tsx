@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useGetGscOverview } from "@workspace/api-client-react";
 import { GscLayout } from "@/components/gsc/gsc-layout";
+import { NotConnectedNotice, notConnectedProvider } from "@/components/not-connected-notice";
 import { useGscRange } from "@/components/gsc/range-context";
 import { MetricCard } from "@/components/gsc/metric-card";
 import { TrendChart } from "@/components/gsc/trend-chart";
@@ -80,7 +81,11 @@ function OverviewBody() {
   }, [data, gran]);
 
   if (isLoading) return <div className="flex justify-center py-12"><Spinner className="h-8 w-8" /></div>;
-  if (error || !data) return <div className="text-red-500 text-sm">Failed to load GSC overview.</div>;
+  if (error || !data) {
+    const provider = notConnectedProvider(error);
+    if (provider) return <NotConnectedNotice provider={provider} />;
+    return <div className="text-red-500 text-sm">Failed to load GSC overview.</div>;
+  }
 
   const t = data.totals;
   const d = data.deltaPct;

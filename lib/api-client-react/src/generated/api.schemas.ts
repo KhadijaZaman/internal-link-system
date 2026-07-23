@@ -52,6 +52,14 @@ export interface SiteLimitsResponse {
   bounds: SiteLimitsResponseBounds;
 }
 
+export interface UpdateSiteInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  displayName: string;
+}
+
 export interface UpdateSiteLimitsInput {
   /**
      * @minimum 50
@@ -2707,6 +2715,10 @@ export const Ga4ChannelParameter = {
 export type UrlFilterParameter = string;
 
 export type RowLimitParameter = number;
+
+export type DeleteSite409 = {
+  error: string;
+};
 
 export type GetGscAuthUrl200 = {
   url: string;

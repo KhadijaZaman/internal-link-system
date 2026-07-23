@@ -165,6 +165,19 @@ export function isRunning(name: JobName, siteId: number): boolean {
   return running.has(runKey(name, siteId));
 }
 
+/**
+ * True when ANY job is currently running for the given site (this instance).
+ * NOTE: this checks the in-memory running map only — correct on the current
+ * single-instance (gce) deployment, but it will miss jobs on other instances
+ * if the app ever moves to autoscale. Revisit before changing deploy targets.
+ */
+export function hasRunningJobs(siteId: number): boolean {
+  for (const entry of running.values()) {
+    if (entry.siteId === siteId) return true;
+  }
+  return false;
+}
+
 export async function runJob(
   name: JobName,
   site: SiteContext,

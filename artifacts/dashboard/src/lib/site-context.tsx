@@ -36,6 +36,8 @@ interface SiteContextValue {
   isLoading: boolean;
   isError: boolean;
   switchSite: (id: number) => void;
+  /** Forget the stored active site (used after deleting the active site). */
+  clearStoredSite: () => void;
 }
 
 const SiteContext = createContext<SiteContextValue | null>(null);
@@ -66,6 +68,16 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
   // request issued by child queries carries the X-Site-Id header.
   activeSiteIdStore = activeSite?.id ?? null;
 
+  const clearStoredSite = () => {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // localStorage unavailable — nothing to clear
+    }
+    activeSiteIdStore = null;
+    setStoredId(null);
+  };
+
   const switchSite = (id: number) => {
     if (id === activeSite?.id) return;
     try {
@@ -85,6 +97,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     isError,
     switchSite,
+    clearStoredSite,
   };
 
   return <SiteContext.Provider value={value}>{children}</SiteContext.Provider>;

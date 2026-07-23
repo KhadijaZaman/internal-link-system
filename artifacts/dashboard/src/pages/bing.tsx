@@ -9,6 +9,7 @@ import {
   getListAiCitationUploadsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { NotConnectedNotice, notConnectedProvider } from "@/components/not-connected-notice";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
@@ -336,9 +337,13 @@ export default function BingPage() {
           <Spinner className="h-8 w-8" />
         </div>
       ) : error || !data ? (
-        <div className="py-12 text-center text-sm text-destructive">
-          Failed to load. {error instanceof Error ? error.message : ""}
-        </div>
+        notConnectedProvider(error) ? (
+          <NotConnectedNotice provider={notConnectedProvider(error)!} />
+        ) : (
+          <div className="py-12 text-center text-sm text-destructive">
+            Failed to load. {error instanceof Error ? error.message : ""}
+          </div>
+        )
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

@@ -1,10 +1,15 @@
 import { Activity, AlertTriangle } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import {
   useGetJobStatus,
+  useRunJob,
   getGetJobStatusQueryKey,
   type JobBudgetUsage,
 } from "@workspace/api-client-react";
+
+type RunnableJobName = Parameters<ReturnType<typeof useRunJob>["mutate"]>[0]["jobName"];
 
 const BUDGET_KIND_LABELS: Record<string, string> = {
   llmCalls: "AI calls",
@@ -55,12 +60,34 @@ export function SpendCapBadge({
   );
 }
 
-export function JobSpendCapNotice({ jobName }: { jobName: string }) {
+export function JobSpendCapNotice({ jobName }: { jobName: RunnableJobName }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const runJob = useRunJob();
   const { data: jobs } = useGetJobStatus({
     query: { queryKey: getGetJobStatusQueryKey(), staleTime: 30_000 },
   });
   const job = jobs?.find((j) => j.name === jobName);
   const budget = job?.lastBudget;
   if (!budget || !budget.capped) return null;
-  return <SpendCapBadge budget={budget} testId={`badge-spend-cap-${jobName}`} />;
+  const handleRunAgain = () => {
+    runJob.mutate(
+      { jobName },
+      {
+        onSuccess: () => {
+          toast({ title: "Job started", description: "Continuing from where it stopped." });
+          queryClient.invalidateQueries({ queryKey: getGetJobStatusQueryKey() });
+        },
+        onError: () => toast({ variant: "destructive", title: "Failed to start the job" }),
+      },
+    );
+  };
+  return (
+    <SpendCapBadge
+      budget={budget}
+      testId={`badge-spend-cap-${jobName}`}
+      onRunAgain={handleRunAgain}
+      runDisabled={runJob.isPending || job?.running === true}
+    />
+  );
 }

@@ -49,6 +49,7 @@ import type {
   DailyActivity,
   DashboardSummary,
   DashboardUrlList,
+  DeleteSite409,
   DigestList,
   Ga4PagesResponse,
   GenerateTopicalMapInput,
@@ -141,6 +142,7 @@ import type {
   TrackedSubmission,
   TrackedSubmissionCreate,
   TrackedSubmissionUpdate,
+  UpdateSiteInput,
   UpdateSiteLimitsInput,
   UpdateTopicalMapNodeInput,
   UrlLinkBreakdown,
@@ -684,6 +686,147 @@ export const useUpdateSiteLimits = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getUpdateSiteLimitsMutationOptions(options));
+    }
+
+export const getUpdateSiteUrl = () => {
+
+
+
+
+  return `/api/site`
+}
+
+/**
+ * @summary Rename the active site
+ */
+export const updateSite = async (updateSiteInput: UpdateSiteInput, options?: RequestInit): Promise<Site> => {
+
+  return customFetch<Site>(getUpdateSiteUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateSiteInput,)
+  }
+);}
+
+
+
+
+export const getUpdateSiteMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSite>>, TError,{data: BodyType<UpdateSiteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSite>>, TError,{data: BodyType<UpdateSiteInput>}, TContext> => {
+
+const mutationKey = ['updateSite'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSite>>, {data: BodyType<UpdateSiteInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateSite(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSiteMutationResult = NonNullable<Awaited<ReturnType<typeof updateSite>>>
+    export type UpdateSiteMutationBody = BodyType<UpdateSiteInput>
+    export type UpdateSiteMutationError = ErrorType<void>
+
+    /**
+ * @summary Rename the active site
+ */
+export const useUpdateSite = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSite>>, TError,{data: BodyType<UpdateSiteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSite>>,
+        TError,
+        {data: BodyType<UpdateSiteInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateSiteMutationOptions(options));
+    }
+
+export const getDeleteSiteUrl = () => {
+
+
+
+
+  return `/api/site`
+}
+
+/**
+ * @summary Permanently delete the active site and all of its data
+ */
+export const deleteSite = async ( options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteSiteUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteSiteMutationOptions = <TError = ErrorType<void | DeleteSite409>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSite>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSite>>, TError,void, TContext> => {
+
+const mutationKey = ['deleteSite'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSite>>, void> = () => {
+
+
+          return  deleteSite(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSiteMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSite>>>
+
+    export type DeleteSiteMutationError = ErrorType<void | DeleteSite409>
+
+    /**
+ * @summary Permanently delete the active site and all of its data
+ */
+export const useDeleteSite = <TError = ErrorType<void | DeleteSite409>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSite>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSite>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getDeleteSiteMutationOptions(options));
     }
 
 export const getGetIntegrationsUrl = () => {

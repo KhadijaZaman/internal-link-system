@@ -191,6 +191,50 @@ paths:
           description: Not signed in
         "403":
           description: Not the site owner
+  /site:
+    patch:
+      operationId: updateSite
+      tags: [sites]
+      summary: Rename the active site
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSiteInput"
+      responses:
+        "200":
+          description: Updated site
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Site"
+        "400":
+          description: Invalid display name
+        "401":
+          description: Not signed in
+        "403":
+          description: Not the site owner
+    delete:
+      operationId: deleteSite
+      tags: [sites]
+      summary: Permanently delete the active site and all of its data
+      responses:
+        "204":
+          description: Site and all associated data deleted
+        "401":
+          description: Not signed in
+        "403":
+          description: Not the site owner
+        "409":
+          description: Deletion blocked (legacy site, or a job is currently running)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: { type: string }
   /integrations:
     get:
       operationId: getIntegrations
@@ -2053,6 +2097,11 @@ components:
               $ref: "#/components/schemas/SiteLimitBounds"
             maxSerpQueriesPerRun:
               $ref: "#/components/schemas/SiteLimitBounds"
+    UpdateSiteInput:
+      type: object
+      required: [displayName]
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 120 }
     UpdateSiteLimitsInput:
       type: object
       properties:

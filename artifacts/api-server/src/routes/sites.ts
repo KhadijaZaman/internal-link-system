@@ -5,10 +5,13 @@ import { asc, eq } from "drizzle-orm";
 import {
   ClaimLegacySiteBody,
   CreateSiteBody,
+  UpdateSiteBody,
   UpdateSiteLimitsBody,
 } from "@workspace/api-zod";
 import { requireAuth, type AuthedRequest } from "../lib/auth";
 import { bumpAndCheck, cleanupExpiredClaimAttempts } from "../lib/claimRateLimit";
+import { deleteSiteData } from "../lib/deleteSiteData";
+import { hasRunningJobs } from "../jobs/runner";
 import { getSite, invalidateSiteCache, requireSite } from "../lib/site";
 import { normalizeHost } from "../lib/urlCanon";
 
@@ -339,6 +342,62 @@ router.patch("/site/limits", requireAuth, requireSite, async (req, res, next) =>
     invalidateSiteCache(site.id);
     req.log.info({ siteId: site.id, ...patch }, "site spend limits updated");
     res.json(toLimitsResponse(updated[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Rename / delete the active site. Both are owner-only via requireSite.
+// Deleting removes every row the site owns (one transaction) and is refused
+// for the legacy site and while a job is running for the site.
+// ---------------------------------------------------------------------------
+
+router.patch("/site", requireAuth, requireSite, async (req, res, next) => {
+  try {
+    const site = getSite(req);
+    const parsed = UpdateSiteBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Display name must be 1-120 characters" });
+      return;
+    }
+    const displayName = parsed.data.displayName.trim();
+    if (!displayName) {
+      res.status(400).json({ error: "Display name must be 1-120 characters" });
+      return;
+    }
+    const updated = await db
+      .update(sitesTable)
+      .set({ displayName: displayName.slice(0, 120) })
+      .where(eq(sitesTable.id, site.id))
+      .returning();
+    invalidateSiteCache(site.id);
+    req.log.info({ siteId: site.id, displayName }, "site renamed");
+    res.json(toSiteDto(updated[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete("/site", requireAuth, requireSite, async (req, res, next) => {
+  try {
+    const site = getSite(req);
+    if (site.id === LEGACY_SITE_ID) {
+      res.status(409).json({
+        error:
+          "The original Wellows site can't be deleted — it holds the full historical dataset.",
+      });
+      return;
+    }
+    if (hasRunningJobs(site.id)) {
+      res.status(409).json({
+        error: "A job is currently running for this site. Wait for it to finish, then try again.",
+      });
+      return;
+    }
+    await deleteSiteData(site.id);
+    req.log.info({ siteId: site.id, host: site.host }, "site deleted");
+    res.status(204).end();
   } catch (err) {
     next(err);
   }

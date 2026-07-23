@@ -1,4 +1,9 @@
-import express, { type Express } from "express";
+import express, {
+  type Express,
+  type NextFunction,
+  type Request,
+  type Response,
+} from "express";
 import cors, { type CorsOptions } from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
@@ -11,6 +16,7 @@ import {
 } from "./middlewares/clerkProxyMiddleware";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { IntegrationNotConnectedError } from "./lib/siteIntegrations";
 
 const app: Express = express();
 
@@ -93,5 +99,26 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
+
+// Typed error mapping. A site without a connected data source is an expected
+// state, not a server fault — surface it as a machine-readable 409 so the
+// dashboard can render a "connect it in Settings" notice instead of a raw
+// error. Everything else stays a logged, opaque 500 (no stack leaks).
+app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
+  if (err instanceof IntegrationNotConnectedError) {
+    res.status(409).json({
+      error: err.message,
+      code: "integration_not_connected",
+      provider: err.provider,
+    });
+    return;
+  }
+  (req.log ?? logger).error({ err }, "unhandled request error");
+  res.status(500).json({ error: "Internal server error" });
+});
 
 export default app;

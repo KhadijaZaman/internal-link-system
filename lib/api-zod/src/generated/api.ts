@@ -155,6 +155,26 @@ export const UpdateSiteLimitsResponse = zod.object({
 
 
 /**
+ * @summary Rename the active site
+ */
+export const updateSiteBodyDisplayNameMax = 120;
+
+
+
+export const UpdateSiteBody = zod.object({
+  "displayName": zod.string().min(1).max(updateSiteBodyDisplayNameMax)
+})
+
+export const UpdateSiteResponse = zod.object({
+  "id": zod.number(),
+  "domain": zod.string(),
+  "host": zod.string(),
+  "displayName": zod.string(),
+  "sitemapUrl": zod.string().nullable()
+})
+
+
+/**
  * @summary Connection status for the active site's data sources
  */
 export const GetIntegrationsResponse = zod.object({

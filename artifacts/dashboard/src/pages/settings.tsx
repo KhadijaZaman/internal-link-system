@@ -13,6 +13,9 @@ import {
   useGetSiteLimits,
   getGetSiteLimitsQueryKey,
   useUpdateSiteLimits,
+  useUpdateSite,
+  useDeleteSite,
+  getListSitesQueryKey,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,10 +36,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/hooks/use-toast";
 import { useSiteContext } from "@/lib/site-context";
-import { CheckCircle2, Circle, Plug, Unplug } from "lucide-react";
+import { CheckCircle2, Circle, Plug, Trash2, Unplug } from "lucide-react";
 
 function StatusBadge({ connected }: { connected: boolean }) {
   return connected ? (
@@ -47,6 +61,154 @@ function StatusBadge({ connected }: { connected: boolean }) {
     <Badge variant="secondary" className="gap-1">
       <Circle className="h-3 w-3" /> Not connected
     </Badge>
+  );
+}
+
+const LEGACY_SITE_ID = 1;
+
+function SiteSettingsCard() {
+  const { activeSite, clearStoredSite } = useSiteContext();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [name, setName] = useState(activeSite?.displayName ?? "");
+
+  useEffect(() => {
+    setName(activeSite?.displayName ?? "");
+  }, [activeSite?.id, activeSite?.displayName]);
+
+  const updateSite = useUpdateSite({
+    mutation: {
+      onSuccess: async () => {
+        toast({ title: "Site renamed" });
+        await queryClient.invalidateQueries({ queryKey: getListSitesQueryKey() });
+      },
+      onError: (err: unknown) => {
+        const msg =
+          (err as { data?: { error?: string } })?.data?.error ?? "Rename failed";
+        toast({ title: msg, variant: "destructive" });
+      },
+    },
+  });
+
+  const deleteSite = useDeleteSite({
+    mutation: {
+      onSuccess: () => {
+        toast({
+          title: "Site deleted",
+          description: "All of its data has been removed.",
+        });
+        // Forget the deleted site and wipe the whole query cache (query keys
+        // are not site-scoped, so cached data from the deleted site could
+        // otherwise briefly show under the fallback site). SiteProvider then
+        // refetches the list and falls back to the first remaining site (or
+        // the welcome screen when none are left).
+        clearStoredSite();
+        queryClient.clear();
+      },
+      onError: (err: unknown) => {
+        const msg =
+          (err as { data?: { error?: string } })?.data?.error ??
+          "Could not delete the site";
+        toast({ title: msg, variant: "destructive" });
+      },
+    },
+  });
+
+  if (!activeSite) return null;
+  const isLegacy = activeSite.id === LEGACY_SITE_ID;
+  const trimmed = name.trim();
+  const canSave =
+    trimmed.length > 0 &&
+    trimmed.length <= 120 &&
+    trimmed !== activeSite.displayName &&
+    !updateSite.isPending;
+
+  return (
+    <Card data-testid="card-site-settings">
+      <CardHeader>
+        <CardTitle>Site</CardTitle>
+        <CardDescription>
+          Rename how <span className="font-mono">{activeSite.domain}</span> appears
+          in the site switcher, or remove the site entirely.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!canSave) return;
+            updateSite.mutate({ data: { displayName: trimmed } });
+          }}
+        >
+          <Input
+            value={name}
+            maxLength={120}
+            onChange={(e) => setName(e.target.value)}
+            aria-label="Site display name"
+            data-testid="input-site-name"
+          />
+          <Button type="submit" disabled={!canSave} data-testid="button-rename-site">
+            {updateSite.isPending ? "Saving…" : "Rename"}
+          </Button>
+        </form>
+
+        {isLegacy ? (
+          <p className="text-sm text-muted-foreground">
+            This is the original Wellows site — it can't be deleted.
+          </p>
+        ) : (
+          <div className="flex items-center justify-between rounded-md border border-destructive/30 p-3">
+            <div>
+              <p className="text-sm font-medium">Delete this site</p>
+              <p className="text-sm text-muted-foreground">
+                Permanently removes the site and all of its data. This cannot be
+                undone.
+              </p>
+            </div>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="gap-2"
+                  disabled={deleteSite.isPending}
+                  data-testid="button-delete-site"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {deleteSite.isPending ? "Deleting…" : "Delete"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    Delete {activeSite.displayName}?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This permanently deletes{" "}
+                    <span className="font-mono">{activeSite.domain}</span> and
+                    every report, page, keyword, link suggestion, and connection
+                    stored for it. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel data-testid="button-cancel-delete-site">
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    onClick={() => deleteSite.mutate()}
+                    data-testid="button-confirm-delete-site"
+                  >
+                    Delete site
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -538,6 +700,9 @@ export default function SettingsPage() {
 
       {/* Spend limits */}
       <SpendLimitsCard />
+
+      {/* Site rename / delete */}
+      <SiteSettingsCard />
     </div>
   );
 }

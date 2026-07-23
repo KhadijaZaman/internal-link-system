@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useClerk, useUser } from "@clerk/react";
 import {
@@ -148,6 +149,7 @@ export function WelcomePage() {
     },
   });
 
+  const [, setLocation] = useLocation();
   const [domain, setDomain] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [sitemapUrl, setSitemapUrl] = useState("");
@@ -159,10 +161,13 @@ export function WelcomePage() {
       onSuccess: async (site) => {
         toast({
           title: "Site added",
-          description: "Now connect Search Console in Settings → Connections.",
+          description: "Next step: connect Google Search Console so data can start flowing.",
         });
         await queryClient.invalidateQueries({ queryKey: getListSitesQueryKey() });
         switchSite(site.id);
+        // Land the new owner directly on Connections — connecting Search
+        // Console is the required next step before any data shows up.
+        setLocation("/settings");
       },
       onError: (err: unknown) => {
         const status = (err as { status?: number })?.status;
