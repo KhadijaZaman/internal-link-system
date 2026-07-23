@@ -273,6 +273,17 @@ async function loadStoredSheetId(siteId: number): Promise<string | null> {
   return row?.value ?? null;
 }
 
+/**
+ * URL of the site's persistent movement sheet, or null when no export or
+ * daily sync has created one yet. Pure DB read — no Sheets API call, so a
+ * deleted-from-Drive sheet may still return a (stale) URL; the next export
+ * or daily job run heals that by creating a fresh sheet.
+ */
+export async function getStoredSheetUrl(siteId: number): Promise<string | null> {
+  const id = await loadStoredSheetId(siteId);
+  return id ? `https://docs.google.com/spreadsheets/d/${id}/edit` : null;
+}
+
 async function storeSheetId(id: string, siteId: number): Promise<void> {
   await db
     .insert(appStateTable)

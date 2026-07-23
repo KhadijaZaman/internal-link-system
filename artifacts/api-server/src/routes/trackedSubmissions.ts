@@ -10,6 +10,7 @@ import {
 } from "@workspace/api-zod";
 import {
   exportKeywordMovementSheet,
+  getStoredSheetUrl,
   NoTrackedKeywordsError,
 } from "../services/keywordMovementSheet";
 import {
@@ -207,6 +208,19 @@ router.delete("/tracked-submissions/:id", requireAuth, requireSite, async (req, 
 });
 
 // ---------- Google Sheets export (GSC + Sheets only — no crawl, no AI) ----------
+
+// Pure DB read — surfaces the persistent per-site movement sheet's URL so
+// owners whose sheet was created by the daily job can find/bookmark it.
+router.get(
+  "/tracked-submissions/movement-sheet",
+  requireAuth,
+  requireSite,
+  async (req, res) => {
+    const site = getSite(req);
+    const url = await getStoredSheetUrl(site.id);
+    res.json({ url });
+  },
+);
 
 router.post("/tracked-submissions/export-sheet", requireAuth, requireSite, async (req, res) => {
   const site = getSite(req);

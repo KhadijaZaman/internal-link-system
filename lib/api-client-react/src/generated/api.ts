@@ -111,6 +111,7 @@ import type {
   LoserPagesResponse,
   LoserWeek,
   LoserWeekOption,
+  MovementSheetInfo,
   OkResponse,
   OptimizeQueueInput,
   OptimizeQueueItem,
@@ -3004,6 +3005,83 @@ export function useGetTrackedSubmissionPerformance<TData = Awaited<ReturnType<ty
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetTrackedSubmissionPerformanceQueryOptions(id,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetMovementSheetInfoUrl = () => {
+
+
+
+
+  return `/api/tracked-submissions/movement-sheet`
+}
+
+/**
+ * @summary URL of the site's persistent Target Keyword Daily Movement Google Sheet, if one exists
+ */
+export const getMovementSheetInfo = async ( options?: RequestInit): Promise<MovementSheetInfo> => {
+
+  return customFetch<MovementSheetInfo>(getGetMovementSheetInfoUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMovementSheetInfoQueryKey = () => {
+    return [
+    `/api/tracked-submissions/movement-sheet`
+    ] as const;
+    }
+
+
+export const getGetMovementSheetInfoQueryOptions = <TData = Awaited<ReturnType<typeof getMovementSheetInfo>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMovementSheetInfo>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMovementSheetInfoQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMovementSheetInfo>>> = ({ signal }) => getMovementSheetInfo({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMovementSheetInfo>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMovementSheetInfoQueryResult = NonNullable<Awaited<ReturnType<typeof getMovementSheetInfo>>>
+export type GetMovementSheetInfoQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary URL of the site's persistent Target Keyword Daily Movement Google Sheet, if one exists
+ */
+
+export function useGetMovementSheetInfo<TData = Awaited<ReturnType<typeof getMovementSheetInfo>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMovementSheetInfo>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMovementSheetInfoQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

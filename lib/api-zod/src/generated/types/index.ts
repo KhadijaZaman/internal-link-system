@@ -217,6 +217,7 @@ export * from './loserPagesResponse';
 export * from './loserWeek';
 export * from './loserWeekCounts';
 export * from './loserWeekOption';
+export * from './movementSheetInfo';
 export * from './okResponse';
 export * from './optimizeQueueInput';
 export * from './optimizeQueueInputPriority';

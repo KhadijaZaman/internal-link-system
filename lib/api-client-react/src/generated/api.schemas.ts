@@ -1121,6 +1121,11 @@ export interface SubmissionsSheetExportInput {
   days?: number;
 }
 
+export interface MovementSheetInfo {
+  /** @nullable */
+  url: string | null;
+}
+
 export interface SubmissionsSheetExportResult {
   url: string;
   title: string;

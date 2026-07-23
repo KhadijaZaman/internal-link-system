@@ -982,6 +982,14 @@ export const GetTrackedSubmissionPerformanceResponse = zod.object({
 
 
 /**
+ * @summary URL of the site's persistent Target Keyword Daily Movement Google Sheet, if one exists
+ */
+export const GetMovementSheetInfoResponse = zod.object({
+  "url": zod.string().nullable()
+})
+
+
+/**
  * @summary Export tracked keywords to a Google Sheet (Target Keyword Daily Movement template)
  */
 export const exportSubmissionsSheetBodyDaysDefault = 90;

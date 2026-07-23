@@ -11,6 +11,8 @@ import {
   useUpdateTrackedSubmission,
   useDeleteTrackedSubmission,
   useExportSubmissionsSheet,
+  useGetMovementSheetInfo,
+  getGetMovementSheetInfoQueryKey,
   type LinkLookup,
   type OptimizeQueueItem,
   type TrackedSubmission,
@@ -303,6 +305,10 @@ export default function Submissions() {
   const trackedQ = useListTrackedSubmissions({
     query: { queryKey: getListTrackedSubmissionsQueryKey() },
   });
+  const sheetInfoQ = useGetMovementSheetInfo({
+    query: { queryKey: getGetMovementSheetInfoQueryKey() },
+  });
+  const movementSheetUrl = sheetInfoQ.data?.url ?? null;
 
   const createMutation = useCreateTrackedSubmissions();
   const updateMutation = useUpdateTrackedSubmission();
@@ -319,6 +325,9 @@ export default function Submissions() {
       {
         onSuccess: (result) => {
           window.open(result.url, "_blank", "noopener,noreferrer");
+          queryClient.invalidateQueries({
+            queryKey: getGetMovementSheetInfoQueryKey(),
+          });
           toast({
             title: "Google Sheet updated",
             description: (
@@ -519,6 +528,22 @@ export default function Submissions() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {movementSheetUrl && (
+              <Button
+                variant="ghost"
+                asChild
+                title="Opens this site's persistent daily-movement Google Sheet (refreshed every morning by the daily sync job)"
+              >
+                <a
+                  href={movementSheetUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <FileSpreadsheet className="h-4 w-4" /> View daily movement
+                  sheet <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              </Button>
+            )}
             <Button
               variant={showAdd ? "secondary" : "default"}
               onClick={() => setShowAdd((v) => !v)}
