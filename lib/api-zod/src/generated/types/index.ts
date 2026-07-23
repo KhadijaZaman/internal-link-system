@@ -28,6 +28,7 @@ export * from './bingPageMapRow';
 export * from './bingPagesReport';
 export * from './bingPagesReportTotals';
 export * from './claimLegacyInput';
+export * from './claimRateLimited';
 export * from './clusterKeyword';
 export * from './clusterRun';
 export * from './clusterRunParams';

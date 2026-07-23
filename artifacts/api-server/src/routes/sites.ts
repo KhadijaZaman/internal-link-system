@@ -174,7 +174,10 @@ let legacyClaimed = false;
 // again (count is already past max+1), so an attacker cannot lock a shared
 // key forever, but each fully exhausted window doubles the next lockout.
 // Strikes persist in the same claim_attempts row across restarts.
-async function bumpAndCheck(key: string, max: number): Promise<boolean> {
+async function bumpAndCheck(
+  key: string,
+  max: number,
+): Promise<{ limited: boolean; resetAt: Date }> {
   const rows = await db
     .insert(claimAttemptsTable)
     .values({
@@ -199,26 +202,42 @@ async function bumpAndCheck(key: string, max: number): Promise<boolean> {
         END`,
       },
     })
-    .returning({ count: claimAttemptsTable.count });
-  return rows[0].count > max;
+    .returning({
+      count: claimAttemptsTable.count,
+      resetAt: claimAttemptsTable.resetAt,
+    });
+  return { limited: rows[0].count > max, resetAt: rows[0].resetAt };
 }
 
 // Sign-up is open, so an attacker can mint accounts to multiply the per-user
 // budget. Layered budgets: per user|ip, per ip (all accounts), and a global
 // endpoint-wide cap. All three counters are bumped on every attempt.
-async function rateLimited(userId: string, ip: string): Promise<boolean> {
+// Returns null when not limited, otherwise the number of seconds until the
+// longest active lockout among the tripped counters expires.
+async function rateLimited(userId: string, ip: string): Promise<number | null> {
   // Opportunistic cleanup of long-expired counter rows (fire-and-forget).
   // Rows are kept for the maximum lockout after expiry so accumulated
   // strikes (escalating-backoff history) only decay after a long quiet gap.
   db.delete(claimAttemptsTable)
     .where(lt(claimAttemptsTable.resetAt, sql`now() - make_interval(secs => ${MAX_LOCKOUT_MS / 1000})`))
     .catch(() => {});
-  const [perUser, perIp, global] = await Promise.all([
+  const results = await Promise.all([
     bumpAndCheck(`u|${userId}|${ip}`, MAX_ATTEMPTS),
     bumpAndCheck(`ip|${ip}`, MAX_ATTEMPTS_PER_IP),
     bumpAndCheck("global", MAX_ATTEMPTS_GLOBAL),
   ]);
-  return perUser || perIp || global;
+  const tripped = results.filter((r) => r.limited);
+  if (tripped.length === 0) return null;
+  const latest = Math.max(...tripped.map((r) => r.resetAt.getTime()));
+  return Math.max(1, Math.ceil((latest - Date.now()) / 1000));
+}
+
+function formatWait(seconds: number): string {
+  if (seconds < 90) return `${seconds} seconds`;
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 90) return `${minutes} minutes`;
+  const hours = Math.round((minutes / 60) * 10) / 10;
+  return `${hours} hours`;
 }
 
 function passwordMatches(candidate: string): boolean {
@@ -243,8 +262,13 @@ router.post("/sites/claim-legacy", requireAuth, async (req, res, next) => {
       return;
     }
 
-    if (await rateLimited(userId, req.ip ?? "?")) {
-      res.status(429).json({ error: "Too many attempts — try again later" });
+    const retryAfterSeconds = await rateLimited(userId, req.ip ?? "?");
+    if (retryAfterSeconds !== null) {
+      res.setHeader("Retry-After", String(retryAfterSeconds));
+      res.status(429).json({
+        error: `Too many attempts — try again in ${formatWait(retryAfterSeconds)}`,
+        retryAfterSeconds,
+      });
       return;
     }
 

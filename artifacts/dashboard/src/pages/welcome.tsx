@@ -28,6 +28,14 @@ import { useToast } from "@/hooks/use-toast";
 import { useSiteContext } from "@/lib/site-context";
 import { Globe, KeyRound, LogOut, Plus } from "lucide-react";
 
+function formatWait(seconds: number): string {
+  if (seconds < 90) return `${seconds} seconds`;
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 90) return `${minutes} minutes`;
+  const hours = Math.round((minutes / 60) * 10) / 10;
+  return `${hours} hours`;
+}
+
 export function WelcomePage() {
   const { legacyClaimable, switchSite } = useSiteContext();
   const { signOut } = useClerk();
@@ -46,14 +54,21 @@ export function WelcomePage() {
       },
       onError: (err: unknown) => {
         const status = (err as { status?: number })?.status;
-        const message =
-          status === 403
-            ? "Wrong password."
-            : status === 409 || status === 410
-              ? "This site has already been claimed."
-              : status === 429
-                ? "Too many attempts — wait a minute and try again."
-                : "Claim failed. Try again.";
+        let message: string;
+        if (status === 403) {
+          message = "Wrong password.";
+        } else if (status === 409 || status === 410) {
+          message = "This site has already been claimed.";
+        } else if (status === 429) {
+          const retryAfterSeconds = (
+            err as { data?: { retryAfterSeconds?: number } }
+          )?.data?.retryAfterSeconds;
+          message = retryAfterSeconds
+            ? `Too many attempts — try again in ${formatWait(retryAfterSeconds)}.`
+            : "Too many attempts — try again later.";
+        } else {
+          message = "Claim failed. Try again.";
+        }
         toast({ title: message, variant: "destructive" });
       },
     },

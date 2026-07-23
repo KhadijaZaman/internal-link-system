@@ -147,7 +147,11 @@ paths:
         "409":
           description: Legacy site already claimed
         "429":
-          description: Too many attempts
+          description: Too many attempts — locked out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaimRateLimited"
   /site/limits:
     get:
       operationId: getSiteLimits
@@ -2055,6 +2059,12 @@ components:
         maxCrawlPages: { type: integer, minimum: 50, maximum: 20000 }
         maxLlmCallsPerRun: { type: integer, minimum: 10, maximum: 5000 }
         maxSerpQueriesPerRun: { type: integer, minimum: 5, maximum: 2000 }
+    ClaimRateLimited:
+      type: object
+      required: [error, retryAfterSeconds]
+      properties:
+        error: { type: string }
+        retryAfterSeconds: { type: integer, minimum: 1 }
     ClaimLegacyInput:
       type: object
       required: [password]

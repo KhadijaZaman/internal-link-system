@@ -31,6 +31,7 @@ import type {
   AuthoritySnapshot,
   BingPagesReport,
   ClaimLegacyInput,
+  ClaimRateLimited,
   ClusterRun,
   ConnectBingInput,
   ConnectGa4Input,
@@ -492,7 +493,7 @@ export const claimLegacySite = async (claimLegacyInput: ClaimLegacyInput, option
 
 
 
-export const getClaimLegacySiteMutationOptions = <TError = ErrorType<void>,
+export const getClaimLegacySiteMutationOptions = <TError = ErrorType<void | ClaimRateLimited>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof claimLegacySite>>, TError,{data: BodyType<ClaimLegacyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof claimLegacySite>>, TError,{data: BodyType<ClaimLegacyInput>}, TContext> => {
 
@@ -521,12 +522,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type ClaimLegacySiteMutationResult = NonNullable<Awaited<ReturnType<typeof claimLegacySite>>>
     export type ClaimLegacySiteMutationBody = BodyType<ClaimLegacyInput>
-    export type ClaimLegacySiteMutationError = ErrorType<void>
+    export type ClaimLegacySiteMutationError = ErrorType<void | ClaimRateLimited>
 
     /**
  * @summary Claim the legacy site with the previous admin password
  */
-export const useClaimLegacySite = <TError = ErrorType<void>,
+export const useClaimLegacySite = <TError = ErrorType<void | ClaimRateLimited>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof claimLegacySite>>, TError,{data: BodyType<ClaimLegacyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof claimLegacySite>>,

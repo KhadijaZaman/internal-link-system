@@ -70,6 +70,12 @@ export interface UpdateSiteLimitsInput {
   maxSerpQueriesPerRun?: number;
 }
 
+export interface ClaimRateLimited {
+  error: string;
+  /** @minimum 1 */
+  retryAfterSeconds: number;
+}
+
 export interface ClaimLegacyInput {
   /**
      * @minLength 1
