@@ -49,7 +49,7 @@ export function WelcomePage() {
         const message =
           status === 403
             ? "Wrong password."
-            : status === 409
+            : status === 409 || status === 410
               ? "This site has already been claimed."
               : status === 429
                 ? "Too many attempts — wait a minute and try again."

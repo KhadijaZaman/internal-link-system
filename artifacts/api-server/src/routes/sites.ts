@@ -145,11 +145,18 @@ router.post("/sites", requireAuth, async (req, res, next) => {
 // endpoint cannot be used to brute-force the password.
 // ---------------------------------------------------------------------------
 
-const MAX_ATTEMPTS = 5;
+const MAX_ATTEMPTS = 5; // per user|ip
+const MAX_ATTEMPTS_PER_IP = 10; // across all accounts from one IP
+const MAX_ATTEMPTS_GLOBAL = 30; // endpoint-wide, all users and IPs combined
 const WINDOW_MS = 15 * 60 * 1000;
 const attempts = new Map<string, { count: number; resetAt: number }>();
 
-function rateLimited(key: string): boolean {
+// Once claimed, the endpoint is permanently disabled (410). In-memory flag is
+// a fast-path; the DB ownership check below remains authoritative across
+// restarts and multiple instances.
+let legacyClaimed = false;
+
+function bumpAndCheck(key: string, max: number): boolean {
   const now = Date.now();
   const entry = attempts.get(key);
   if (!entry || entry.resetAt <= now) {
@@ -157,7 +164,17 @@ function rateLimited(key: string): boolean {
     return false;
   }
   entry.count += 1;
-  return entry.count > MAX_ATTEMPTS;
+  return entry.count > max;
+}
+
+// Sign-up is open, so an attacker can mint accounts to multiply the per-user
+// budget. Layered budgets: per user|ip, per ip (all accounts), and a global
+// endpoint-wide cap. All three counters are bumped on every attempt.
+function rateLimited(userId: string, ip: string): boolean {
+  const perUser = bumpAndCheck(`u|${userId}|${ip}`, MAX_ATTEMPTS);
+  const perIp = bumpAndCheck(`ip|${ip}`, MAX_ATTEMPTS_PER_IP);
+  const global = bumpAndCheck("global", MAX_ATTEMPTS_GLOBAL);
+  return perUser || perIp || global;
 }
 
 function passwordMatches(candidate: string): boolean {
@@ -177,7 +194,12 @@ router.post("/sites/claim-legacy", requireAuth, async (req, res, next) => {
       return;
     }
 
-    if (rateLimited(`${userId}|${req.ip ?? "?"}`)) {
+    if (legacyClaimed) {
+      res.status(410).json({ error: "Legacy site claim is closed" });
+      return;
+    }
+
+    if (rateLimited(userId, req.ip ?? "?")) {
       res.status(429).json({ error: "Too many attempts — try again later" });
       return;
     }
@@ -192,7 +214,8 @@ router.post("/sites/claim-legacy", requireAuth, async (req, res, next) => {
       return;
     }
     if (legacy[0].ownerUserId !== null) {
-      res.status(409).json({ error: "Legacy site is already claimed" });
+      legacyClaimed = true;
+      res.status(410).json({ error: "Legacy site claim is closed" });
       return;
     }
 
@@ -212,10 +235,12 @@ router.post("/sites/claim-legacy", requireAuth, async (req, res, next) => {
       )
       .returning();
     if (updated.length === 0) {
-      res.status(409).json({ error: "Legacy site is already claimed" });
+      legacyClaimed = true;
+      res.status(410).json({ error: "Legacy site claim is closed" });
       return;
     }
 
+    legacyClaimed = true;
     invalidateSiteCache(LEGACY_SITE_ID);
     req.log.info({ userId }, "legacy site claimed");
     res.json(toSiteDto(updated[0]));
