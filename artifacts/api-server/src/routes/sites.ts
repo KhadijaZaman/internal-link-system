@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { createHash, timingSafeEqual } from "node:crypto";
-import { db, sitesTable } from "@workspace/db";
-import { asc, eq } from "drizzle-orm";
+import { db, sitesTable, claimAttemptsTable } from "@workspace/db";
+import { asc, eq, lt, sql } from "drizzle-orm";
 import { ClaimLegacySiteBody, CreateSiteBody } from "@workspace/api-zod";
 import { requireAuth, type AuthedRequest } from "../lib/auth";
 import { invalidateSiteCache } from "../lib/site";
@@ -149,31 +149,44 @@ const MAX_ATTEMPTS = 5; // per user|ip
 const MAX_ATTEMPTS_PER_IP = 10; // across all accounts from one IP
 const MAX_ATTEMPTS_GLOBAL = 30; // endpoint-wide, all users and IPs combined
 const WINDOW_MS = 15 * 60 * 1000;
-const attempts = new Map<string, { count: number; resetAt: number }>();
 
 // Once claimed, the endpoint is permanently disabled (410). In-memory flag is
 // a fast-path; the DB ownership check below remains authoritative across
 // restarts and multiple instances.
 let legacyClaimed = false;
 
-function bumpAndCheck(key: string, max: number): boolean {
-  const now = Date.now();
-  const entry = attempts.get(key);
-  if (!entry || entry.resetAt <= now) {
-    attempts.set(key, { count: 1, resetAt: now + WINDOW_MS });
-    return false;
-  }
-  entry.count += 1;
-  return entry.count > max;
+// Atomically bump a counter row in Postgres and return whether it exceeded
+// its budget. The counters live in the claim_attempts table so restarts and
+// Autoscale instance recycling never reset the budget. When the fixed window
+// has elapsed the counter resets to 1 and a fresh window begins.
+async function bumpAndCheck(key: string, max: number): Promise<boolean> {
+  const rows = await db
+    .insert(claimAttemptsTable)
+    .values({ key, count: 1, resetAt: sql`now() + make_interval(secs => ${WINDOW_MS / 1000})` })
+    .onConflictDoUpdate({
+      target: claimAttemptsTable.key,
+      set: {
+        count: sql`CASE WHEN ${claimAttemptsTable.resetAt} <= now() THEN 1 ELSE ${claimAttemptsTable.count} + 1 END`,
+        resetAt: sql`CASE WHEN ${claimAttemptsTable.resetAt} <= now() THEN now() + make_interval(secs => ${WINDOW_MS / 1000}) ELSE ${claimAttemptsTable.resetAt} END`,
+      },
+    })
+    .returning({ count: claimAttemptsTable.count });
+  return rows[0].count > max;
 }
 
 // Sign-up is open, so an attacker can mint accounts to multiply the per-user
 // budget. Layered budgets: per user|ip, per ip (all accounts), and a global
 // endpoint-wide cap. All three counters are bumped on every attempt.
-function rateLimited(userId: string, ip: string): boolean {
-  const perUser = bumpAndCheck(`u|${userId}|${ip}`, MAX_ATTEMPTS);
-  const perIp = bumpAndCheck(`ip|${ip}`, MAX_ATTEMPTS_PER_IP);
-  const global = bumpAndCheck("global", MAX_ATTEMPTS_GLOBAL);
+async function rateLimited(userId: string, ip: string): Promise<boolean> {
+  // Opportunistic cleanup of long-expired counter rows (fire-and-forget).
+  db.delete(claimAttemptsTable)
+    .where(lt(claimAttemptsTable.resetAt, sql`now() - make_interval(secs => ${WINDOW_MS / 1000})`))
+    .catch(() => {});
+  const [perUser, perIp, global] = await Promise.all([
+    bumpAndCheck(`u|${userId}|${ip}`, MAX_ATTEMPTS),
+    bumpAndCheck(`ip|${ip}`, MAX_ATTEMPTS_PER_IP),
+    bumpAndCheck("global", MAX_ATTEMPTS_GLOBAL),
+  ]);
   return perUser || perIp || global;
 }
 
@@ -199,7 +212,7 @@ router.post("/sites/claim-legacy", requireAuth, async (req, res, next) => {
       return;
     }
 
-    if (rateLimited(userId, req.ip ?? "?")) {
+    if (await rateLimited(userId, req.ip ?? "?")) {
       res.status(429).json({ error: "Too many attempts — try again later" });
       return;
     }

@@ -32,5 +32,6 @@ export * from "./pages";
 export * from "./bingStats";
 export * from "./aiCitations";
 export * from "./appState";
+export * from "./claimAttempts";
 export * from "./similarityRuns";
 export * from "./topicalMaps";
