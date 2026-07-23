@@ -1,5 +1,5 @@
 import { db, claimAttemptsTable } from "@workspace/db";
-import { sql } from "drizzle-orm";
+import { lt, sql } from "drizzle-orm";
 
 /**
  * Durable rate-limit counters for the one-time legacy-site claim endpoint,
@@ -12,6 +12,22 @@ export const WINDOW_MS = 15 * 60 * 1000;
 // capped at 16x the base window (15m → 30m → 1h → 2h → 4h).
 export const MAX_STRIKES = 4;
 export const MAX_LOCKOUT_MS = WINDOW_MS * 2 ** MAX_STRIKES;
+
+// Delete counter rows whose window has been expired for longer than the
+// maximum lockout. Rows are deliberately kept for MAX_LOCKOUT_MS after
+// expiry so accumulated strikes (escalating-backoff history) only decay
+// after a long quiet gap; deleting earlier would erase an attacker's
+// strike history, and never deleting would grow the table forever.
+export async function cleanupExpiredClaimAttempts(): Promise<void> {
+  await db
+    .delete(claimAttemptsTable)
+    .where(
+      lt(
+        claimAttemptsTable.resetAt,
+        sql`now() - make_interval(secs => ${MAX_LOCKOUT_MS / 1000})`,
+      ),
+    );
+}
 
 // Atomically bump a counter row in Postgres and return whether it exceeded
 // its budget. The counters live in the claim_attempts table so restarts and

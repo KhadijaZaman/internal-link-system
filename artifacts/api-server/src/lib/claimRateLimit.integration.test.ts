@@ -3,8 +3,10 @@ import { eq, like, sql } from "drizzle-orm";
 import { db, claimAttemptsTable } from "@workspace/db";
 import {
   bumpAndCheck,
+  cleanupExpiredClaimAttempts,
   WINDOW_MS,
   MAX_STRIKES,
+  MAX_LOCKOUT_MS,
 } from "./claimRateLimit";
 
 /**
@@ -143,5 +145,63 @@ describe("claim rate-limit escalating lockout", () => {
     // After more exhausted windows than MAX_STRIKES, strikes stay capped at 4
     // and the lockout stays at 16x base (4h for the 15m base window).
     expect((await getRow(key)).strikes).toBe(MAX_STRIKES);
+  });
+});
+
+describe("claim rate-limit cleanup (strike-history decay)", () => {
+  /** Seed a row directly with reset_at offset from now() by `offsetMs`. */
+  async function seedRow(key: string, offsetMs: number, strikes = MAX_STRIKES) {
+    await db.insert(claimAttemptsTable).values({
+      key,
+      count: 1,
+      strikes,
+      resetAt: sql`now() + make_interval(secs => ${offsetMs / 1000})`,
+    });
+  }
+
+  async function rowExists(key: string): Promise<boolean> {
+    const rows = await db
+      .select({ key: claimAttemptsTable.key })
+      .from(claimAttemptsTable)
+      .where(eq(claimAttemptsTable.key, key));
+    return rows.length > 0;
+  }
+
+  it("deletes only rows expired for longer than MAX_LOCKOUT_MS, keeping recent strike history", async () => {
+    const HOUR = 60 * 60 * 1000;
+    // Sanity-check the constant this test guards: 16x the 15m base = 4h.
+    expect(MAX_LOCKOUT_MS).toBe(4 * HOUR);
+
+    const keep = [
+      // Active window (reset_at in the future) — must never be deleted.
+      { key: `${PREFIX}-cln-active`, offset: +WINDOW_MS },
+      // Just expired — strikes must survive so the next window escalates.
+      { key: `${PREFIX}-cln-just-expired`, offset: -1000 },
+      // Expired 1h ago — still within the 4h retention.
+      { key: `${PREFIX}-cln-1h`, offset: -HOUR },
+      // Expired just under the max lockout — boundary row, still kept.
+      { key: `${PREFIX}-cln-boundary`, offset: -(MAX_LOCKOUT_MS - 60 * 1000) },
+    ];
+    const drop = [
+      // Expired just past the max lockout — quiet period over, forget it.
+      { key: `${PREFIX}-cln-past`, offset: -(MAX_LOCKOUT_MS + 60 * 1000) },
+      // Expired days ago — must be deleted (table growth).
+      { key: `${PREFIX}-cln-ancient`, offset: -(7 * 24 * HOUR) },
+    ];
+    for (const r of [...keep, ...drop]) await seedRow(r.key, r.offset);
+
+    await cleanupExpiredClaimAttempts();
+
+    for (const r of keep) {
+      expect(await rowExists(r.key), `${r.key} should be kept`).toBe(true);
+    }
+    for (const r of drop) {
+      expect(await rowExists(r.key), `${r.key} should be deleted`).toBe(false);
+    }
+
+    // The surviving just-expired row must retain its strikes so a returning
+    // attacker resumes at the escalated lockout, not a fresh 15m window.
+    const survivor = await getRow(`${PREFIX}-cln-just-expired`);
+    expect(survivor.strikes).toBe(MAX_STRIKES);
   });
 });

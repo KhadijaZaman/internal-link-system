@@ -1,14 +1,14 @@
 import { Router, type IRouter } from "express";
 import { createHash, timingSafeEqual } from "node:crypto";
-import { db, sitesTable, claimAttemptsTable } from "@workspace/db";
-import { asc, eq, lt, sql } from "drizzle-orm";
+import { db, sitesTable } from "@workspace/db";
+import { asc, eq } from "drizzle-orm";
 import {
   ClaimLegacySiteBody,
   CreateSiteBody,
   UpdateSiteLimitsBody,
 } from "@workspace/api-zod";
 import { requireAuth, type AuthedRequest } from "../lib/auth";
-import { bumpAndCheck, MAX_LOCKOUT_MS } from "../lib/claimRateLimit";
+import { bumpAndCheck, cleanupExpiredClaimAttempts } from "../lib/claimRateLimit";
 import { getSite, invalidateSiteCache, requireSite } from "../lib/site";
 import { normalizeHost } from "../lib/urlCanon";
 
@@ -168,9 +168,7 @@ async function rateLimited(userId: string, ip: string): Promise<number | null> {
   // Opportunistic cleanup of long-expired counter rows (fire-and-forget).
   // Rows are kept for the maximum lockout after expiry so accumulated
   // strikes (escalating-backoff history) only decay after a long quiet gap.
-  db.delete(claimAttemptsTable)
-    .where(lt(claimAttemptsTable.resetAt, sql`now() - make_interval(secs => ${MAX_LOCKOUT_MS / 1000})`))
-    .catch(() => {});
+  cleanupExpiredClaimAttempts().catch(() => {});
   const results = await Promise.all([
     bumpAndCheck(`u|${userId}|${ip}`, MAX_ATTEMPTS),
     bumpAndCheck(`ip|${ip}`, MAX_ATTEMPTS_PER_IP),
