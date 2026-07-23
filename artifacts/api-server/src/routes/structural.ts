@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { and, or, eq, sql } from "drizzle-orm";
 import { db, linkStatsTable, wpPostsTable, linkSuggestionsTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
-import { requireSite, getSite } from "../lib/site";
+import { requireSite, getSite, requireLegacySiteOwner } from "../lib/site";
 import { SuggestStructuralLinksBody } from "@workspace/api-zod";
 import { runStructuralLinking, STRUCTURAL_ENGINE_VERSION } from "../jobs/structuralLinking";
 
@@ -77,7 +77,9 @@ router.get("/structural/targets", requireAuth, requireSite, async (req, res) => 
   res.json({ orphanCount, deadEndCount, bothCount, items });
 });
 
-router.post("/structural/suggest", requireAuth, async (req, res) => {
+// runStructuralLinking is legacy-site-only job code (unscoped internal queries
+// + Claude spend) — gate it to the legacy site's owner until per-site jobs land.
+router.post("/structural/suggest", requireAuth, requireLegacySiteOwner, async (req, res) => {
   const parsed = SuggestStructuralLinksBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "url is required" });

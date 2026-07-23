@@ -12,7 +12,8 @@ import { canonicalPath, canonicalUrl } from "../lib/urlCanon";
 
 const router: IRouter = Router();
 
-router.get("/wp/classifications", requireAuth, async (_req, res) => {
+router.get("/wp/classifications", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const rows = await db
     .select({
       url: pageClassificationsTable.url,
@@ -31,7 +32,14 @@ router.get("/wp/classifications", requireAuth, async (_req, res) => {
       wordCount: wpPostsTable.wordCount,
     })
     .from(pageClassificationsTable)
-    .leftJoin(wpPostsTable, eq(wpPostsTable.url, pageClassificationsTable.url))
+    .leftJoin(
+      wpPostsTable,
+      and(
+        eq(wpPostsTable.url, pageClassificationsTable.url),
+        eq(wpPostsTable.siteId, site.id),
+      ),
+    )
+    .where(eq(pageClassificationsTable.siteId, site.id))
     .orderBy(pageClassificationsTable.url)
     .limit(1000);
   res.json({
@@ -87,10 +95,12 @@ router.patch("/wp/classifications", requireAuth, requireSite, async (req, res) =
   res.json({ ok: true });
 });
 
-router.get("/wp/exclude-list", requireAuth, async (_req, res) => {
+router.get("/wp/exclude-list", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const rows = await db
     .select()
     .from(linkExcludeListTable)
+    .where(eq(linkExcludeListTable.siteId, site.id))
     .orderBy(desc(linkExcludeListTable.createdAt));
   res.json({
     items: rows.map((r) => ({
@@ -102,7 +112,8 @@ router.get("/wp/exclude-list", requireAuth, async (_req, res) => {
   });
 });
 
-router.post("/wp/exclude-list", requireAuth, async (req, res) => {
+router.post("/wp/exclude-list", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const body = req.body as { pattern?: string; note?: string };
   if (!body.pattern || typeof body.pattern !== "string" || !body.pattern.trim()) {
     res.status(400).json({ error: "pattern required" });
@@ -113,7 +124,7 @@ router.post("/wp/exclude-list", requireAuth, async (req, res) => {
   try {
     const [row] = await db
       .insert(linkExcludeListTable)
-      .values({ pattern, note })
+      .values({ pattern, note, siteId: site.id })
       .returning();
     res.status(201).json({
       id: row!.id,
@@ -126,13 +137,16 @@ router.post("/wp/exclude-list", requireAuth, async (req, res) => {
   }
 });
 
-router.delete("/wp/exclude-list/:id", requireAuth, async (req, res) => {
+router.delete("/wp/exclude-list/:id", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     res.status(400).json({ error: "Invalid id" });
     return;
   }
-  await db.delete(linkExcludeListTable).where(eq(linkExcludeListTable.id, id));
+  await db
+    .delete(linkExcludeListTable)
+    .where(and(eq(linkExcludeListTable.id, id), eq(linkExcludeListTable.siteId, site.id)));
   res.json({ ok: true });
 });
 

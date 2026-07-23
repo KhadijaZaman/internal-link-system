@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import {
   db,
   pagesTable,
@@ -170,6 +170,7 @@ router.post("/bing/ai-citations/uploads", requireAuth, requireSite, async (req, 
     const [u] = await tx
       .insert(aiCitationUploadsTable)
       .values({
+        siteId: site.id,
         label,
         kind,
         rowCount: inserts.length,
@@ -182,7 +183,9 @@ router.post("/bing/ai-citations/uploads", requireAuth, requireSite, async (req, 
     for (let i = 0; i < inserts.length; i += CHUNK) {
       await tx
         .insert(aiCitationRowsTable)
-        .values(inserts.slice(i, i + CHUNK).map((r) => ({ ...r, uploadId: u.id })));
+        .values(
+          inserts.slice(i, i + CHUNK).map((r) => ({ ...r, uploadId: u.id, siteId: site.id })),
+        );
     }
     return u;
   });
@@ -208,10 +211,12 @@ router.post("/bing/ai-citations/uploads", requireAuth, requireSite, async (req, 
   });
 });
 
-router.get("/bing/ai-citations/uploads", requireAuth, async (_req, res) => {
+router.get("/bing/ai-citations/uploads", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const uploads = await db
     .select()
     .from(aiCitationUploadsTable)
+    .where(eq(aiCitationUploadsTable.siteId, site.id))
     .orderBy(desc(aiCitationUploadsTable.id))
     .limit(20);
   res.json(uploads.map(serializeUpload));
@@ -240,18 +245,23 @@ router.get("/bing/pages", requireAuth, requireSite, async (req, res) => {
       })
       .from(pagesTable)
       .where(
-        sql`coalesce(${pagesTable.clicks}, 0) > 0
-          OR coalesce(${pagesTable.impressions}, 0) > 0
-          OR coalesce(${pagesTable.bingClicks}, 0) > 0
-          OR coalesce(${pagesTable.bingImpressions}, 0) > 0
-          OR coalesce(${pagesTable.aiCitations}, 0) > 0
-          OR coalesce(${pagesTable.aiSessions}, 0) > 0`,
+        and(
+          eq(pagesTable.siteId, site.id),
+          sql`(coalesce(${pagesTable.clicks}, 0) > 0
+            OR coalesce(${pagesTable.impressions}, 0) > 0
+            OR coalesce(${pagesTable.bingClicks}, 0) > 0
+            OR coalesce(${pagesTable.bingImpressions}, 0) > 0
+            OR coalesce(${pagesTable.aiCitations}, 0) > 0
+            OR coalesce(${pagesTable.aiSessions}, 0) > 0)`,
+        ),
       ),
     loadBlockRegexes(site.id),
     db
       .select()
       .from(aiCitationUploadsTable)
-      .where(eq(aiCitationUploadsTable.kind, "pages"))
+      .where(
+        and(eq(aiCitationUploadsTable.kind, "pages"), eq(aiCitationUploadsTable.siteId, site.id)),
+      )
       .orderBy(desc(aiCitationUploadsTable.id))
       .limit(1),
   ]);

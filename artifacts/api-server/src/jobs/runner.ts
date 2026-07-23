@@ -2,6 +2,7 @@ import { db, jobRunsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { withDbRetry } from "../lib/dbRetry";
+import { LEGACY_SITE_ID } from "../lib/site";
 
 export type JobName =
   | "crawl_link_map"
@@ -90,7 +91,13 @@ async function heartbeatTick(): Promise<void> {
           db
             .update(jobRunsTable)
             .set({ lastRunAt: new Date() })
-            .where(and(eq(jobRunsTable.name, name), eq(jobRunsTable.lastStatus, "running"))),
+            .where(
+              and(
+                eq(jobRunsTable.name, name),
+                eq(jobRunsTable.siteId, LEGACY_SITE_ID),
+                eq(jobRunsTable.lastStatus, "running"),
+              ),
+            ),
         { label: `job_heartbeat:${name}` },
       );
     } catch (e) {
@@ -131,8 +138,8 @@ async function recordJobStart(name: JobName): Promise<void> {
       () =>
         db
           .insert(jobRunsTable)
-          .values({ name, ...values })
-          .onConflictDoUpdate({ target: jobRunsTable.name, set: values }),
+          .values({ name, siteId: LEGACY_SITE_ID, ...values })
+          .onConflictDoUpdate({ target: [jobRunsTable.name, jobRunsTable.siteId], set: values }),
       { label: `record_job_start:${name}` },
     );
   } catch (e) {
@@ -190,8 +197,11 @@ export async function runJob(name: JobName): Promise<
           () =>
             db
               .insert(jobRunsTable)
-              .values({ name, ...finalValues })
-              .onConflictDoUpdate({ target: jobRunsTable.name, set: finalValues }),
+              .values({ name, siteId: LEGACY_SITE_ID, ...finalValues })
+              .onConflictDoUpdate({
+                target: [jobRunsTable.name, jobRunsTable.siteId],
+                set: finalValues,
+              }),
           { label: `record_job_run:${name}` },
         );
       } catch (e) {
@@ -214,7 +224,10 @@ export async function loadJobStatuses(): Promise<
     lastError: string | null;
   }>
 > {
-  const rows = await db.select().from(jobRunsTable);
+  const rows = await db
+    .select()
+    .from(jobRunsTable)
+    .where(eq(jobRunsTable.siteId, LEGACY_SITE_ID));
   const map = new Map(rows.map((r) => [r.name, r]));
   const now = Date.now();
   const statuses = [];
@@ -236,7 +249,13 @@ export async function loadJobStatuses(): Promise<
           await db
             .update(jobRunsTable)
             .set({ lastStatus: "interrupted", lastError: INTERRUPTED_MESSAGE })
-            .where(and(eq(jobRunsTable.name, name), eq(jobRunsTable.lastStatus, "running")));
+            .where(
+              and(
+                eq(jobRunsTable.name, name),
+                eq(jobRunsTable.siteId, LEGACY_SITE_ID),
+                eq(jobRunsTable.lastStatus, "running"),
+              ),
+            );
         } catch (e) {
           logger.warn({ err: e, jobName: name }, "Failed to persist interrupted job status");
         }
@@ -255,6 +274,10 @@ export async function loadJobStatuses(): Promise<
 }
 
 export async function lastRunAt(name: JobName): Promise<Date | null> {
-  const r = await db.select().from(jobRunsTable).where(eq(jobRunsTable.name, name)).limit(1);
+  const r = await db
+    .select()
+    .from(jobRunsTable)
+    .where(and(eq(jobRunsTable.name, name), eq(jobRunsTable.siteId, LEGACY_SITE_ID)))
+    .limit(1);
   return r[0]?.lastRunAt ?? null;
 }

@@ -74,6 +74,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 - `requireAuth` means "any self-registered Clerk user", NOT "the operator" — every new data route must also mount `requireSite` (and filter every query by `eq(table.siteId, site.id)`); spend-bearing or legacy-bound surfaces (job triggers, GSC bulk queries, content writer) must use `requireLegacySiteOwner`
 - All `withCache` keys on site-scoped routes must be prefixed `s${site.id}|` or responses leak across tenants
 - Background jobs are legacy-site-only (`getLegacySite()`) until per-site job scheduling lands; new job code must thread the site through explicitly, never assume a global site
+- `job_runs` is keyed `(name, site_id)` — every runner/pipeline read+write must include `siteId` (currently `LEGACY_SITE_ID`) in values, `where`, and `onConflict` targets, or upserts hit the wrong composite key
 - Raw `fetch` calls in the dashboard (outside generated hooks) must manually attach the `x-site-id` header via `getActiveSiteId()` (see ask.tsx SSE stream, bulk-queries.tsx)
 - Every ingestion path (GSC, GA4, crawler, WordPress sync) and every live read that joins on URL/path MUST go through `urlCanon.ts` (`canonicalPath` + blocklist) — never store or compare raw URLs
 - When rows collapse onto one canonical path, metrics must be MERGED (sum clicks/impressions, impression-weighted position), never overwritten

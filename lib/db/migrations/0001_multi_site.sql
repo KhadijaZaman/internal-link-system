@@ -8,7 +8,8 @@
 -- adds site_id (NOT NULL DEFAULT 1, FK -> sites.id) to every per-site table,
 -- and converts PKs/uniques to composites that lead with site_id while KEEPING
 -- the original constraint/index names so `drizzle-kit push` sees no diff.
--- app_state and job_runs deliberately stay global (see task notes).
+-- app_state deliberately stays global (see task notes); job_runs becomes
+-- per-site in 0002_job_runs_per_site.sql.
 
 BEGIN;
 

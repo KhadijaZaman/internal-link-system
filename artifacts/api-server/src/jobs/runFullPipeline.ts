@@ -5,9 +5,10 @@ import { runSemanticLinking } from "./semanticLinking";
 import { runAuditOrphans, runAuditOverLinked, runAuditBrokenLinks } from "./audits";
 import { runOptimizeQueuedUrls } from "./optimizeUrls";
 import { db, crawlProgressTable, jobRunsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { withDbRetry } from "../lib/dbRetry";
+import { LEGACY_SITE_ID } from "../lib/site";
 import type { JobName } from "./runner";
 
 type Step = { name: JobName; fn: () => Promise<void> };
@@ -25,13 +26,14 @@ async function recordJobRun(
           .insert(jobRunsTable)
           .values({
             name,
+            siteId: LEGACY_SITE_ID,
             lastRunAt: new Date(),
             lastStatus: status,
             lastDurationMs: durationMs,
             lastError: err,
           })
           .onConflictDoUpdate({
-            target: jobRunsTable.name,
+            target: [jobRunsTable.name, jobRunsTable.siteId],
             set: {
               lastRunAt: new Date(),
               lastStatus: status,
@@ -57,7 +59,7 @@ async function runFullCrawlLinkMap(): Promise<void> {
     () =>
       db
         .insert(crawlProgressTable)
-        .values({ id: 1, lastOffset: 0 })
+        .values({ id: 1, siteId: LEGACY_SITE_ID, lastOffset: 0 })
         .onConflictDoUpdate({
           target: [crawlProgressTable.id, crawlProgressTable.siteId],
           set: { lastOffset: 0, lastRunAt: new Date() },
@@ -71,7 +73,7 @@ async function runFullCrawlLinkMap(): Promise<void> {
         db
           .select()
           .from(crawlProgressTable)
-          .where(eq(crawlProgressTable.id, 1))
+          .where(and(eq(crawlProgressTable.id, 1), eq(crawlProgressTable.siteId, LEGACY_SITE_ID)))
           .limit(1),
       { label: "crawl_link_map:read_progress" },
     );
