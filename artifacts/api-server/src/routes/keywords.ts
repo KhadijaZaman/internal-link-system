@@ -2,14 +2,17 @@ import { Router, type IRouter } from "express";
 import { desc, eq, and } from "drizzle-orm";
 import { db, watchlistQueriesTable, pageTargetKeywordsTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import { AddWatchlistQueryBody, AddPageKeywordBody } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
-router.get("/watchlist", requireAuth, async (_req, res) => {
+router.get("/watchlist", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const rows = await db
     .select()
     .from(watchlistQueriesTable)
+    .where(eq(watchlistQueriesTable.siteId, site.id))
     .orderBy(desc(watchlistQueriesTable.addedAt));
   res.json(
     rows.map((r) => ({
@@ -20,7 +23,8 @@ router.get("/watchlist", requireAuth, async (_req, res) => {
   );
 });
 
-router.post("/watchlist", requireAuth, async (req, res) => {
+router.post("/watchlist", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const parsed = AddWatchlistQueryBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "query is required (1-200 chars)" });
@@ -33,8 +37,10 @@ router.post("/watchlist", requireAuth, async (req, res) => {
   }
   const inserted = await db
     .insert(watchlistQueriesTable)
-    .values({ query })
-    .onConflictDoNothing({ target: watchlistQueriesTable.query })
+    .values({ query, siteId: site.id })
+    .onConflictDoNothing({
+      target: [watchlistQueriesTable.query, watchlistQueriesTable.siteId],
+    })
     .returning();
   const row =
     inserted[0] ??
@@ -42,7 +48,12 @@ router.post("/watchlist", requireAuth, async (req, res) => {
       await db
         .select()
         .from(watchlistQueriesTable)
-        .where(eq(watchlistQueriesTable.query, query))
+        .where(
+          and(
+            eq(watchlistQueriesTable.query, query),
+            eq(watchlistQueriesTable.siteId, site.id),
+          ),
+        )
         .limit(1)
     )[0];
   if (!row) {
@@ -56,17 +67,21 @@ router.post("/watchlist", requireAuth, async (req, res) => {
   });
 });
 
-router.delete("/watchlist/:id", requireAuth, async (req, res) => {
+router.delete("/watchlist/:id", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     res.status(400).json({ error: "Invalid id" });
     return;
   }
-  await db.delete(watchlistQueriesTable).where(eq(watchlistQueriesTable.id, id));
+  await db
+    .delete(watchlistQueriesTable)
+    .where(and(eq(watchlistQueriesTable.siteId, site.id), eq(watchlistQueriesTable.id, id)));
   res.json({ ok: true });
 });
 
-router.get("/page-keywords", requireAuth, async (req, res) => {
+router.get("/page-keywords", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const url = String(req.query["url"] ?? "").trim();
   if (url.length === 0) {
     res.status(400).json({ error: "url is required" });
@@ -75,7 +90,9 @@ router.get("/page-keywords", requireAuth, async (req, res) => {
   const rows = await db
     .select()
     .from(pageTargetKeywordsTable)
-    .where(eq(pageTargetKeywordsTable.url, url))
+    .where(
+      and(eq(pageTargetKeywordsTable.siteId, site.id), eq(pageTargetKeywordsTable.url, url)),
+    )
     .orderBy(desc(pageTargetKeywordsTable.addedAt));
   res.json(
     rows.map((r) => ({
@@ -87,7 +104,8 @@ router.get("/page-keywords", requireAuth, async (req, res) => {
   );
 });
 
-router.post("/page-keywords", requireAuth, async (req, res) => {
+router.post("/page-keywords", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const parsed = AddPageKeywordBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "url and keyword are required" });
@@ -101,9 +119,13 @@ router.post("/page-keywords", requireAuth, async (req, res) => {
   }
   const inserted = await db
     .insert(pageTargetKeywordsTable)
-    .values({ url, keyword })
+    .values({ url, keyword, siteId: site.id })
     .onConflictDoNothing({
-      target: [pageTargetKeywordsTable.url, pageTargetKeywordsTable.keyword],
+      target: [
+        pageTargetKeywordsTable.url,
+        pageTargetKeywordsTable.keyword,
+        pageTargetKeywordsTable.siteId,
+      ],
     })
     .returning();
   const row =
@@ -116,6 +138,7 @@ router.post("/page-keywords", requireAuth, async (req, res) => {
           and(
             eq(pageTargetKeywordsTable.url, url),
             eq(pageTargetKeywordsTable.keyword, keyword),
+            eq(pageTargetKeywordsTable.siteId, site.id),
           ),
         )
         .limit(1)
@@ -132,13 +155,18 @@ router.post("/page-keywords", requireAuth, async (req, res) => {
   });
 });
 
-router.delete("/page-keywords/:id", requireAuth, async (req, res) => {
+router.delete("/page-keywords/:id", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     res.status(400).json({ error: "Invalid id" });
     return;
   }
-  await db.delete(pageTargetKeywordsTable).where(eq(pageTargetKeywordsTable.id, id));
+  await db
+    .delete(pageTargetKeywordsTable)
+    .where(
+      and(eq(pageTargetKeywordsTable.siteId, site.id), eq(pageTargetKeywordsTable.id, id)),
+    );
   res.json({ ok: true });
 });
 

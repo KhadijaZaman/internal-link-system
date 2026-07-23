@@ -1,4 +1,4 @@
-import { sql, desc, isNotNull, inArray, eq } from "drizzle-orm";
+import { sql, and, desc, isNotNull, inArray, eq } from "drizzle-orm";
 import {
   db,
   linkStatsTable,
@@ -96,12 +96,16 @@ function pct(part: number, whole: number): number {
  * embedding. Returns the centroid vector plus the anchor pages used as
  * human-readable evidence of what the site is topically "about".
  */
-export async function buildCentroid(): Promise<{
+export async function buildCentroid(siteId: number): Promise<{
   centroid: number[] | null;
   anchorPages: AnchorPage[];
 }> {
   const [stats, posts, classifications, excludes] = await Promise.all([
-    db.select().from(linkStatsTable).orderBy(desc(linkStatsTable.internalPagerank)),
+    db
+      .select()
+      .from(linkStatsTable)
+      .where(eq(linkStatsTable.siteId, siteId))
+      .orderBy(desc(linkStatsTable.internalPagerank)),
     db
       .select({
         url: wpPostsTable.url,
@@ -109,15 +113,19 @@ export async function buildCentroid(): Promise<{
         embedding: wpPostsTable.embedding,
       })
       .from(wpPostsTable)
-      .where(isNotNull(wpPostsTable.embedding)),
+      .where(and(eq(wpPostsTable.siteId, siteId), isNotNull(wpPostsTable.embedding))),
     db
       .select({
         url: pageClassificationsTable.url,
         tier: pageClassificationsTable.tier,
         centralEntity: pageClassificationsTable.centralEntity,
       })
-      .from(pageClassificationsTable),
-    db.select().from(linkExcludeListTable),
+      .from(pageClassificationsTable)
+      .where(eq(pageClassificationsTable.siteId, siteId)),
+    db
+      .select()
+      .from(linkExcludeListTable)
+      .where(eq(linkExcludeListTable.siteId, siteId)),
   ]);
 
   const excludeRegexes = excludes.map((e) => compilePattern(e.pattern));
@@ -186,6 +194,7 @@ function dominantLabel(
  * has a vector. Returns a Map of query → embedding for those that have one.
  */
 export async function ensureQueryEmbeddings(
+  siteId: number,
   queries: string[],
 ): Promise<Map<string, number[]>> {
   const byQuery = new Map<string, number[]>();
@@ -193,13 +202,15 @@ export async function ensureQueryEmbeddings(
 
   await db
     .insert(queryIntelTable)
-    .values(queries.map((query) => ({ query })))
-    .onConflictDoNothing();
+    .values(queries.map((query) => ({ query, siteId })))
+    .onConflictDoNothing({
+      target: [queryIntelTable.query, queryIntelTable.siteId],
+    });
 
   const rows = await db
     .select({ query: queryIntelTable.query, embedding: queryIntelTable.embedding })
     .from(queryIntelTable)
-    .where(inArray(queryIntelTable.query, queries));
+    .where(and(eq(queryIntelTable.siteId, siteId), inArray(queryIntelTable.query, queries)));
   for (const r of rows) {
     if (r.embedding) byQuery.set(r.query, r.embedding);
   }
@@ -217,7 +228,9 @@ export async function ensureQueryEmbeddings(
         await db
           .update(queryIntelTable)
           .set({ embedding: vec, embeddedAt: now })
-          .where(eq(queryIntelTable.query, query));
+          .where(
+            and(eq(queryIntelTable.siteId, siteId), eq(queryIntelTable.query, query)),
+          );
         byQuery.set(query, vec);
       }
       logger.info(
@@ -233,16 +246,18 @@ export async function ensureQueryEmbeddings(
 }
 
 export async function computeAuthoritySnapshot(
+  siteId: number,
   threshold: number = DEFAULT_CORE_THRESHOLD,
 ): Promise<AuthoritySnapshot> {
-  const { centroid, anchorPages } = await buildCentroid();
+  const { centroid, anchorPages } = await buildCentroid(siteId);
 
   const classRows = await db
     .select({
       url: pageClassificationsTable.url,
       centralEntity: pageClassificationsTable.centralEntity,
     })
-    .from(pageClassificationsTable);
+    .from(pageClassificationsTable)
+    .where(eq(pageClassificationsTable.siteId, siteId));
   const labelByUrl = new Map(classRows.map((c) => [c.url, c.centralEntity]));
   const label = dominantLabel(anchorPages, labelByUrl);
 
@@ -252,8 +267,9 @@ export async function computeAuthoritySnapshot(
       pagesWithEmbedding: sql<number>`count(${wpPostsTable.embedding})::int`,
       lastCrawledAt: sql<Date | null>`max(${wpPostsTable.crawledAt})`,
     })
-    .from(wpPostsTable);
-  const canonicalPageCount = await countContentPages();
+    .from(wpPostsTable)
+    .where(eq(wpPostsTable.siteId, siteId));
+  const canonicalPageCount = await countContentPages(siteId);
   const [lsAgg] = await db
     .select({
       pagesTracked: sql<number>`count(*)::int`,
@@ -262,7 +278,8 @@ export async function computeAuthoritySnapshot(
       totalInternalLinks: sql<number>`coalesce(sum(${linkStatsTable.outboundCount}), 0)::int`,
       avgInternalPagerank: sql<number>`coalesce(avg(${linkStatsTable.internalPagerank}), 0)::float8`,
     })
-    .from(linkStatsTable);
+    .from(linkStatsTable)
+    .where(eq(linkStatsTable.siteId, siteId));
 
   // Top queries by impressions (normalised to match query_intel keys).
   const topQ = await db
@@ -271,7 +288,7 @@ export async function computeAuthoritySnapshot(
       impressions: sql<number>`sum(${gscSnapshotsTable.impressions})::int`,
     })
     .from(gscSnapshotsTable)
-    .where(isNotNull(gscSnapshotsTable.query))
+    .where(and(eq(gscSnapshotsTable.siteId, siteId), isNotNull(gscSnapshotsTable.query)))
     .groupBy(sql`lower(trim(${gscSnapshotsTable.query}))`)
     .orderBy(sql`sum(${gscSnapshotsTable.impressions}) desc`)
     .limit(TOP_QUERY_COUNT);
@@ -283,7 +300,9 @@ export async function computeAuthoritySnapshot(
   }
   const queries = Array.from(impByQuery.keys());
 
-  const embByQuery = centroid ? await ensureQueryEmbeddings(queries) : new Map<string, number[]>();
+  const embByQuery = centroid
+    ? await ensureQueryEmbeddings(siteId, queries)
+    : new Map<string, number[]>();
 
   const scored: DemandQuery[] = [];
   if (centroid) {

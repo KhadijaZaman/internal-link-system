@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db, kbDocumentsTable, kbChunksTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import { AddKbDocumentBody } from "@workspace/api-zod";
 import { chunkText } from "../lib/chunkText";
 import { runJob } from "../jobs/runner";
@@ -30,7 +31,8 @@ function serialize(r: DocRow) {
   };
 }
 
-router.get("/kb/documents", requireAuth, async (_req, res) => {
+router.get("/kb/documents", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const rows = await db
     .select({
       id: kbDocumentsTable.id,
@@ -43,13 +45,21 @@ router.get("/kb/documents", requireAuth, async (_req, res) => {
       createdAt: kbDocumentsTable.createdAt,
     })
     .from(kbDocumentsTable)
-    .leftJoin(kbChunksTable, eq(kbChunksTable.documentId, kbDocumentsTable.id))
+    .leftJoin(
+      kbChunksTable,
+      and(
+        eq(kbChunksTable.documentId, kbDocumentsTable.id),
+        eq(kbChunksTable.siteId, site.id),
+      ),
+    )
+    .where(eq(kbDocumentsTable.siteId, site.id))
     .groupBy(kbDocumentsTable.id)
     .orderBy(desc(kbDocumentsTable.createdAt));
   res.json(rows.map(serialize));
 });
 
-router.post("/kb/documents", requireAuth, async (req, res) => {
+router.post("/kb/documents", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const parsed = AddKbDocumentBody.safeParse(req.body);
   if (!parsed.success) {
     res
@@ -80,6 +90,7 @@ router.post("/kb/documents", requireAuth, async (req, res) => {
     const inserted = await tx
       .insert(kbDocumentsTable)
       .values({
+        siteId: site.id,
         title,
         charCount: content.length,
         chunkCount: chunks.length,
@@ -90,6 +101,7 @@ router.post("/kb/documents", requireAuth, async (req, res) => {
     if (!d) throw new Error("Failed to create document");
     await tx.insert(kbChunksTable).values(
       chunks.map((chunkContent, i) => ({
+        siteId: site.id,
         documentId: d.id,
         chunkIndex: i,
         content: chunkContent,
@@ -123,13 +135,21 @@ router.post("/kb/documents", requireAuth, async (req, res) => {
   );
 });
 
-router.delete("/kb/documents/:id", requireAuth, async (req, res) => {
+router.delete("/kb/documents/:id", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     res.status(400).json({ error: "Invalid id" });
     return;
   }
-  await db.delete(kbDocumentsTable).where(eq(kbDocumentsTable.id, id));
+  await db
+    .delete(kbDocumentsTable)
+    .where(
+      and(
+        eq(kbDocumentsTable.id, id),
+        eq(kbDocumentsTable.siteId, site.id),
+      ),
+    );
   res.json({ ok: true });
 });
 

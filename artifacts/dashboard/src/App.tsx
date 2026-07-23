@@ -1,11 +1,24 @@
-import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
+import {
+  Switch,
+  Route,
+  Router as WouterRouter,
+  Redirect,
+  useLocation,
+  Link,
+} from "wouter";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import { ClerkProvider, SignIn, SignUp, Show, useClerk } from "@clerk/react";
+import { publishableKeyFromHost } from "@clerk/react/internal";
+import { shadcn } from "@clerk/themes";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import NotFound from "@/pages/not-found";
 import { Layout } from "@/components/layout";
-import { AuthGuard } from "@/components/auth-guard";
-import Login from "@/pages/login";
+import { SiteProvider, useSiteContext } from "@/lib/site-context";
+import { WelcomePage } from "@/pages/welcome";
 import Dashboard from "@/pages/dashboard";
 import LinkMap from "@/pages/link-map";
 import KnowledgeGraph from "@/pages/knowledge-graph";
@@ -47,21 +60,237 @@ const queryClient = new QueryClient({
   },
 });
 
-function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+// REQUIRED — copy verbatim. Resolves the key from window.location.hostname so the
+// same build serves multiple Clerk custom domains.
+const clerkPubKey = publishableKeyFromHost(
+  window.location.hostname,
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+);
+
+// REQUIRED — copy verbatim. Empty in dev (Clerk hits dev FAPI directly),
+// auto-set in prod. Do NOT gate on import.meta.env.PROD / NODE_ENV.
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+// Clerk passes full paths to routerPush/routerReplace, but wouter's
+// setLocation prepends the base — strip it to avoid doubling.
+function stripBase(path: string): string {
+  return basePath && path.startsWith(basePath)
+    ? path.slice(basePath.length) || "/"
+    : path;
+}
+
+if (!clerkPubKey) {
+  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY in .env file");
+}
+
+const clerkAppearance = {
+  theme: shadcn,
+  cssLayerName: "clerk",
+  options: {
+    logoPlacement: "inside" as const,
+    logoLinkUrl: basePath || "/",
+    logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
+  },
+  variables: {
+    colorPrimary: "hsl(220 96% 48%)",
+    colorForeground: "hsl(220 50% 10%)",
+    colorMutedForeground: "hsl(220 15% 45%)",
+    colorDanger: "hsl(0 84% 55%)",
+    colorBackground: "#ffffff",
+    colorInput: "#ffffff",
+    colorInputForeground: "hsl(220 50% 10%)",
+    colorNeutral: "hsl(220 20% 55%)",
+    fontFamily: "'Inter', sans-serif",
+    borderRadius: "0.5rem",
+  },
+  elements: {
+    rootBox: "w-full flex justify-center",
+    cardBox:
+      "bg-white rounded-2xl w-[440px] max-w-full overflow-hidden border border-slate-200 shadow-lg",
+    card: "!shadow-none !border-0 !bg-transparent !rounded-none",
+    footer: "!shadow-none !border-0 !bg-transparent !rounded-none",
+    headerTitle: "text-slate-900 font-semibold",
+    headerSubtitle: "text-slate-500",
+    socialButtonsBlockButtonText: "text-slate-700 font-medium",
+    formFieldLabel: "text-slate-700",
+    footerActionLink: "text-blue-600 font-medium hover:text-blue-700",
+    footerActionText: "text-slate-500",
+    dividerText: "text-slate-400",
+    identityPreviewEditButton: "text-blue-600",
+    formFieldSuccessText: "text-emerald-600",
+    alertText: "text-slate-700",
+    logoBox: "justify-center",
+    logoImage: "h-8",
+    socialButtonsBlockButton: "border-slate-200 hover:bg-slate-50",
+    formButtonPrimary: "bg-blue-600 hover:bg-blue-700 text-white",
+    formFieldInput: "border-slate-200 text-slate-900",
+    footerAction: "justify-center",
+    dividerLine: "bg-slate-200",
+    alert: "border-slate-200",
+    otpCodeFieldInput: "border-slate-300 text-slate-900",
+    formFieldRow: "gap-1.5",
+    main: "gap-5",
+  },
+};
+
+function SignInPage() {
   return (
-    <AuthGuard>
-      <Layout>
-        <Component />
-      </Layout>
-    </AuthGuard>
+    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4">
+      <SignIn
+        routing="path"
+        path={`${basePath}/sign-in`}
+        signUpUrl={`${basePath}/sign-up`}
+      />
+    </div>
   );
+}
+
+function SignUpPage() {
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4">
+      <SignUp
+        routing="path"
+        path={`${basePath}/sign-up`}
+        signInUrl={`${basePath}/sign-in`}
+      />
+    </div>
+  );
+}
+
+function LandingPage() {
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4">
+      <div className="w-full max-w-md text-center space-y-6">
+        <div className="flex justify-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-primary-foreground font-display text-2xl font-bold">
+            W
+          </div>
+        </div>
+        <div className="space-y-2">
+          <h1 className="font-display text-3xl font-semibold tracking-tight">
+            Wellows SEO Operations
+          </h1>
+          <p className="text-muted-foreground text-sm">
+            Search performance, internal linking, and content optimization —
+            one operations dashboard for your site.
+          </p>
+        </div>
+        <div className="flex items-center justify-center gap-3">
+          <Button asChild data-testid="button-landing-signin">
+            <Link href="/sign-in">Sign in</Link>
+          </Button>
+          <Button asChild variant="outline" data-testid="button-landing-signup">
+            <Link href="/sign-up">Create account</Link>
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Gate rendered inside SiteProvider: spinner → welcome/empty state → app. */
+function SiteGate({ children }: { children: React.ReactNode }) {
+  const { activeSite, isLoading, isError } = useSiteContext();
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <Spinner className="h-8 w-8" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center px-4">
+        <p className="text-sm text-muted-foreground">
+          Couldn't load your sites. Refresh the page to try again.
+        </p>
+      </div>
+    );
+  }
+
+  if (!activeSite) {
+    return <WelcomePage />;
+  }
+
+  // key remounts the whole subtree on site switch so no per-page state leaks
+  return (
+    <div key={activeSite.id} className="contents">
+      {children}
+    </div>
+  );
+}
+
+function ProtectedRoute({
+  component: Component,
+}: {
+  component: React.ComponentType;
+}) {
+  return (
+    <>
+      <Show when="signed-in">
+        <SiteProvider>
+          <SiteGate>
+            <Layout>
+              <Component />
+            </Layout>
+          </SiteGate>
+        </SiteProvider>
+      </Show>
+      <Show when="signed-out">
+        <Redirect to="/" />
+      </Show>
+    </>
+  );
+}
+
+function HomeRedirect() {
+  return (
+    <>
+      <Show when="signed-in">
+        <ProtectedRoute component={Dashboard} />
+      </Show>
+      <Show when="signed-out">
+        <LandingPage />
+      </Show>
+    </>
+  );
+}
+
+// Invalidate the QueryClient cache when the signed-in user changes.
+function ClerkQueryClientCacheInvalidator() {
+  const { addListener } = useClerk();
+  const qc = useQueryClient();
+  const prevUserIdRef = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    const unsubscribe = addListener(({ user }) => {
+      const userId = user?.id ?? null;
+      if (
+        prevUserIdRef.current !== undefined &&
+        prevUserIdRef.current !== userId
+      ) {
+        qc.clear();
+      }
+      prevUserIdRef.current = userId;
+    });
+    return unsubscribe;
+  }, [addListener, qc]);
+
+  return null;
 }
 
 function Router() {
   return (
     <Switch>
-      <Route path="/login" component={Login} />
-      <Route path="/" component={() => <ProtectedRoute component={Dashboard} />} />
+      <Route path="/" component={HomeRedirect} />
+      {/* REQUIRED — the /*? optional wildcard matches both the bare URL and
+          Clerk's OAuth sub-paths (/sign-in/sso-callback, /sign-in/factor-one). */}
+      <Route path="/sign-in/*?" component={SignInPage} />
+      <Route path="/sign-up/*?" component={SignUpPage} />
       <Route path="/link-map" component={() => <ProtectedRoute component={LinkMap} />} />
       <Route path="/knowledge-graph" component={() => <ProtectedRoute component={KnowledgeGraph} />} />
       <Route path="/links" component={() => <ProtectedRoute component={LinksHub} />} />
@@ -115,16 +344,49 @@ function Router() {
   );
 }
 
+function ClerkProviderWithRoutes() {
+  const [, setLocation] = useLocation();
+
+  return (
+    <ClerkProvider
+      publishableKey={clerkPubKey}
+      proxyUrl={clerkProxyUrl}
+      appearance={clerkAppearance}
+      signInUrl={`${basePath}/sign-in`}
+      signUpUrl={`${basePath}/sign-up`}
+      localization={{
+        signIn: {
+          start: {
+            title: "Welcome back",
+            subtitle: "Sign in to your Wellows dashboard",
+          },
+        },
+        signUp: {
+          start: {
+            title: "Create your account",
+            subtitle: "Start operating your site's SEO",
+          },
+        },
+      }}
+      routerPush={(to) => setLocation(stripBase(to))}
+      routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
+    >
+      <QueryClientProvider client={queryClient}>
+        <ClerkQueryClientCacheInvalidator />
+        <TooltipProvider>
+          <Router />
+          <Toaster />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ClerkProvider>
+  );
+}
+
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <WouterRouter base={basePath}>
+      <ClerkProviderWithRoutes />
+    </WouterRouter>
   );
 }
 

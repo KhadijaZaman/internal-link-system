@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
-import { desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, trackedSubmissionsTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import {
   CreateTrackedSubmissionsBody,
   UpdateTrackedSubmissionBody,
@@ -45,15 +46,18 @@ function serialize(t: typeof trackedSubmissionsTable.$inferSelect) {
   };
 }
 
-router.get("/tracked-submissions", requireAuth, async (_req, res) => {
+router.get("/tracked-submissions", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const rows = await db
     .select()
     .from(trackedSubmissionsTable)
+    .where(eq(trackedSubmissionsTable.siteId, site.id))
     .orderBy(desc(trackedSubmissionsTable.createdAt));
   res.json(rows.map(serialize));
 });
 
-router.post("/tracked-submissions", requireAuth, async (req, res) => {
+router.post("/tracked-submissions", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const parsed = CreateTrackedSubmissionsBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid input" });
@@ -94,26 +98,39 @@ router.post("/tracked-submissions", requireAuth, async (req, res) => {
     .select()
     .from(trackedSubmissionsTable)
     .where(
-      inArray(
-        sql`lower(${trackedSubmissionsTable.url})`,
-        items.map((it) => it.url.toLowerCase()),
+      and(
+        eq(trackedSubmissionsTable.siteId, site.id),
+        inArray(
+          sql`lower(${trackedSubmissionsTable.url})`,
+          items.map((it) => it.url.toLowerCase()),
+        ),
       ),
     );
   const byUrl = new Map(existing.map((row) => [row.url.toLowerCase(), row]));
 
-  const toInsert: { url: string; note: string | null; keyword: string | null }[] = [];
+  const toInsert: {
+    siteId: number;
+    url: string;
+    note: string | null;
+    keyword: string | null;
+  }[] = [];
   const results: (typeof trackedSubmissionsTable.$inferSelect)[] = [];
   for (const it of items) {
     const ex = byUrl.get(it.url.toLowerCase());
     if (!ex) {
-      toInsert.push({ url: it.url, note, keyword: it.keyword });
+      toInsert.push({ siteId: site.id, url: it.url, note, keyword: it.keyword });
       continue;
     }
     if (it.keyword && it.keyword !== ex.keyword) {
       const updated = await db
         .update(trackedSubmissionsTable)
         .set({ keyword: it.keyword })
-        .where(eq(trackedSubmissionsTable.id, ex.id))
+        .where(
+          and(
+            eq(trackedSubmissionsTable.id, ex.id),
+            eq(trackedSubmissionsTable.siteId, site.id),
+          ),
+        )
         .returning();
       if (updated[0]) results.push(updated[0]);
     } else {
@@ -130,7 +147,8 @@ router.post("/tracked-submissions", requireAuth, async (req, res) => {
   res.status(201).json(results.map(serialize));
 });
 
-router.patch("/tracked-submissions/:id", requireAuth, async (req, res) => {
+router.patch("/tracked-submissions/:id", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     res.status(400).json({ error: "Invalid id" });
@@ -156,7 +174,12 @@ router.patch("/tracked-submissions/:id", requireAuth, async (req, res) => {
   const updated = await db
     .update(trackedSubmissionsTable)
     .set(patch)
-    .where(eq(trackedSubmissionsTable.id, id))
+    .where(
+      and(
+        eq(trackedSubmissionsTable.id, id),
+        eq(trackedSubmissionsTable.siteId, site.id),
+      ),
+    )
     .returning();
   if (updated.length === 0) {
     res.status(404).json({ error: "Not found" });
@@ -165,7 +188,8 @@ router.patch("/tracked-submissions/:id", requireAuth, async (req, res) => {
   res.json(serialize(updated[0]!));
 });
 
-router.delete("/tracked-submissions/:id", requireAuth, async (req, res) => {
+router.delete("/tracked-submissions/:id", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     res.status(400).json({ error: "Invalid id" });
@@ -173,13 +197,19 @@ router.delete("/tracked-submissions/:id", requireAuth, async (req, res) => {
   }
   await db
     .delete(trackedSubmissionsTable)
-    .where(eq(trackedSubmissionsTable.id, id));
+    .where(
+      and(
+        eq(trackedSubmissionsTable.id, id),
+        eq(trackedSubmissionsTable.siteId, site.id),
+      ),
+    );
   res.json({ ok: true });
 });
 
 // ---------- Google Sheets export (GSC + Sheets only — no crawl, no AI) ----------
 
-router.post("/tracked-submissions/export-sheet", requireAuth, async (req, res) => {
+router.post("/tracked-submissions/export-sheet", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const parsed = ExportSubmissionsSheetBody.safeParse(req.body ?? {});
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid input" });
@@ -187,7 +217,7 @@ router.post("/tracked-submissions/export-sheet", requireAuth, async (req, res) =
   }
   const days = parsed.data.days ?? 90;
   try {
-    const result = await exportKeywordMovementSheet(days);
+    const result = await exportKeywordMovementSheet(days, site.id);
     req.log.info(
       { keywordCount: result.keywordCount, days },
       "exported keyword movement sheet",
@@ -222,7 +252,9 @@ function toSeriesPoint(r: GscDimensionRow) {
 router.get(
   "/tracked-submissions/:id/performance",
   requireAuth,
+  requireSite,
   async (req, res) => {
+    const site = getSite(req);
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) {
       res.status(400).json({ error: "Invalid id" });
@@ -241,7 +273,12 @@ router.get(
     const rows = await db
       .select()
       .from(trackedSubmissionsTable)
-      .where(eq(trackedSubmissionsTable.id, id));
+      .where(
+        and(
+          eq(trackedSubmissionsTable.id, id),
+          eq(trackedSubmissionsTable.siteId, site.id),
+        ),
+      );
     const sub = rows[0];
     if (!sub) {
       res.status(404).json({ error: "Not found" });
@@ -262,7 +299,7 @@ router.get(
     const pageRegex = pageVariantsRegex(sub.url);
     const keyword = sub.keyword?.trim() || null;
 
-    const cacheKey = `tracked-perf:${id}:${sub.url}:${keyword ?? ""}:${days}:${country ?? "all"}:${endDate}`;
+    const cacheKey = `s${site.id}|tracked-perf:${id}:${sub.url}:${keyword ?? ""}:${days}:${country ?? "all"}:${endDate}`;
     try {
       const payload = await withCache(cacheKey, GSC_CACHE_TTL_MS, async () => {
         // One call per scope covering current + previous window, split locally.

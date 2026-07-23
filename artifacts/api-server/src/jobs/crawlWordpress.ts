@@ -1,4 +1,4 @@
-import { sql, eq, notInArray, or } from "drizzle-orm";
+import { sql, and, eq, notInArray, or } from "drizzle-orm";
 import {
   db,
   wpPostsTable,
@@ -14,6 +14,7 @@ import {
   loadBlockRegexes,
 } from "../lib/urlCanon";
 import { sectionFor } from "../lib/sections";
+import { getLegacySite } from "../lib/site";
 import { embedText } from "../integrations/openaiEmbed";
 import {
   classifyPage,
@@ -52,17 +53,19 @@ async function processConcurrent<T>(
 }
 
 export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
+  // Content crawl stays legacy-site-only until per-site job scheduling lands.
+  const site = await getLegacySite();
   logger.info("Content crawl: starting (sitemap source)");
   const rawItems = await fetchAllSitemapContent();
 
   // URL hygiene: every URL entering wp_posts / link_graph is canonicalized
   // (no fragment/query/trailing slash, lowercase) and blocklisted paths are
   // dropped, so all stores join on the same canonical form.
-  const block = await loadBlockRegexes();
+  const block = await loadBlockRegexes(site.id);
   const seenPaths = new Set<string>();
   const items: Array<(typeof rawItems)[number] & { path: string }> = [];
   for (const it of rawItems) {
-    const path = canonicalPath(it.url);
+    const path = canonicalPath(it.url, site.host);
     if (!path || isBlockedPath(path, block)) continue;
     // Variants collapsing to the same canonical path: keep the first.
     if (seenPaths.has(path)) continue;
@@ -70,11 +73,11 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
     items.push({
       ...it,
       path,
-      url: canonicalUrl(path),
+      url: canonicalUrl(path, site.host),
       outboundInternalLinks: it.outboundInternalLinks.flatMap((l) => {
-        const lp = canonicalPath(l.url);
+        const lp = canonicalPath(l.url, site.host);
         if (!lp || isBlockedPath(lp, block)) return [];
-        return [{ ...l, url: canonicalUrl(lp) }];
+        return [{ ...l, url: canonicalUrl(lp, site.host) }];
       }),
     });
   }
@@ -89,7 +92,8 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
   // failed for a night). Abort before any writes; the job surfaces as failed.
   const existingCountRows = await db
     .select({ count: sql<number>`count(*)::int` })
-    .from(wpPostsTable);
+    .from(wpPostsTable)
+    .where(eq(wpPostsTable.siteId, site.id));
   const existingCount = existingCountRows[0]?.count ?? 0;
   const allowShrink = process.env["CRAWL_ALLOW_SHRINK"] === "1";
   if (!allowShrink && existingCount >= 20 && items.length < existingCount * 0.8) {
@@ -108,6 +112,7 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
       .insert(wpPostsTable)
       .values({
         url: it.url,
+        siteId: site.id,
         type: it.type,
         title: it.title,
         slug: it.slug,
@@ -123,7 +128,7 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
         crawledAt: new Date(),
       })
       .onConflictDoUpdate({
-        target: wpPostsTable.url,
+        target: [wpPostsTable.url, wpPostsTable.siteId],
         set: {
           type: it.type,
           title: it.title,
@@ -151,6 +156,7 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
       .values({
         path: it.path,
         url: it.url,
+        siteId: site.id,
         title: it.title,
         section: sectionFor(it.url),
         inWp: true,
@@ -159,7 +165,7 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
-        target: pagesTable.path,
+        target: [pagesTable.path, pagesTable.siteId],
         set: {
           title: it.title,
           section: sectionFor(it.url),
@@ -179,7 +185,7 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
   if (currentUrls.length > 0) {
     const removed = await db
       .delete(wpPostsTable)
-      .where(notInArray(wpPostsTable.url, currentUrls))
+      .where(and(eq(wpPostsTable.siteId, site.id), notInArray(wpPostsTable.url, currentUrls)))
       .returning({ url: wpPostsTable.url });
     if (removed.length > 0) {
       logger.info({ count: removed.length }, "Content crawl: removed stale posts");
@@ -190,9 +196,12 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
       const purged = await db
         .delete(linkGraphTable)
         .where(
-          or(
-            notInArray(linkGraphTable.sourceUrl, currentUrls),
-            notInArray(linkGraphTable.targetUrl, currentUrls),
+          and(
+            eq(linkGraphTable.siteId, site.id),
+            or(
+              notInArray(linkGraphTable.sourceUrl, currentUrls),
+              notInArray(linkGraphTable.targetUrl, currentUrls),
+            ),
           ),
         )
         .returning({ id: linkGraphTable.sourceUrl });
@@ -212,7 +221,9 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
   const sourceUrls = items.map((it) => it.url);
   for (const src of sourceUrls) {
     try {
-      await db.delete(linkGraphTable).where(eq(linkGraphTable.sourceUrl, src));
+      await db
+        .delete(linkGraphTable)
+        .where(and(eq(linkGraphTable.siteId, site.id), eq(linkGraphTable.sourceUrl, src)));
     } catch (e) {
       logger.warn({ err: e, src }, "Link graph clear failed");
     }
@@ -225,6 +236,7 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
           .values({
             sourceUrl: it.url,
             targetUrl: link.url,
+            siteId: site.id,
             anchorText: link.anchorText,
             surroundingText: null,
             // Tagged by sitemapContent's HTML classifier — body links are
@@ -240,13 +252,13 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
 
   // Recompute link_stats + PageRank so suggestion pipeline sees fresh graph
   try {
-    await recomputeStats();
+    await recomputeStats(site.id);
     logger.info("Content crawl: link stats recomputed");
   } catch (e) {
     logger.warn({ err: e }, "Content crawl: recomputeStats failed");
   }
   // Orphan/dead-end flags may have changed — refresh the action queue.
-  await chainActionQueueRecompute("crawl_wordpress");
+  await chainActionQueueRecompute("crawl_wordpress", site.id);
 
   // Embed: re-embed when forced, when no embedding exists, or when the
   // post has been modified since the last embedding (on-demand refresh).
@@ -256,7 +268,7 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
       embeddedAt: wpPostsTable.embeddedAt,
     })
     .from(wpPostsTable)
-    .where(sql`${wpPostsTable.embedding} IS NOT NULL`);
+    .where(and(eq(wpPostsTable.siteId, site.id), sql`${wpPostsTable.embedding} IS NOT NULL`));
   const embeddedAtByUrl = new Map(
     existingRows.map((r) => [r.url, r.embeddedAt]),
   );
@@ -279,12 +291,15 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
     await db
       .update(wpPostsTable)
       .set({ embedding: vec, embeddedAt: new Date() })
-      .where(eq(wpPostsTable.url, it.url));
+      .where(and(eq(wpPostsTable.siteId, site.id), eq(wpPostsTable.url, it.url)));
   });
   logger.info("Content crawl: embeddings done");
 
   // Classify pages that don't already have manual edits
-  const existingClass = await db.select().from(pageClassificationsTable);
+  const existingClass = await db
+    .select()
+    .from(pageClassificationsTable)
+    .where(eq(pageClassificationsTable.siteId, site.id));
   const editedUrls = new Set(
     existingClass.filter((c) => c.manuallyEdited).map((c) => c.url),
   );
@@ -310,6 +325,7 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
       .insert(pageClassificationsTable)
       .values({
         url: it.url,
+        siteId: site.id,
         tier: result.tier,
         centralEntity: result.centralEntity,
         subEntity: result.subEntity,
@@ -323,7 +339,7 @@ export async function runCrawlWordpress(opts: RunOptions = {}): Promise<void> {
         classifiedAt: new Date(),
       })
       .onConflictDoUpdate({
-        target: pageClassificationsTable.url,
+        target: [pageClassificationsTable.url, pageClassificationsTable.siteId],
         set: {
           tier: result.tier,
           centralEntity: result.centralEntity,

@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db, linkSuggestionsTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import { ActSuggestionBody, ListSuggestionsQueryParams } from "@workspace/api-zod";
 import { buildWhyLine } from "../lib/semanticScorer";
 
@@ -42,23 +43,31 @@ function serialize(s: typeof linkSuggestionsTable.$inferSelect) {
   };
 }
 
-router.get("/suggestions", requireAuth, async (req, res) => {
+router.get("/suggestions", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const parsed = ListSuggestionsQueryParams.safeParse(req.query);
   const status = parsed.success ? parsed.data.status : undefined;
   const rows = await (status && status !== "all"
     ? db
         .select()
         .from(linkSuggestionsTable)
-        .where(eq(linkSuggestionsTable.status, status))
+        .where(
+          and(
+            eq(linkSuggestionsTable.siteId, site.id),
+            eq(linkSuggestionsTable.status, status),
+          ),
+        )
         .orderBy(desc(linkSuggestionsTable.priorityScore))
     : db
         .select()
         .from(linkSuggestionsTable)
+        .where(eq(linkSuggestionsTable.siteId, site.id))
         .orderBy(desc(linkSuggestionsTable.priorityScore)));
   res.json(rows.map(serialize));
 });
 
-router.post("/suggestions/:id/action", requireAuth, async (req, res) => {
+router.post("/suggestions/:id/action", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     res.status(400).json({ error: "Invalid id" });
@@ -82,7 +91,12 @@ router.post("/suggestions/:id/action", requireAuth, async (req, res) => {
   const updated = await db
     .update(linkSuggestionsTable)
     .set({ status: newStatus, reviewedAt: new Date() })
-    .where(eq(linkSuggestionsTable.id, id))
+    .where(
+      and(
+        eq(linkSuggestionsTable.id, id),
+        eq(linkSuggestionsTable.siteId, site.id),
+      ),
+    )
     .returning();
   if (updated.length === 0) {
     res.status(404).json({ error: "Not found" });

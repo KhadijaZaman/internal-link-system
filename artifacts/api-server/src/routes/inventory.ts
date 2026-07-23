@@ -1,13 +1,15 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, inventoryTable, linkStatsTable, linkGraphTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import { sectionFor } from "../lib/sections";
 import { GetInventoryPageQueryParams } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
-router.get("/inventory", requireAuth, async (req, res) => {
+router.get("/inventory", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const parsed = GetInventoryPageQueryParams.safeParse(req.query);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid query" });
@@ -15,10 +17,24 @@ router.get("/inventory", requireAuth, async (req, res) => {
   }
   const url = parsed.data.url;
   const [invRows, statRows, inbound, outbound] = await Promise.all([
-    db.select().from(inventoryTable).where(eq(inventoryTable.url, url)).limit(1),
-    db.select().from(linkStatsTable).where(eq(linkStatsTable.url, url)).limit(1),
-    db.select().from(linkGraphTable).where(eq(linkGraphTable.targetUrl, url)),
-    db.select().from(linkGraphTable).where(eq(linkGraphTable.sourceUrl, url)),
+    db
+      .select()
+      .from(inventoryTable)
+      .where(and(eq(inventoryTable.url, url), eq(inventoryTable.siteId, site.id)))
+      .limit(1),
+    db
+      .select()
+      .from(linkStatsTable)
+      .where(and(eq(linkStatsTable.url, url), eq(linkStatsTable.siteId, site.id)))
+      .limit(1),
+    db
+      .select()
+      .from(linkGraphTable)
+      .where(and(eq(linkGraphTable.targetUrl, url), eq(linkGraphTable.siteId, site.id))),
+    db
+      .select()
+      .from(linkGraphTable)
+      .where(and(eq(linkGraphTable.sourceUrl, url), eq(linkGraphTable.siteId, site.id))),
   ]);
   const inv = invRows[0];
   const stat = statRows[0];

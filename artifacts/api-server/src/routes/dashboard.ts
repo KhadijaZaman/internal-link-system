@@ -9,28 +9,52 @@ import {
   queryLosersTable,
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import { loadJobStatuses } from "../jobs/runner";
 import { countContentPages, CONTENT_PAGES_FILTER_LABEL } from "../services/pageCounts";
 
 const router: IRouter = Router();
 
-router.get("/dashboard/summary", requireAuth, async (_req, res) => {
+router.get("/dashboard/summary", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const [pages, links, orphans, deadEnds, pending, criticalLosers, coreCount, outerCount] =
     await Promise.all([
-      countContentPages(),
-      db.select({ c: count() }).from(linkGraphTable),
-      db.select({ c: count() }).from(linkStatsTable).where(eq(linkStatsTable.isOrphan, true)),
-      db.select({ c: count() }).from(linkStatsTable).where(eq(linkStatsTable.isDeadEnd, true)),
+      countContentPages(site.id),
+      db.select({ c: count() }).from(linkGraphTable).where(eq(linkGraphTable.siteId, site.id)),
+      db
+        .select({ c: count() })
+        .from(linkStatsTable)
+        .where(and(eq(linkStatsTable.siteId, site.id), eq(linkStatsTable.isOrphan, true))),
+      db
+        .select({ c: count() })
+        .from(linkStatsTable)
+        .where(and(eq(linkStatsTable.siteId, site.id), eq(linkStatsTable.isDeadEnd, true))),
       db
         .select({ c: count() })
         .from(linkSuggestionsTable)
-        .where(eq(linkSuggestionsTable.status, "pending_review")),
+        .where(
+          and(
+            eq(linkSuggestionsTable.siteId, site.id),
+            eq(linkSuggestionsTable.status, "pending_review"),
+          ),
+        ),
       db
         .select({ c: count() })
         .from(queryLosersTable)
-        .where(eq(queryLosersTable.severity, "critical")),
-      db.select({ c: count() }).from(inventoryTable).where(eq(inventoryTable.section, "core")),
-      db.select({ c: count() }).from(inventoryTable).where(eq(inventoryTable.section, "outer")),
+        .where(
+          and(
+            eq(queryLosersTable.siteId, site.id),
+            eq(queryLosersTable.severity, "critical"),
+          ),
+        ),
+      db
+        .select({ c: count() })
+        .from(inventoryTable)
+        .where(and(eq(inventoryTable.siteId, site.id), eq(inventoryTable.section, "core"))),
+      db
+        .select({ c: count() })
+        .from(inventoryTable)
+        .where(and(eq(inventoryTable.siteId, site.id), eq(inventoryTable.section, "outer"))),
     ]);
   const jobs = await loadJobStatuses();
   res.json({

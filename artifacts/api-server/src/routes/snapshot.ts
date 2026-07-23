@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import { withCache } from "../integrations/gsc";
 import {
   computeAuthoritySnapshot,
@@ -10,7 +11,8 @@ const router: IRouter = Router();
 
 const SNAPSHOT_TTL_MS = 30 * 60 * 1000;
 
-router.get("/snapshot", requireAuth, async (req, res) => {
+router.get("/snapshot", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   let threshold = DEFAULT_CORE_THRESHOLD;
   const raw = req.query["threshold"];
   if (raw !== undefined && raw !== "") {
@@ -23,9 +25,9 @@ router.get("/snapshot", requireAuth, async (req, res) => {
   }
   try {
     const data = await withCache(
-      `authority-snapshot:v2|${threshold}`,
+      `s${site.id}|authority-snapshot:v2|${threshold}`,
       SNAPSHOT_TTL_MS,
-      () => computeAuthoritySnapshot(threshold),
+      () => computeAuthoritySnapshot(site.id, threshold),
     );
     res.json(data);
   } catch (err) {

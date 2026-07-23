@@ -9,11 +9,6 @@ export interface HealthStatus {
   status: string;
 }
 
-export interface LoginInput {
-  /** @minLength 1 */
-  password: string;
-}
-
 export interface AuthSession {
   authenticated: boolean;
   /** @nullable */

@@ -1,14 +1,17 @@
 import { Router, type IRouter } from "express";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db, digestsTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 
 const router: IRouter = Router();
 
-router.get("/digests", requireAuth, async (_req, res) => {
+router.get("/digests", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const rows = await db
     .select()
     .from(digestsTable)
+    .where(eq(digestsTable.siteId, site.id))
     .orderBy(desc(digestsTable.weekOf))
     .limit(52);
   res.json({

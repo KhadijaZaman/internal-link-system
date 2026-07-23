@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db, actionItemsTable, type ActionItem } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import { ListActionsQueryParams, SetActionStatusBody } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -26,17 +27,22 @@ function serialize(a: ActionItem) {
   };
 }
 
-router.get("/actions", requireAuth, async (req, res) => {
+router.get("/actions", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const parsed = ListActionsQueryParams.safeParse(req.query);
   const status = parsed.success ? (parsed.data.status ?? "open") : "open";
 
   const [rows, countRows] = await Promise.all([
     status === "all"
-      ? db.select().from(actionItemsTable).orderBy(desc(actionItemsTable.score))
+      ? db
+          .select()
+          .from(actionItemsTable)
+          .where(eq(actionItemsTable.siteId, site.id))
+          .orderBy(desc(actionItemsTable.score))
       : db
           .select()
           .from(actionItemsTable)
-          .where(eq(actionItemsTable.status, status))
+          .where(and(eq(actionItemsTable.siteId, site.id), eq(actionItemsTable.status, status)))
           .orderBy(
             status === "open"
               ? desc(actionItemsTable.score)
@@ -47,6 +53,7 @@ router.get("/actions", requireAuth, async (req, res) => {
     db
       .select({ status: actionItemsTable.status, n: sql<number>`count(*)::int` })
       .from(actionItemsTable)
+      .where(eq(actionItemsTable.siteId, site.id))
       .groupBy(actionItemsTable.status),
   ]);
 
@@ -64,7 +71,8 @@ router.get("/actions", requireAuth, async (req, res) => {
   });
 });
 
-router.post("/actions/:id/status", requireAuth, async (req, res) => {
+router.post("/actions/:id/status", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     res.status(400).json({ error: "Invalid id" });
@@ -87,7 +95,7 @@ router.post("/actions/:id/status", requireAuth, async (req, res) => {
   const updated = await db
     .update(actionItemsTable)
     .set(set)
-    .where(eq(actionItemsTable.id, id))
+    .where(and(eq(actionItemsTable.id, id), eq(actionItemsTable.siteId, site.id)))
     .returning();
   if (updated.length === 0) {
     res.status(404).json({ error: "Action not found" });

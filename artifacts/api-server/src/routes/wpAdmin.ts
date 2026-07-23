@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import {
   db,
   pageClassificationsTable,
@@ -7,6 +7,7 @@ import {
   wpPostsTable,
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import { canonicalPath, canonicalUrl } from "../lib/urlCanon";
 
 const router: IRouter = Router();
@@ -42,7 +43,8 @@ router.get("/wp/classifications", requireAuth, async (_req, res) => {
   });
 });
 
-router.patch("/wp/classifications", requireAuth, async (req, res) => {
+router.patch("/wp/classifications", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const body = req.body as {
     url?: string;
     tier?: number;
@@ -59,12 +61,12 @@ router.patch("/wp/classifications", requireAuth, async (req, res) => {
   }
   // Canonicalize before upserting so non-canonical URL forms can't re-enter
   // the migrated page_classifications table.
-  const canonPath = canonicalPath(body.url);
+  const canonPath = canonicalPath(body.url, site.host);
   if (!canonPath) {
     res.status(400).json({ error: "url is not a valid page on this site" });
     return;
   }
-  const canonUrl = canonicalUrl(canonPath);
+  const canonUrl = canonicalUrl(canonPath, site.host);
   const updates: Record<string, unknown> = { manuallyEdited: true };
   if (body.tier && body.tier >= 1 && body.tier <= 4) updates["tier"] = body.tier;
   if (typeof body.centralEntity === "string") updates["centralEntity"] = body.centralEntity;
@@ -77,8 +79,11 @@ router.patch("/wp/classifications", requireAuth, async (req, res) => {
 
   await db
     .insert(pageClassificationsTable)
-    .values({ url: canonUrl, ...updates })
-    .onConflictDoUpdate({ target: pageClassificationsTable.url, set: updates });
+    .values({ url: canonUrl, siteId: site.id, ...updates })
+    .onConflictDoUpdate({
+      target: [pageClassificationsTable.url, pageClassificationsTable.siteId],
+      set: updates,
+    });
   res.json({ ok: true });
 });
 

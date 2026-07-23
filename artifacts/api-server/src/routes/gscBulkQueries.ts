@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { requireAuth } from "../lib/auth";
+import { requireLegacySiteOwner } from "../lib/site";
 import { queryGscDimension } from "../integrations/gsc";
 
 const router: IRouter = Router();
@@ -175,7 +176,7 @@ async function runWithConcurrency<T, R>(
   return results;
 }
 
-router.post("/gsc/bulk-queries", requireAuth, async (req, res) => {
+router.post("/gsc/bulk-queries", requireAuth, requireLegacySiteOwner, async (req, res) => {
   const body = (req.body ?? {}) as Record<string, unknown>;
   const rawUrls = Array.isArray(body["urls"]) ? body["urls"] : [];
   const days = Math.min(

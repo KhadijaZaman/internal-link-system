@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import OpenAI from "openai";
 import { requireAuth } from "../lib/auth";
+import { requireLegacySiteOwner } from "../lib/site";
 import {
   ContentResearchBody,
   ContentWriteBody,
@@ -100,7 +101,7 @@ async function runResearch(keyword: string, competitorUrls: string[]) {
   };
 }
 
-router.post("/content/research", requireAuth, async (req, res) => {
+router.post("/content/research", requireAuth, requireLegacySiteOwner, async (req, res) => {
   const parsed = ContentResearchBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid input", issues: parsed.error.issues });
@@ -115,7 +116,7 @@ router.post("/content/research", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/content/write", requireAuth, async (req, res) => {
+router.post("/content/write", requireAuth, requireLegacySiteOwner, async (req, res) => {
   const parsed = ContentWriteBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid input", issues: parsed.error.issues });
@@ -258,7 +259,7 @@ function scoreCoverage(presentLower: Set<string>, expected: string[]): {
   return { present, missing, score };
 }
 
-router.post("/content/audit/entities", requireAuth, async (req, res) => {
+router.post("/content/audit/entities", requireAuth, requireLegacySiteOwner, async (req, res) => {
   const parsed = ContentAuditEntitiesBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid input", issues: parsed.error.issues });
@@ -284,7 +285,7 @@ router.post("/content/audit/entities", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/content/audit/nlp", requireAuth, async (req, res) => {
+router.post("/content/audit/nlp", requireAuth, requireLegacySiteOwner, async (req, res) => {
   const parsed = ContentAuditNlpBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid input", issues: parsed.error.issues });
@@ -313,7 +314,7 @@ router.post("/content/audit/nlp", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/content/audit/ngrams", requireAuth, async (req, res) => {
+router.post("/content/audit/ngrams", requireAuth, requireLegacySiteOwner, async (req, res) => {
   const parsed = ContentAuditNgramsBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid input", issues: parsed.error.issues });

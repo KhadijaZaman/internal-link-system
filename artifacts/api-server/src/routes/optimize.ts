@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db, optimizeQueueTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import { AddOptimizeQueueItemBody } from "@workspace/api-zod";
 import { processOptimizeItem } from "../jobs/optimizeUrls";
 import { logger } from "../lib/logger";
@@ -22,15 +23,18 @@ function serialize(q: typeof optimizeQueueTable.$inferSelect) {
   };
 }
 
-router.get("/optimize-queue", requireAuth, async (_req, res) => {
+router.get("/optimize-queue", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const rows = await db
     .select()
     .from(optimizeQueueTable)
+    .where(eq(optimizeQueueTable.siteId, site.id))
     .orderBy(desc(optimizeQueueTable.addedAt));
   res.json(rows.map(serialize));
 });
 
-router.post("/optimize-queue", requireAuth, async (req, res) => {
+router.post("/optimize-queue", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const parsed = AddOptimizeQueueItemBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid input" });
@@ -39,6 +43,7 @@ router.post("/optimize-queue", requireAuth, async (req, res) => {
   const inserted = await db
     .insert(optimizeQueueTable)
     .values({
+      siteId: site.id,
       url: parsed.data.url,
       priority: parsed.data.priority ?? "medium",
       notes: parsed.data.notes ?? null,
@@ -47,7 +52,8 @@ router.post("/optimize-queue", requireAuth, async (req, res) => {
   res.status(201).json(serialize(inserted[0]!));
 });
 
-router.post("/optimize-queue/:id/run", requireAuth, async (req, res) => {
+router.post("/optimize-queue/:id/run", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     res.status(400).json({ error: "Invalid id" });
@@ -56,7 +62,12 @@ router.post("/optimize-queue/:id/run", requireAuth, async (req, res) => {
   const found = await db
     .select()
     .from(optimizeQueueTable)
-    .where(eq(optimizeQueueTable.id, id))
+    .where(
+      and(
+        eq(optimizeQueueTable.id, id),
+        eq(optimizeQueueTable.siteId, site.id),
+      ),
+    )
     .limit(1);
   const item = found[0];
   if (!item) {
@@ -73,7 +84,8 @@ router.post("/optimize-queue/:id/run", requireAuth, async (req, res) => {
   res.status(202).json({ ...serialize(item), status: "optimizing" });
 });
 
-router.post("/optimize-queue/:id/requeue", requireAuth, async (req, res) => {
+router.post("/optimize-queue/:id/requeue", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     res.status(400).json({ error: "Invalid id" });
@@ -82,7 +94,12 @@ router.post("/optimize-queue/:id/requeue", requireAuth, async (req, res) => {
   const updated = await db
     .update(optimizeQueueTable)
     .set({ status: "optimize", completedAt: null })
-    .where(eq(optimizeQueueTable.id, id))
+    .where(
+      and(
+        eq(optimizeQueueTable.id, id),
+        eq(optimizeQueueTable.siteId, site.id),
+      ),
+    )
     .returning();
   if (updated.length === 0) {
     res.status(404).json({ error: "Not found" });

@@ -1,7 +1,8 @@
 import { db, pagesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { queryGa4Pages } from "../integrations/ga4";
 import { withDbRetry } from "../lib/dbRetry";
+import { getLegacySite } from "../lib/site";
 import { logger } from "../lib/logger";
 
 function dateOffset(days: number): string {
@@ -18,11 +19,13 @@ function dateOffset(days: number): string {
  * normalizer, so GA4 paths join cleanly here.
  */
 export async function runSyncGa4Pages(): Promise<void> {
+  // GA4 sync stays legacy-site-only until per-site job scheduling lands.
+  const site = await getLegacySite();
   const startDate = dateOffset(28);
   const endDate = dateOffset(1);
   // channel:"all" — stored rollups are all-channel totals; the per-channel
   // split stays a live-view concern.
-  const { rows } = await queryGa4Pages({ startDate, endDate, channel: "all" });
+  const { rows } = await queryGa4Pages({ startDate, endDate, channel: "all", site });
   const now = new Date();
 
   // One transaction: reset (so pages that stopped converting don't keep
@@ -37,13 +40,16 @@ export async function runSyncGa4Pages(): Promise<void> {
       db.transaction(async (tx) => {
         updated = 0;
         unmatched = 0;
-        await tx.update(pagesTable).set({ keyEvents: 0, aiSessions: 0, ga4SyncedAt: now });
+        await tx
+          .update(pagesTable)
+          .set({ keyEvents: 0, aiSessions: 0, ga4SyncedAt: now })
+          .where(eq(pagesTable.siteId, site.id));
         for (const r of rows) {
           if (r.keyEvents === 0 && r.aiSessions === 0) continue;
           const result = await tx
             .update(pagesTable)
             .set({ keyEvents: r.keyEvents, aiSessions: r.aiSessions, updatedAt: now })
-            .where(eq(pagesTable.path, r.path));
+            .where(and(eq(pagesTable.siteId, site.id), eq(pagesTable.path, r.path)));
           if ((result.rowCount ?? 0) > 0) updated++;
           else unmatched++;
         }

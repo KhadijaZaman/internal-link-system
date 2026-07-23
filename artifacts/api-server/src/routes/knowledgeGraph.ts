@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   db,
   inventoryTable,
@@ -10,6 +10,7 @@ import {
   actionItemsTable,
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import { louvain } from "../lib/louvain";
 import { sectionFor } from "../lib/sections";
 import { canonicalPath } from "../lib/urlCanon";
@@ -39,8 +40,8 @@ const LOUVAIN_RESOLUTION = 1.0;
  * Uses the shared canonicalizer so fragment/query/slash variants land on
  * the same node; falls back to simple cleanup for non-site URLs.
  */
-function norm(url: string): string {
-  const p = canonicalPath(url);
+function norm(url: string, siteHost: string): string {
+  const p = canonicalPath(url, siteHost);
   if (p !== null) return p;
   return url.replace(/\/+$/, "").toLowerCase();
 }
@@ -111,17 +112,23 @@ function clusterLabel(
   }
 }
 
-router.get("/knowledge-graph", requireAuth, async (_req, res) => {
+router.get("/knowledge-graph", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const [stats, inv, contentLinks, semRes, embStats, canonicalPageCount, loserRows, actionRows] = await Promise.all([
-    db.select().from(linkStatsTable),
-    db.select().from(inventoryTable),
+    db.select().from(linkStatsTable).where(eq(linkStatsTable.siteId, site.id)),
+    db.select().from(inventoryTable).where(eq(inventoryTable.siteId, site.id)),
     db
       .select({
         sourceUrl: linkGraphTable.sourceUrl,
         targetUrl: linkGraphTable.targetUrl,
       })
       .from(linkGraphTable)
-      .where(eq(linkGraphTable.placement, "content")),
+      .where(
+        and(
+          eq(linkGraphTable.siteId, site.id),
+          eq(linkGraphTable.placement, "content"),
+        ),
+      ),
     db.execute(sql`
       SELECT a.url AS source, n.url AS target,
              1 - (a.embedding <=> n.embedding) AS sim
@@ -130,10 +137,12 @@ router.get("/knowledge-graph", requireAuth, async (_req, res) => {
         SELECT b.url, b.embedding
         FROM wp_posts b
         WHERE b.url <> a.url AND b.embedding IS NOT NULL
+          AND b.site_id = ${site.id}
         ORDER BY b.embedding <=> a.embedding
         LIMIT ${SEMANTIC_TOP_K}
       ) n ON true
       WHERE a.embedding IS NOT NULL
+        AND a.site_id = ${site.id}
     `) as unknown as Promise<{
       rows: Array<{ source: string; target: string; sim: string | number }>;
     }>,
@@ -142,13 +151,20 @@ router.get("/knowledge-graph", requireAuth, async (_req, res) => {
         total: sql<number>`count(*)::int`,
         embedded: sql<number>`count(${wpPostsTable.embedding})::int`,
       })
-      .from(wpPostsTable),
-    countContentPages(),
+      .from(wpPostsTable)
+      .where(eq(wpPostsTable.siteId, site.id)),
+    countContentPages(site.id),
     db
       .select({ url: queryLosersTable.url, severity: queryLosersTable.severity })
       .from(queryLosersTable)
       .where(
-        eq(queryLosersTable.weekOf, sql`(SELECT max(week_of) FROM query_losers)`),
+        and(
+          eq(queryLosersTable.siteId, site.id),
+          eq(
+            queryLosersTable.weekOf,
+            sql`(SELECT max(week_of) FROM query_losers WHERE site_id = ${site.id})`,
+          ),
+        ),
       ),
     db
       .select({
@@ -156,7 +172,9 @@ router.get("/knowledge-graph", requireAuth, async (_req, res) => {
         n: sql<number>`count(*)::int`,
       })
       .from(actionItemsTable)
-      .where(eq(actionItemsTable.status, "open"))
+      .where(
+        and(eq(actionItemsTable.siteId, site.id), eq(actionItemsTable.status, "open")),
+      )
       .groupBy(actionItemsTable.targetUrl),
   ]);
 
@@ -184,14 +202,14 @@ router.get("/knowledge-graph", requireAuth, async (_req, res) => {
   // (trailing slash, case) still land on the right node.
   const normToId = new Map<string, string>();
   for (const n of nodes) {
-    if (!normToId.has(norm(n.id))) normToId.set(norm(n.id), n.id);
+    if (!normToId.has(norm(n.id, site.host))) normToId.set(norm(n.id, site.host), n.id);
   }
 
   // Undirected content-link pairs.
   const linkPairs = new Set<string>();
   for (const e of contentLinks) {
-    const a = normToId.get(norm(e.sourceUrl));
-    const b = normToId.get(norm(e.targetUrl));
+    const a = normToId.get(norm(e.sourceUrl, site.host));
+    const b = normToId.get(norm(e.targetUrl, site.host));
     if (!a || !b || a === b) continue;
     linkPairs.add(pairKey(a, b));
   }
@@ -201,8 +219,8 @@ router.get("/knowledge-graph", requireAuth, async (_req, res) => {
   const embeddedIds = new Set<string>();
   for (const r of semRes.rows) {
     const simNum = typeof r.sim === "number" ? r.sim : parseFloat(r.sim);
-    const a = normToId.get(norm(r.source));
-    const b = normToId.get(norm(r.target));
+    const a = normToId.get(norm(r.source, site.host));
+    const b = normToId.get(norm(r.target, site.host));
     if (a) embeddedIds.add(a);
     if (b) embeddedIds.add(b);
     if (!a || !b || a === b) continue;
@@ -218,7 +236,7 @@ router.get("/knowledge-graph", requireAuth, async (_req, res) => {
   const SEV_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
   const nodeById2 = new Map(nodes.map((n) => [n.id, n]));
   for (const l of loserRows) {
-    const id = normToId.get(norm(l.url));
+    const id = normToId.get(norm(l.url, site.host));
     if (!id) continue;
     const sev = (l.severity ?? "low").toLowerCase();
     const rank = SEV_RANK[sev] ?? 0;
@@ -230,7 +248,7 @@ router.get("/knowledge-graph", requireAuth, async (_req, res) => {
     }
   }
   for (const a of actionRows) {
-    const id = normToId.get(norm(a.targetUrl));
+    const id = normToId.get(norm(a.targetUrl, site.host));
     if (!id) continue;
     const node = nodeById2.get(id);
     if (node) node.openActions += a.n;

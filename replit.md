@@ -10,12 +10,13 @@ _Replace the heading above with the project's name, and this line with one sente
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/api-server run test` — vitest unit tests (pure scoring/chunking helpers + SSRF guard)
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Required env: `DATABASE_URL` — Postgres connection string; `CLERK_SECRET_KEY` + `VITE_CLERK_PUBLISHABLE_KEY` — Clerk auth (Replit-managed); `ADMIN_PASSWORD` — now only used by the one-time legacy-site claim endpoint
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
 - API: Express 5
+- Auth: Clerk (Replit-managed) — `@clerk/express` on the API, `@clerk/clerk-react` on the dashboard
 - DB: PostgreSQL + Drizzle ORM
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
@@ -23,6 +24,10 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
+- `artifacts/api-server/src/lib/auth.ts` — Clerk session verification: `requireAuth` sets `req.userId` and lazily upserts the local `users` row
+- `artifacts/api-server/src/lib/site.ts` — multi-tenancy core: `requireSite` (X-Site-Id header + ownership check → `req.site`, read via `getSite`/`getSiteId`), `requireLegacySiteOwner` (gates legacy-bound spend/data surfaces: job triggers, GSC bulk queries, content writer), `getLegacySite()` for background jobs, 30s in-memory site cache invalidated on claim
+- `artifacts/api-server/src/routes/sites.ts` — `GET /api/sites` (user's sites) + `POST /api/sites/claim-legacy` (old admin password, timing-safe SHA-256 compare, rate-limited, single-claim via conditional UPDATE)
+- `artifacts/dashboard/src/lib/site-context.tsx` — SiteProvider (localStorage active site, module-level `getActiveSiteId()` feeds the X-Site-Id header via the generated fetch client), SiteGate (welcome empty state / keyed remount on switch)
 - `artifacts/api-server/src/lib/urlCanon.ts` — the single URL-hygiene module: canonical path/URL normalizer, url_blocklist matching, metric re-aggregation helpers
 - `artifacts/api-server/src/services/pageCounts.ts` — the one shared "content pages" count + filter label used by Dashboard, Knowledge Graph, and Site Authority headers
 - `artifacts/api-server/src/jobs/migrateUrlHygiene.ts` — idempotent retroactive migration (manual-only job `migrate_url_hygiene`)
@@ -66,6 +71,10 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
+- `requireAuth` means "any self-registered Clerk user", NOT "the operator" — every new data route must also mount `requireSite` (and filter every query by `eq(table.siteId, site.id)`); spend-bearing or legacy-bound surfaces (job triggers, GSC bulk queries, content writer) must use `requireLegacySiteOwner`
+- All `withCache` keys on site-scoped routes must be prefixed `s${site.id}|` or responses leak across tenants
+- Background jobs are legacy-site-only (`getLegacySite()`) until per-site job scheduling lands; new job code must thread the site through explicitly, never assume a global site
+- Raw `fetch` calls in the dashboard (outside generated hooks) must manually attach the `x-site-id` header via `getActiveSiteId()` (see ask.tsx SSE stream, bulk-queries.tsx)
 - Every ingestion path (GSC, GA4, crawler, WordPress sync) and every live read that joins on URL/path MUST go through `urlCanon.ts` (`canonicalPath` + blocklist) — never store or compare raw URLs
 - When rows collapse onto one canonical path, metrics must be MERGED (sum clicks/impressions, impression-weighted position), never overwritten
 - Any change to a cached response shape must bump that cache key in lockstep (e.g. `report:pages:v5`, `ga4:pages:v4`, `authority-snapshot:v2`)

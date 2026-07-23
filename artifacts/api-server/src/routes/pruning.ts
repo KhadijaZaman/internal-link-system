@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
-import { sql, inArray } from "drizzle-orm";
+import { and, eq, sql, inArray } from "drizzle-orm";
 import { db, gscSnapshotsTable, wpPostsTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import { cosineSim } from "../lib/semanticScorer";
 import { ensureQueryIntel } from "../services/queryIntel";
 
@@ -28,13 +29,15 @@ interface QueryAggRow {
 
 type IntentVerdict = "on_intent_no_clicks" | "off_intent_only" | "mixed" | "unknown";
 
-router.get("/pruning-suggestions", requireAuth, async (_req, res) => {
+router.get("/pruning-suggestions", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const rangeRows = await db
     .select({
       minDate: sql<string | null>`MIN(snapshot_date)`,
       maxDate: sql<string | null>`MAX(snapshot_date)`,
     })
-    .from(gscSnapshotsTable);
+    .from(gscSnapshotsTable)
+    .where(eq(gscSnapshotsTable.siteId, site.id));
   const fullMin = rangeRows[0]?.minDate ?? null;
   const fullMax = rangeRows[0]?.maxDate ?? null;
 
@@ -66,7 +69,10 @@ router.get("/pruning-suggestions", requireAuth, async (_req, res) => {
     })
     .from(gscSnapshotsTable)
     .where(
-      sql`snapshot_date BETWEEN ${effectiveStart}::date AND ${effectiveEnd}::date`,
+      and(
+        eq(gscSnapshotsTable.siteId, site.id),
+        sql`snapshot_date BETWEEN ${effectiveStart}::date AND ${effectiveEnd}::date`,
+      ),
     );
   const totalDays = Number(daysRows[0]?.totalDays ?? 0);
 
@@ -83,6 +89,7 @@ router.get("/pruning-suggestions", requireAuth, async (_req, res) => {
       SELECT url, query, snapshot_date, position, impressions, clicks
       FROM ${gscSnapshotsTable}
       WHERE snapshot_date BETWEEN ${effectiveStart}::date AND ${effectiveEnd}::date
+        AND site_id = ${site.id}
         AND query NOT ILIKE '%site:%'
         AND query NOT ILIKE '%inurl:%'
         AND query NOT ILIKE '%intitle:%'
@@ -143,6 +150,7 @@ router.get("/pruning-suggestions", requireAuth, async (_req, res) => {
       SELECT url, query, position, impressions, clicks
       FROM ${gscSnapshotsTable}
       WHERE snapshot_date BETWEEN ${effectiveStart}::date AND ${effectiveEnd}::date
+        AND site_id = ${site.id}
         AND ${urlFilter}
         AND query NOT ILIKE '%site:%'
         AND query NOT ILIKE '%inurl:%'
@@ -170,12 +178,12 @@ router.get("/pruning-suggestions", requireAuth, async (_req, res) => {
       embedding: wpPostsTable.embedding,
     })
     .from(wpPostsTable)
-    .where(inArray(wpPostsTable.url, urls));
+    .where(and(inArray(wpPostsTable.url, urls), eq(wpPostsTable.siteId, site.id)));
   const postByUrl = new Map(posts.map((p) => [p.url, p]));
 
   // Warm the query_intel cache (embeddings + DataForSEO volumes).
   const distinctQueries = Array.from(new Set(perQuery.map((r) => r.query)));
-  const intelByQuery = await ensureQueryIntel(distinctQueries);
+  const intelByQuery = await ensureQueryIntel(distinctQueries, site.id);
 
   // Build per-URL detail objects.
   const queriesByUrl = new Map<string, QueryAggRow[]>();

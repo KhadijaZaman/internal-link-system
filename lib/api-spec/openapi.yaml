@@ -71,38 +71,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
-  /auth/login:
-    post:
-      operationId: login
-      tags: [auth]
-      summary: Admin login
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/LoginInput"
-      responses:
-        "200":
-          description: Logged in
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthSession"
-        "401":
-          description: Invalid password
-  /auth/logout:
-    post:
-      operationId: logout
-      tags: [auth]
-      summary: Admin logout
-      responses:
-        "200":
-          description: Logged out
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HealthStatus"
   /auth/me:
     get:
       operationId: getSession
@@ -1818,11 +1786,6 @@ components:
       properties:
         status: { type: string }
       required: [status]
-    LoginInput:
-      type: object
-      required: [password]
-      properties:
-        password: { type: string, minLength: 1 }
     AuthSession:
       type: object
       required: [authenticated]

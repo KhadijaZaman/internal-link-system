@@ -14,6 +14,7 @@ import {
   mergeMetricRows,
 } from "../lib/urlCanon";
 import { sectionFor } from "../lib/sections";
+import { getLegacySite } from "../lib/site";
 import { chainActionQueueRecompute } from "../services/actionQueue";
 import { logger } from "../lib/logger";
 
@@ -70,11 +71,15 @@ interface CanonRow {
  * clicks/impressions summed, position impression-weighted. Blocklisted and
  * foreign-host rows are dropped here so they never reach any table.
  */
-function collapseRows(rows: GscRow[], block: RegExp[]): Map<string, CanonRow> {
+function collapseRows(
+  rows: GscRow[],
+  block: RegExp[],
+  siteHost: string,
+): Map<string, CanonRow> {
   const groups = new Map<string, GscRow[]>();
   const paths = new Map<string, string>();
   for (const r of rows) {
-    const path = canonicalPath(r.url);
+    const path = canonicalPath(r.url, siteHost);
     if (!path || isBlockedPath(path, block)) continue;
     const key = `${path}||${r.query}`;
     paths.set(key, path);
@@ -99,6 +104,8 @@ function collapseRows(rows: GscRow[], block: RegExp[]): Map<string, CanonRow> {
 }
 
 export async function runGscInventoryAndLosers(): Promise<void> {
+  // GSC ingestion stays legacy-site-only until per-site job scheduling lands.
+  const site = await getLegacySite();
   // GSC data for the most recent ~2-3 days is incomplete (processing lag), so
   // both windows end 3 days back. 7-day windows keep weekday mix identical.
   const currStart = dateOffset(9);
@@ -110,10 +117,10 @@ export async function runGscInventoryAndLosers(): Promise<void> {
   const [currRaw, prevRaw, block] = await Promise.all([
     queryGsc({ startDate: currStart, endDate: currEnd }),
     queryGsc({ startDate: prevStart, endDate: prevEnd }),
-    loadBlockRegexes(),
+    loadBlockRegexes(site.id),
   ]);
-  const curr = collapseRows(currRaw, block);
-  const prev = collapseRows(prevRaw, block);
+  const curr = collapseRows(currRaw, block, site.host);
+  const prev = collapseRows(prevRaw, block, site.host);
   logger.info(
     { currRaw: currRaw.length, curr: curr.size, prevRaw: prevRaw.length, prev: prev.size },
     "GSC: rows pulled (raw → canonical)",
@@ -123,12 +130,13 @@ export async function runGscInventoryAndLosers(): Promise<void> {
   if (curr.size > 0) {
     const batch = [...curr.values()].map((r) => ({
       snapshotDate: today,
-      url: canonicalUrl(r.path),
+      url: canonicalUrl(r.path, site.host),
       query: r.query,
       position: r.position,
       impressions: r.impressions,
       clicks: r.clicks,
       ctr: r.ctr,
+      siteId: site.id,
     }));
     for (let i = 0; i < batch.length; i += 500) {
       await db.insert(gscSnapshotsTable).values(batch.slice(i, i + 500));
@@ -143,7 +151,8 @@ export async function runGscInventoryAndLosers(): Promise<void> {
     if (!sev) continue;
     losers.push({
       weekOf: today,
-      url: canonicalUrl(r.path),
+      url: canonicalUrl(r.path, site.host),
+      siteId: site.id,
       query: r.query,
       prevPosition: p.position,
       currPosition: r.position,
@@ -168,12 +177,13 @@ export async function runGscInventoryAndLosers(): Promise<void> {
   }
   const now = new Date();
   for (const [path, r] of byPath) {
-    const url = canonicalUrl(path);
+    const url = canonicalUrl(path, site.host);
     const section = sectionFor(url);
     await db
       .insert(inventoryTable)
       .values({
         url,
+        siteId: site.id,
         section,
         topQuery: r.query,
         position: r.position,
@@ -182,7 +192,7 @@ export async function runGscInventoryAndLosers(): Promise<void> {
         lastUpdated: now,
       })
       .onConflictDoUpdate({
-        target: inventoryTable.url,
+        target: [inventoryTable.url, inventoryTable.siteId],
         set: {
           section,
           topQuery: r.query,
@@ -198,6 +208,7 @@ export async function runGscInventoryAndLosers(): Promise<void> {
       .values({
         path,
         url,
+        siteId: site.id,
         section,
         inGsc: true,
         topQuery: r.query,
@@ -207,7 +218,7 @@ export async function runGscInventoryAndLosers(): Promise<void> {
         updatedAt: now,
       })
       .onConflictDoUpdate({
-        target: pagesTable.path,
+        target: [pagesTable.path, pagesTable.siteId],
         set: {
           inGsc: true,
           section,
@@ -222,5 +233,5 @@ export async function runGscInventoryAndLosers(): Promise<void> {
   logger.info({ urls: byPath.size }, "GSC: inventory + pages updated");
 
   // Fresh inventory + losers change action priorities — refresh the queue.
-  await chainActionQueueRecompute("gsc_inventory_and_losers");
+  await chainActionQueueRecompute("gsc_inventory_and_losers", site.id);
 }

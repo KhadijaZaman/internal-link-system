@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import {
   db,
   linkStatsTable,
@@ -7,6 +7,7 @@ import {
   queryLosersTable,
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 
 const router: IRouter = Router();
 
@@ -28,7 +29,8 @@ const ALLOWED = new Set([
   "critical-losers",
 ]);
 
-router.get("/dashboard/urls/:type", requireAuth, async (req, res) => {
+router.get("/dashboard/urls/:type", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const type = String(req.params.type ?? "");
   if (!ALLOWED.has(type)) {
     res.status(400).json({ error: "Invalid type" });
@@ -47,11 +49,13 @@ router.get("/dashboard/urls/:type", requireAuth, async (req, res) => {
         pagerank: linkStatsTable.internalPagerank,
       })
       .from(linkStatsTable)
+      .where(eq(linkStatsTable.siteId, site.id))
       .orderBy(desc(linkStatsTable.internalPagerank))
       .limit(CAP);
     const [{ c = 0 } = { c: 0 }] = await db
       .select({ c: sql<number>`count(*)::int` })
-      .from(linkStatsTable);
+      .from(linkStatsTable)
+      .where(eq(linkStatsTable.siteId, site.id));
     total = Number(c);
     items = rows.map((r) => ({
       url: r.url,
@@ -65,7 +69,7 @@ router.get("/dashboard/urls/:type", requireAuth, async (req, res) => {
         outbound: linkStatsTable.outboundCount,
       })
       .from(linkStatsTable)
-      .where(eq(linkStatsTable.isOrphan, true))
+      .where(and(eq(linkStatsTable.isOrphan, true), eq(linkStatsTable.siteId, site.id)))
       .orderBy(desc(linkStatsTable.outboundCount))
       .limit(CAP);
     total = rows.length;
@@ -80,7 +84,7 @@ router.get("/dashboard/urls/:type", requireAuth, async (req, res) => {
         inbound: linkStatsTable.inboundCount,
       })
       .from(linkStatsTable)
-      .where(eq(linkStatsTable.isDeadEnd, true))
+      .where(and(eq(linkStatsTable.isDeadEnd, true), eq(linkStatsTable.siteId, site.id)))
       .orderBy(desc(linkStatsTable.inboundCount))
       .limit(CAP);
     total = rows.length;
@@ -97,11 +101,13 @@ router.get("/dashboard/urls/:type", requireAuth, async (req, res) => {
         inbound: linkStatsTable.inboundCount,
       })
       .from(linkStatsTable)
+      .where(eq(linkStatsTable.siteId, site.id))
       .orderBy(desc(linkStatsTable.outboundCount))
       .limit(CAP);
     const [{ c = 0 } = { c: 0 }] = await db
       .select({ c: sql<number>`COALESCE(SUM(${linkStatsTable.outboundCount}), 0)::int` })
-      .from(linkStatsTable);
+      .from(linkStatsTable)
+      .where(eq(linkStatsTable.siteId, site.id));
     total = Number(c);
     items = rows
       .filter((r) => r.outbound > 0)
@@ -120,7 +126,12 @@ router.get("/dashboard/urls/:type", requireAuth, async (req, res) => {
         priorityScore: linkSuggestionsTable.priorityScore,
       })
       .from(linkSuggestionsTable)
-      .where(eq(linkSuggestionsTable.status, "pending_review"))
+      .where(
+        and(
+          eq(linkSuggestionsTable.status, "pending_review"),
+          eq(linkSuggestionsTable.siteId, site.id),
+        ),
+      )
       .orderBy(desc(linkSuggestionsTable.priorityScore))
       .limit(CAP);
     total = rows.length;
@@ -140,7 +151,7 @@ router.get("/dashboard/urls/:type", requireAuth, async (req, res) => {
         impressionsChangePct: queryLosersTable.impressionsChangePct,
       })
       .from(queryLosersTable)
-      .where(eq(queryLosersTable.severity, "critical"))
+      .where(and(eq(queryLosersTable.severity, "critical"), eq(queryLosersTable.siteId, site.id)))
       .orderBy(desc(queryLosersTable.positionChange))
       .limit(CAP);
     total = rows.length;

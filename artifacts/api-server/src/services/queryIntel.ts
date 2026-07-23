@@ -1,4 +1,4 @@
-import { inArray, isNull, or, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, lt, sql } from "drizzle-orm";
 import { db, queryIntelTable, type QueryIntel } from "@workspace/db";
 import { embedBatch } from "../integrations/openaiEmbed";
 import { fetchSearchVolumes } from "../integrations/dataforseo";
@@ -29,6 +29,7 @@ function normaliseQuery(q: string): string {
  */
 export async function ensureQueryIntel(
   rawQueries: string[],
+  siteId: number,
 ): Promise<Map<string, QueryIntel>> {
   const queries = Array.from(
     new Set(rawQueries.map(normaliseQuery).filter((q) => q.length > 0)),
@@ -38,14 +39,14 @@ export async function ensureQueryIntel(
   // 1. Insert any rows we've never seen so we can update them below.
   await db
     .insert(queryIntelTable)
-    .values(queries.map((q) => ({ query: q })))
+    .values(queries.map((q) => ({ query: q, siteId })))
     .onConflictDoNothing();
 
   // 2. Load current state.
   const existing = await db
     .select()
     .from(queryIntelTable)
-    .where(inArray(queryIntelTable.query, queries));
+    .where(and(inArray(queryIntelTable.query, queries), eq(queryIntelTable.siteId, siteId)));
   const byQuery = new Map(existing.map((r) => [r.query, r]));
 
   // 3. Embeddings — only for rows still missing one, capped per run.
@@ -64,7 +65,9 @@ export async function ensureQueryIntel(
         await db
           .update(queryIntelTable)
           .set({ embedding: vec, embeddedAt: now })
-          .where(sql`${queryIntelTable.query} = ${q}`);
+          .where(
+            and(eq(queryIntelTable.query, q as string), eq(queryIntelTable.siteId, siteId)),
+          );
         const prev = byQuery.get(q as string);
         if (prev) {
           byQuery.set(q as string, { ...prev, embedding: vec, embeddedAt: now });
@@ -85,7 +88,10 @@ export async function ensureQueryIntel(
     .select({ query: queryIntelTable.query })
     .from(queryIntelTable)
     .where(
-      sql`${inArray(queryIntelTable.query, queries)} AND (${or(
+      sql`${inArray(queryIntelTable.query, queries)} AND ${eq(
+        queryIntelTable.siteId,
+        siteId,
+      )} AND (${or(
         isNull(queryIntelTable.volumeFetchedAt),
         lt(queryIntelTable.volumeFetchedAt, ttlCutoff),
       )})`,

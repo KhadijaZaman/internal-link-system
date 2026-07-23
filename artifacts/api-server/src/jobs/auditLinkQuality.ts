@@ -1,4 +1,4 @@
-import { eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import {
   db,
   wpPostsTable,
@@ -8,14 +8,15 @@ import {
 import { cosineSim, tierAllowed, isBannedAnchor } from "../lib/semanticScorer";
 import { linkQualityFlags } from "../lib/insights";
 import { canonicalPath } from "../lib/urlCanon";
+import { getLegacySite } from "../lib/site";
 import { logger } from "../lib/logger";
 import { withDbRetry } from "../lib/dbRetry";
 
 const UPDATE_BATCH = 500;
 
 /** Join key for URL-form tolerance: canonical path when resolvable, raw URL otherwise. */
-function urlJoinKey(url: string): string {
-  return canonicalPath(url) ?? url;
+function urlJoinKey(url: string, siteHost: string): string {
+  return canonicalPath(url, siteHost) ?? url;
 }
 
 /**
@@ -32,16 +33,19 @@ function urlJoinKey(url: string): string {
  * a later re-crawl stay NULL (= not audited yet) until the next run.
  */
 export async function runAuditLinkQuality(): Promise<void> {
+  // Audit stays legacy-site-only until per-site job scheduling lands.
+  const site = await getLegacySite();
   const [posts, classifications, edges] = await withDbRetry(
     () =>
       Promise.all([
         db
           .select({ url: wpPostsTable.url, embedding: wpPostsTable.embedding })
           .from(wpPostsTable)
-          .where(isNotNull(wpPostsTable.embedding)),
+          .where(and(eq(wpPostsTable.siteId, site.id), isNotNull(wpPostsTable.embedding))),
         db
           .select({ url: pageClassificationsTable.url, tier: pageClassificationsTable.tier })
-          .from(pageClassificationsTable),
+          .from(pageClassificationsTable)
+          .where(eq(pageClassificationsTable.siteId, site.id)),
         db
           .select({
             id: linkGraphTable.id,
@@ -50,18 +54,18 @@ export async function runAuditLinkQuality(): Promise<void> {
             anchorText: linkGraphTable.anchorText,
           })
           .from(linkGraphTable)
-          .where(eq(linkGraphTable.placement, "content")),
+          .where(and(eq(linkGraphTable.siteId, site.id), eq(linkGraphTable.placement, "content"))),
       ]),
     { label: "audit_link_quality:load" },
   );
 
   const embeddingByKey = new Map<string, number[]>();
   for (const p of posts) {
-    if (p.embedding) embeddingByKey.set(urlJoinKey(p.url), p.embedding);
+    if (p.embedding) embeddingByKey.set(urlJoinKey(p.url, site.host), p.embedding);
   }
   const tierByKey = new Map<string, number>();
   for (const c of classifications) {
-    if (c.tier !== null) tierByKey.set(urlJoinKey(c.url), c.tier);
+    if (c.tier !== null) tierByKey.set(urlJoinKey(c.url, site.host), c.tier);
   }
 
   const now = new Date();
@@ -70,8 +74,8 @@ export async function runAuditLinkQuality(): Promise<void> {
   const updates: { id: number; similarity: number | null; flags: string[] }[] = [];
 
   for (const e of edges) {
-    const srcKey = urlJoinKey(e.sourceUrl);
-    const tgtKey = urlJoinKey(e.targetUrl);
+    const srcKey = urlJoinKey(e.sourceUrl, site.host);
+    const tgtKey = urlJoinKey(e.targetUrl, site.host);
     const srcEmb = embeddingByKey.get(srcKey) ?? null;
     const tgtEmb = embeddingByKey.get(tgtKey) ?? null;
     const similarity = srcEmb && tgtEmb ? cosineSim(srcEmb, tgtEmb) : null;

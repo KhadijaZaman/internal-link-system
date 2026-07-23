@@ -9,6 +9,7 @@ import {
   inventoryTable,
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 
 const router: IRouter = Router();
 
@@ -23,7 +24,7 @@ function parseDays(raw: unknown): number {
 }
 
 /** Build a url -> title lookup from wp_posts (preferred) then inventory. */
-async function loadTitles(urls: string[]): Promise<Map<string, string | null>> {
+async function loadTitles(siteId: number, urls: string[]): Promise<Map<string, string | null>> {
   const map = new Map<string, string | null>();
   if (urls.length === 0) return map;
   const unique = Array.from(new Set(urls));
@@ -31,11 +32,11 @@ async function loadTitles(urls: string[]): Promise<Map<string, string | null>> {
     db
       .select({ url: wpPostsTable.url, title: wpPostsTable.title, h1: wpPostsTable.h1 })
       .from(wpPostsTable)
-      .where(inArray(wpPostsTable.url, unique)),
+      .where(and(eq(wpPostsTable.siteId, siteId), inArray(wpPostsTable.url, unique))),
     db
       .select({ url: inventoryTable.url, title: inventoryTable.title })
       .from(inventoryTable)
-      .where(inArray(inventoryTable.url, unique)),
+      .where(and(eq(inventoryTable.siteId, siteId), inArray(inventoryTable.url, unique))),
   ]);
   // wp_posts is the crawl source of truth, so it wins; inventory only fills gaps.
   for (const p of posts) {
@@ -54,7 +55,8 @@ async function loadTitles(urls: string[]): Promise<Map<string, string | null>> {
  * "skipped_no_gsc" rows also stamp completed_at but are NOT optimizations, so
  * they are excluded. Items are returned newest-first; the client groups by day.
  */
-router.get("/alerts/daily", requireAuth, async (req, res) => {
+router.get("/alerts/daily", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const days = parseDays(req.query.days);
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -66,7 +68,13 @@ router.get("/alerts/daily", requireAuth, async (req, res) => {
         publishDate: wpPostsTable.publishDate,
       })
       .from(wpPostsTable)
-      .where(and(isNotNull(wpPostsTable.publishDate), gte(wpPostsTable.publishDate, cutoff)))
+      .where(
+        and(
+          eq(wpPostsTable.siteId, site.id),
+          isNotNull(wpPostsTable.publishDate),
+          gte(wpPostsTable.publishDate, cutoff),
+        ),
+      )
       .orderBy(desc(wpPostsTable.publishDate)),
     db
       .select({
@@ -76,6 +84,7 @@ router.get("/alerts/daily", requireAuth, async (req, res) => {
       .from(optimizeQueueTable)
       .where(
         and(
+          eq(optimizeQueueTable.siteId, site.id),
           eq(optimizeQueueTable.status, "done"),
           isNotNull(optimizeQueueTable.completedAt),
           gte(optimizeQueueTable.completedAt, cutoff),
@@ -84,7 +93,7 @@ router.get("/alerts/daily", requireAuth, async (req, res) => {
       .orderBy(desc(optimizeQueueTable.completedAt)),
   ]);
 
-  const titles = await loadTitles(optimized.map((o) => o.url));
+  const titles = await loadTitles(site.id, optimized.map((o) => o.url));
 
   type Item = {
     kind: "published" | "optimized";
@@ -128,7 +137,8 @@ router.get("/alerts/daily", requireAuth, async (req, res) => {
  * the two surfaces always report identical numbers. The lists below group those
  * edges by neighbor page (anchors merged) for display.
  */
-router.get("/alerts/url-links", requireAuth, async (req, res) => {
+router.get("/alerts/url-links", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const url = typeof req.query.url === "string" ? req.query.url.trim() : "";
   if (!url) {
     res.status(400).json({ error: "url is required" });
@@ -139,22 +149,34 @@ router.get("/alerts/url-links", requireAuth, async (req, res) => {
     db
       .select({ neighbor: linkGraphTable.targetUrl, anchorText: linkGraphTable.anchorText })
       .from(linkGraphTable)
-      .where(and(eq(linkGraphTable.sourceUrl, url), eq(linkGraphTable.placement, "content"))),
+      .where(
+        and(
+          eq(linkGraphTable.siteId, site.id),
+          eq(linkGraphTable.sourceUrl, url),
+          eq(linkGraphTable.placement, "content"),
+        ),
+      ),
     db
       .select({ neighbor: linkGraphTable.sourceUrl, anchorText: linkGraphTable.anchorText })
       .from(linkGraphTable)
-      .where(and(eq(linkGraphTable.targetUrl, url), eq(linkGraphTable.placement, "content"))),
+      .where(
+        and(
+          eq(linkGraphTable.siteId, site.id),
+          eq(linkGraphTable.targetUrl, url),
+          eq(linkGraphTable.placement, "content"),
+        ),
+      ),
     db
       .select({
         inboundCount: linkStatsTable.inboundCount,
         outboundCount: linkStatsTable.outboundCount,
       })
       .from(linkStatsTable)
-      .where(eq(linkStatsTable.url, url))
+      .where(and(eq(linkStatsTable.siteId, site.id), eq(linkStatsTable.url, url)))
       .limit(1),
   ]);
 
-  const titles = await loadTitles([
+  const titles = await loadTitles(site.id, [
     ...outboundEdges.map((e) => e.neighbor),
     ...inboundEdges.map((e) => e.neighbor),
   ]);

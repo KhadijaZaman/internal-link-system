@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import {
   queryGscDimension,
   aggregateTotals,
@@ -37,7 +38,8 @@ function toSeriesPoint(r: GscDimensionRow) {
 
 // Ad-hoc keyword performance for any URL + keyword. GSC API only — the URL is
 // used purely as a Search Console page filter and is never fetched or crawled.
-router.get("/keyword-report", requireAuth, async (req, res) => {
+router.get("/keyword-report", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const url = typeof req.query["url"] === "string" ? req.query["url"].trim() : "";
   const keyword =
     typeof req.query["keyword"] === "string" ? req.query["keyword"].trim() : "";
@@ -77,7 +79,7 @@ router.get("/keyword-report", requireAuth, async (req, res) => {
   const pageRegex = pageVariantsRegex(url);
 
   // URL kept case-sensitive (GSC page URLs are); keyword lowercased (GSC stores queries lowercased).
-  const cacheKey = `keyword-report:${url}:${keyword.toLowerCase()}:${days}:${country ?? "all"}:${endDate}`;
+  const cacheKey = `s${site.id}|keyword-report:${url}:${keyword.toLowerCase()}:${days}:${country ?? "all"}:${endDate}`;
   try {
     const payload = await withCache(cacheKey, GSC_CACHE_TTL_MS, async () => {
       const countryFilter = country ?? undefined;

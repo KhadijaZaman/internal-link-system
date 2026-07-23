@@ -13,6 +13,7 @@ import {
   type LinkingSettings,
 } from "@workspace/db";
 import { chainActionQueueRecompute } from "../services/actionQueue";
+import { getLegacySite } from "../lib/site";
 import { logger } from "../lib/logger";
 import { withDbRetry } from "../lib/dbRetry";
 import { checkContextualConsistency } from "../integrations/claude";
@@ -443,5 +444,7 @@ export async function runSemanticLinking(): Promise<void> {
   logger.info({ inserted, suppressed: suppressedPairs.size }, "Semantic linking: done");
 
   // New pending suggestions feed the action queue — refresh it.
-  await chainActionQueueRecompute("semantic_linking");
+  // Legacy-site-only until per-site job scheduling lands.
+  const site = await getLegacySite();
+  await chainActionQueueRecompute("semantic_linking", site.id);
 }

@@ -1,21 +1,30 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, linkingSettingsTable, type LinkingSettings } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import { UpdateLinkingSettingsBody } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
-async function loadOrCreate(): Promise<LinkingSettings> {
-  const rows = await db.select().from(linkingSettingsTable).limit(1);
+async function loadOrCreate(siteId: number): Promise<LinkingSettings> {
+  const rows = await db
+    .select()
+    .from(linkingSettingsTable)
+    .where(eq(linkingSettingsTable.siteId, siteId))
+    .limit(1);
   if (rows.length > 0) return rows[0]!;
   const inserted = await db
     .insert(linkingSettingsTable)
-    .values({ id: 1 })
+    .values({ id: 1, siteId })
     .onConflictDoNothing()
     .returning();
   if (inserted[0]) return inserted[0];
-  const again = await db.select().from(linkingSettingsTable).limit(1);
+  const again = await db
+    .select()
+    .from(linkingSettingsTable)
+    .where(eq(linkingSettingsTable.siteId, siteId))
+    .limit(1);
   return again[0]!;
 }
 
@@ -31,18 +40,20 @@ function serialize(s: LinkingSettings) {
   };
 }
 
-router.get("/linking-settings", requireAuth, async (_req, res) => {
-  const s = await loadOrCreate();
+router.get("/linking-settings", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
+  const s = await loadOrCreate(site.id);
   res.json(serialize(s));
 });
 
-router.put("/linking-settings", requireAuth, async (req, res) => {
+router.put("/linking-settings", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const parsed = UpdateLinkingSettingsBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid input" });
     return;
   }
-  await loadOrCreate();
+  await loadOrCreate(site.id);
   const updates: Partial<LinkingSettings> = {};
   if (parsed.data.similarityThreshold !== undefined)
     updates.similarityThreshold = parsed.data.similarityThreshold;
@@ -57,8 +68,11 @@ router.put("/linking-settings", requireAuth, async (req, res) => {
   if (parsed.data.shortPageMaxLinks !== undefined)
     updates.shortPageMaxLinks = parsed.data.shortPageMaxLinks;
   updates.updatedAt = new Date();
-  await db.update(linkingSettingsTable).set(updates).where(eq(linkingSettingsTable.id, 1));
-  const after = await loadOrCreate();
+  await db
+    .update(linkingSettingsTable)
+    .set(updates)
+    .where(and(eq(linkingSettingsTable.id, 1), eq(linkingSettingsTable.siteId, site.id)));
+  const after = await loadOrCreate(site.id);
   res.json(serialize(after));
 });
 

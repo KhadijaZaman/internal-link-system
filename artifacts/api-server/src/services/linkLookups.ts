@@ -35,7 +35,7 @@ interface GscAggregate {
   impressions: number;
 }
 
-async function loadGscAggregates(): Promise<Map<string, GscAggregate>> {
+async function loadGscAggregates(siteId: number): Promise<Map<string, GscAggregate>> {
   const cutoff = new Date(Date.now() - GSC_LOOKBACK_DAYS * 86_400_000);
   const cutoffStr = cutoff.toISOString().slice(0, 10);
   const rows = await db
@@ -45,7 +45,12 @@ async function loadGscAggregates(): Promise<Map<string, GscAggregate>> {
       impressions: sql<number>`COALESCE(SUM(${gscSnapshotsTable.impressions}), 0)::int`,
     })
     .from(gscSnapshotsTable)
-    .where(gte(gscSnapshotsTable.snapshotDate, cutoffStr))
+    .where(
+      and(
+        gte(gscSnapshotsTable.snapshotDate, cutoffStr),
+        eq(gscSnapshotsTable.siteId, siteId),
+      ),
+    )
     .groupBy(gscSnapshotsTable.url);
   const map = new Map<string, GscAggregate>();
   for (const r of rows) {
@@ -225,6 +230,7 @@ function gscBoostFactor(
 export async function runLookup(
   inputId: number,
   input: LookupInput,
+  siteId: number,
 ): Promise<void> {
   const start = Date.now();
   try {
@@ -236,13 +242,20 @@ export async function runLookup(
     const embedding = await embedText(embedSrc);
 
     const [posts, classifications, excludes, gscAggregates, allPosts] = await Promise.all([
-      db.select().from(wpPostsTable).where(isNotNull(wpPostsTable.embedding)),
-      db.select().from(pageClassificationsTable),
-      db.select().from(linkExcludeListTable),
-      loadGscAggregates(),
+      db
+        .select()
+        .from(wpPostsTable)
+        .where(and(isNotNull(wpPostsTable.embedding), eq(wpPostsTable.siteId, siteId))),
+      db
+        .select()
+        .from(pageClassificationsTable)
+        .where(eq(pageClassificationsTable.siteId, siteId)),
+      db.select().from(linkExcludeListTable).where(eq(linkExcludeListTable.siteId, siteId)),
+      loadGscAggregates(siteId),
       db
         .select({ url: wpPostsTable.url, title: wpPostsTable.title, h1: wpPostsTable.h1 })
-        .from(wpPostsTable),
+        .from(wpPostsTable)
+        .where(eq(wpPostsTable.siteId, siteId)),
     ]);
     const clsByUrl = new Map(classifications.map((c) => [c.url, c]));
     // Title lookup for existing-link rows (covers pages without embeddings too).
@@ -315,6 +328,7 @@ export async function runLookup(
           .from(linkGraphTable)
           .where(
             and(
+              eq(linkGraphTable.siteId, siteId),
               eq(linkGraphTable.placement, "content"),
               or(
                 inArray(linkGraphTable.sourceUrl, forms),
@@ -398,7 +412,7 @@ export async function runLookup(
         durationMs: Date.now() - start,
         completedAt: new Date(),
       })
-      .where(eq(linkLookupsTable.id, inputId));
+      .where(and(eq(linkLookupsTable.id, inputId), eq(linkLookupsTable.siteId, siteId)));
     logger.info(
       { id: inputId, kind: input.kind, outbound: outbound.length, inbound: inbound.length },
       "Link lookup: completed",
@@ -414,18 +428,20 @@ export async function runLookup(
         durationMs: Date.now() - start,
         completedAt: new Date(),
       })
-      .where(eq(linkLookupsTable.id, inputId));
+      .where(and(eq(linkLookupsTable.id, inputId), eq(linkLookupsTable.siteId, siteId)));
   }
 }
 
 export async function createAndRunLookups(
   inputs: LookupInput[],
+  siteId: number,
 ): Promise<number[]> {
   const ids: number[] = [];
   for (const input of inputs) {
     const [row] = await db
       .insert(linkLookupsTable)
       .values({
+        siteId,
         kind: input.kind,
         label: input.label ?? null,
         inputValue: input.value,
@@ -438,7 +454,7 @@ export async function createAndRunLookups(
   // polls GET /link-lookups/:id for results.
   void (async () => {
     for (let i = 0; i < ids.length; i++) {
-      await runLookup(ids[i]!, inputs[i]!);
+      await runLookup(ids[i]!, inputs[i]!, siteId);
     }
   })();
   return ids;

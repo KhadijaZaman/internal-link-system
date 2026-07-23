@@ -1,8 +1,8 @@
 import { Link, useLocation } from "wouter";
-import { useLogout } from "@workspace/api-client-react";
+import { useClerk, useUser } from "@clerk/react";
 import { Button } from "@/components/ui/button";
+import { SiteSwitcher } from "@/components/site-switcher";
 import { LayoutDashboard, Network, TrendingDown, Settings2, LogOut, LineChart, FileText, Ban, PenLine, Link2, Compass, BookOpen, ClipboardList, Bot, Gauge, Table2, ListTodo, Newspaper, Waypoints, SearchCheck, Boxes, GitCompareArrows, Sparkles, Map } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 
 interface NavItem {
   href: string;
@@ -83,19 +83,13 @@ function isItemActive(href: string, location: string): boolean {
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const [location, setLocation] = useLocation();
-  const logout = useLogout();
-  const { toast } = useToast();
+  const [location] = useLocation();
+  const { signOut } = useClerk();
+  const { user } = useUser();
+  const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   const handleLogout = () => {
-    logout.mutate(undefined, {
-      onSuccess: () => {
-        setLocation("/login");
-      },
-      onError: () => {
-        toast({ title: "Failed to logout", variant: "destructive" });
-      }
-    });
+    void signOut({ redirectUrl: basePath || "/" });
   };
 
   return (
@@ -116,6 +110,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
           </div>
+        </div>
+        <div className="px-3 pb-3">
+          <SiteSwitcher />
         </div>
         <nav className="flex-1 overflow-y-auto px-3 pb-4 space-y-4">
           {navSections.map((section, si) => (
@@ -150,15 +147,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
           ))}
         </nav>
-        <div className="border-t px-3 py-3">
+        <div className="border-t px-3 py-3 space-y-1">
+          {user?.primaryEmailAddress?.emailAddress && (
+            <div className="px-2 text-[11px] text-muted-foreground truncate" data-testid="text-user-email">
+              {user.primaryEmailAddress.emailAddress}
+            </div>
+          )}
           <Button
             variant="ghost"
             size="sm"
             onClick={handleLogout}
             className="w-full justify-start gap-2.5 text-[13px] font-medium text-muted-foreground"
+            data-testid="button-logout"
           >
             <LogOut className="h-4 w-4" />
-            Logout
+            Sign out
           </Button>
         </div>
       </aside>

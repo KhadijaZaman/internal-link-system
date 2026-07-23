@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
 import { db, similarityRunsTable, type SimilarityRun } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import { StartSimilarityRunBody } from "@workspace/api-zod";
 import { runJob } from "../jobs/runner";
 
@@ -37,27 +38,30 @@ function serializeRun(run: SimilarityRun, opts?: { omitResults?: boolean }) {
  * insert and job start). The jobs runner only repairs job_runs, not this
  * table, so the POST route, list route, and the job itself all reconcile.
  */
-async function reconcileStaleRuns(): Promise<void> {
+async function reconcileStaleRuns(siteId: number): Promise<void> {
   const now = Date.now();
   await db
     .update(similarityRunsTable)
     .set({ status: "interrupted", error: INTERRUPTED_MESSAGE, finishedAt: new Date() })
     .where(
-      or(
-        and(
-          eq(similarityRunsTable.status, "running"),
-          or(
-            lt(similarityRunsTable.heartbeatAt, new Date(now - STALE_MS)),
-            isNull(similarityRunsTable.heartbeatAt),
-          ),
-        ),
-        and(
-          eq(similarityRunsTable.status, "queued"),
-          or(
-            lt(similarityRunsTable.heartbeatAt, new Date(now - STALE_QUEUED_MS)),
-            and(
+      and(
+        eq(similarityRunsTable.siteId, siteId),
+        or(
+          and(
+            eq(similarityRunsTable.status, "running"),
+            or(
+              lt(similarityRunsTable.heartbeatAt, new Date(now - STALE_MS)),
               isNull(similarityRunsTable.heartbeatAt),
-              lt(similarityRunsTable.createdAt, new Date(now - STALE_QUEUED_MS)),
+            ),
+          ),
+          and(
+            eq(similarityRunsTable.status, "queued"),
+            or(
+              lt(similarityRunsTable.heartbeatAt, new Date(now - STALE_QUEUED_MS)),
+              and(
+                isNull(similarityRunsTable.heartbeatAt),
+                lt(similarityRunsTable.createdAt, new Date(now - STALE_QUEUED_MS)),
+              ),
             ),
           ),
         ),
@@ -83,7 +87,8 @@ function normalizeUrl(raw: string): string | null {
   return u.toString();
 }
 
-router.post("/similarity/runs", requireAuth, async (req, res) => {
+router.post("/similarity/runs", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const parsed = StartSimilarityRunBody.safeParse(req.body ?? {});
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
@@ -120,15 +125,18 @@ router.post("/similarity/runs", requireAuth, async (req, res) => {
     return;
   }
 
-  await reconcileStaleRuns();
+  await reconcileStaleRuns(site.id);
 
   const active = await db
     .select({ id: similarityRunsTable.id })
     .from(similarityRunsTable)
     .where(
-      or(
-        eq(similarityRunsTable.status, "queued"),
-        eq(similarityRunsTable.status, "running"),
+      and(
+        eq(similarityRunsTable.siteId, site.id),
+        or(
+          eq(similarityRunsTable.status, "queued"),
+          eq(similarityRunsTable.status, "running"),
+        ),
       ),
     )
     .limit(1);
@@ -139,7 +147,7 @@ router.post("/similarity/runs", requireAuth, async (req, res) => {
 
   const [run] = await db
     .insert(similarityRunsTable)
-    .values({ status: "queued", urls, progressTotal: urls.length })
+    .values({ siteId: site.id, status: "queued", urls, progressTotal: urls.length })
     .returning();
   if (!run) {
     res.status(500).json({ error: "Failed to create run" });
@@ -149,7 +157,9 @@ router.post("/similarity/runs", requireAuth, async (req, res) => {
   const result = await runJob("analyze_similarity");
   if (!result.started) {
     // Orphan-row race guard: nothing will pick this row up, so remove it.
-    await db.delete(similarityRunsTable).where(eq(similarityRunsTable.id, run.id));
+    await db
+      .delete(similarityRunsTable)
+      .where(and(eq(similarityRunsTable.siteId, site.id), eq(similarityRunsTable.id, run.id)));
     res.status(409).json({ error: `Could not start analysis: ${result.reason}` });
     return;
   }
@@ -157,19 +167,22 @@ router.post("/similarity/runs", requireAuth, async (req, res) => {
   res.status(202).json(serializeRun(run));
 });
 
-router.get("/similarity/runs", requireAuth, async (_req, res) => {
+router.get("/similarity/runs", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   // Self-heal after a mid-run server restart: the dashboard polls this list,
   // so reconciling here unsticks a permanently-"running" row.
-  await reconcileStaleRuns();
+  await reconcileStaleRuns(site.id);
   const rows = await db
     .select()
     .from(similarityRunsTable)
+    .where(eq(similarityRunsTable.siteId, site.id))
     .orderBy(desc(similarityRunsTable.createdAt))
     .limit(10);
   res.json(rows.map((r) => serializeRun(r, { omitResults: true })));
 });
 
-router.get("/similarity/runs/:runId", requireAuth, async (req, res) => {
+router.get("/similarity/runs/:runId", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const runId = Number(req.params.runId);
   if (!Number.isInteger(runId)) {
     res.status(404).json({ error: "Not found" });
@@ -178,7 +191,7 @@ router.get("/similarity/runs/:runId", requireAuth, async (req, res) => {
   const [run] = await db
     .select()
     .from(similarityRunsTable)
-    .where(eq(similarityRunsTable.id, runId))
+    .where(and(eq(similarityRunsTable.siteId, site.id), eq(similarityRunsTable.id, runId)))
     .limit(1);
   if (!run) {
     res.status(404).json({ error: "Not found" });

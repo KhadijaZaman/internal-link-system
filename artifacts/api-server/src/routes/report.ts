@@ -1,6 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db, inventoryTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import {
   queryGsc,
   queryGscDimension,
@@ -56,7 +58,8 @@ interface PageAcc {
   queries: QueryRow[];
 }
 
-router.get("/report/pages", requireAuth, async (req, res) => {
+router.get("/report/pages", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const v = validateRange(req);
   if ("error" in v) {
     res.status(400).json({ error: v.error });
@@ -71,7 +74,7 @@ router.get("/report/pages", requireAuth, async (req, res) => {
   try {
     // v6: adds server-computed per-row verdicts (low_ctr / weak_engagement /
     // no_conversions / ai_only). v5 = key events no longer host-filtered.
-    const key = `report:pages:v6|${channel}|${startDate}|${endDate}`;
+    const key = `s${site.id}|report:pages:v6|${channel}|${startDate}|${endDate}`;
     const data = await withCache(key, GSC_CACHE_TTL_MS, async () => {
       // GSC is the core source (page aggregates + per-query rows). GA4 is
       // best-effort so the report still renders if its quota is exhausted.
@@ -80,13 +83,14 @@ router.get("/report/pages", requireAuth, async (req, res) => {
         queryGsc({ startDate, endDate, dimensions: ["page", "query"], rowLimit: 25000 }),
         db
           .select({ url: inventoryTable.url, title: inventoryTable.title })
-          .from(inventoryTable),
-        loadBlockRegexes(),
+          .from(inventoryTable)
+          .where(eq(inventoryTable.siteId, site.id)),
+        loadBlockRegexes(site.id),
       ]);
       // Shared canonical key: fragment/query/slash variants collapse onto one
       // path; blocklisted app-screen paths and foreign hosts are dropped.
       const toPathKey = (u: string): string | null => {
-        const p = canonicalPath(u);
+        const p = canonicalPath(u, site.host);
         if (!p || isBlockedPath(p, block)) return null;
         return p;
       };
@@ -102,7 +106,7 @@ router.get("/report/pages", requireAuth, async (req, res) => {
       }[] = [];
       let ga4Notice = "";
       try {
-        const ga4 = await queryGa4Pages({ startDate, endDate, channel });
+        const ga4 = await queryGa4Pages({ startDate, endDate, channel, site });
         ga4Rows = ga4.rows;
       } catch (err) {
         req.log.error({ err }, "GA4 fetch failed in page report");

@@ -7,6 +7,7 @@ import {
   aiCitationRowsTable,
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import { UploadAiCitationsBody } from "@workspace/api-zod";
 import { csvToObjects } from "../lib/csvParse";
 import { canonicalPath, isBlockedPath, loadBlockRegexes } from "../lib/urlCanon";
@@ -77,7 +78,8 @@ function serializeUpload(u: {
 
 // ---------- Upload a Bing AI Performance export ----------
 
-router.post("/bing/ai-citations/uploads", requireAuth, async (req, res) => {
+router.post("/bing/ai-citations/uploads", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const parsed = UploadAiCitationsBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid body", details: parsed.error.flatten() });
@@ -113,7 +115,7 @@ router.post("/bing/ai-citations/uploads", requireAuth, async (req, res) => {
     warnings.push("No citations column found — each row was counted as 1 citation.");
   }
   const knownCols = new Set([urlCol, queryCol, citationCol].filter(Boolean) as string[]);
-  const blockRegexes = await loadBlockRegexes();
+  const blockRegexes = await loadBlockRegexes(site.id);
 
   let unmatched = 0;
   let matchedPages = 0;
@@ -134,7 +136,7 @@ router.post("/bing/ai-citations/uploads", requireAuth, async (req, res) => {
     if (kind === "pages") {
       const url = (row[urlCol as string] ?? "").trim();
       if (!url) continue;
-      let path = canonicalPath(url);
+      let path = canonicalPath(url, site.host);
       if (path !== null && isBlockedPath(path, blockRegexes)) path = null;
       if (path === null) unmatched++;
       else matchedPages++;
@@ -186,7 +188,7 @@ router.post("/bing/ai-citations/uploads", requireAuth, async (req, res) => {
   });
 
   if (kind === "pages") {
-    const rollup = await applyAiCitationRollup(upload.id);
+    const rollup = await applyAiCitationRollup(upload.id, site.id);
     req.log.info(
       { uploadId: upload.id, rows: inserts.length, ...rollup },
       "AI citation upload applied to pages rollup",
@@ -217,7 +219,8 @@ router.get("/bing/ai-citations/uploads", requireAuth, async (_req, res) => {
 
 // ---------- Per-page mapping report ----------
 
-router.get("/bing/pages", requireAuth, async (_req, res) => {
+router.get("/bing/pages", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const [pages, blockRegexes, [latestPagesUpload]] = await Promise.all([
     db
       .select({
@@ -244,7 +247,7 @@ router.get("/bing/pages", requireAuth, async (_req, res) => {
           OR coalesce(${pagesTable.aiCitations}, 0) > 0
           OR coalesce(${pagesTable.aiSessions}, 0) > 0`,
       ),
-    loadBlockRegexes(),
+    loadBlockRegexes(site.id),
     db
       .select()
       .from(aiCitationUploadsTable)

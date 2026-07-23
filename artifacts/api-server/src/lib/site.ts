@@ -110,6 +110,35 @@ export function requireSite(
 }
 
 /**
+ * Legacy-bound surfaces (manual job triggers, GSC bulk queries, the content
+ * writer) operate on the legacy site's data and paid integrations regardless
+ * of any X-Site-Id header. Gate them to the user who owns the legacy site —
+ * any self-registered Clerk user must NOT be able to trigger spend or read
+ * the operator's search data. Sets `req.site` to the legacy site.
+ */
+export function requireLegacySiteOwner(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
+  const userId = (req as AuthedRequest).userId;
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  fetchSite(LEGACY_SITE_ID)
+    .then((site) => {
+      if (!site || site.ownerUserId === null || site.ownerUserId !== userId) {
+        res.status(403).json({ error: "You do not have access to this feature" });
+        return;
+      }
+      (req as SiteScopedRequest).site = site;
+      next();
+    })
+    .catch((err) => next(err));
+}
+
+/**
  * The migrated legacy site (id 1). Background jobs are legacy-only until
  * per-site job scheduling lands (task #20); they resolve this once at start
  * and thread it through explicitly.

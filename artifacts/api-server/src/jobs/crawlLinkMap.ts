@@ -1,5 +1,5 @@
 import * as cheerio from "cheerio";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   classifyPlacement,
   placementRank,
@@ -21,6 +21,7 @@ import {
   loadBlockRegexes,
 } from "../lib/urlCanon";
 import { sectionFor } from "../lib/sections";
+import { getLegacySite } from "../lib/site";
 import { chainActionQueueRecompute } from "../services/actionQueue";
 import { logger } from "../lib/logger";
 
@@ -173,11 +174,12 @@ async function fetchPage(
   rawUrl: string,
   domain: string,
   block: RegExp[],
+  siteHost: string,
 ): Promise<FetchResult | null> {
   // URL hygiene: everything stored downstream uses the canonical form.
-  const path = canonicalPath(rawUrl);
+  const path = canonicalPath(rawUrl, siteHost);
   if (!path || isBlockedPath(path, block)) return null;
-  const url = canonicalUrl(path);
+  const url = canonicalUrl(path, siteHost);
   try {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 15000);
@@ -202,9 +204,9 @@ async function fetchPage(
       if (!resolved) return;
       // canonicalPath returns null for foreign hosts, so this doubles as the
       // same-domain check; blocklisted targets never enter the link graph.
-      const targetPath = canonicalPath(resolved);
+      const targetPath = canonicalPath(resolved, siteHost);
       if (!targetPath || isBlockedPath(targetPath, block)) return;
-      const target = canonicalUrl(targetPath);
+      const target = canonicalUrl(targetPath, siteHost);
       if (target === url) return;
       const anchor = ($(el).text() || "").trim().slice(0, 150);
       const surrounding = ($(el).parent().text() || "").trim().slice(0, 80);
@@ -250,7 +252,7 @@ async function processWithConcurrency<T, R>(
   return results;
 }
 
-export async function recomputeStats(): Promise<void> {
+export async function recomputeStats(siteId: number): Promise<void> {
   // Internal-linking stats (orphan / over-linked / PageRank) consider ONLY
   // content-placement edges. Nav/header/footer links are stored for
   // reporting but excluded here so a sitewide footer doesn't make every
@@ -260,36 +262,38 @@ export async function recomputeStats(): Promise<void> {
     WITH counts AS (
       SELECT url, COALESCE(inb, 0) AS inb, COALESCE(outb, 0) AS outb FROM (
         SELECT u AS url FROM (
-          SELECT DISTINCT source_url AS u FROM link_graph WHERE placement = 'content'
-          UNION SELECT DISTINCT target_url AS u FROM link_graph WHERE placement = 'content'
+          SELECT DISTINCT source_url AS u FROM link_graph
+          WHERE placement = 'content' AND site_id = ${siteId}
+          UNION SELECT DISTINCT target_url AS u FROM link_graph
+          WHERE placement = 'content' AND site_id = ${siteId}
         ) all_urls
       ) urls
       LEFT JOIN (
         SELECT target_url AS u, COUNT(*) AS inb FROM link_graph
-        WHERE placement = 'content' GROUP BY target_url
+        WHERE placement = 'content' AND site_id = ${siteId} GROUP BY target_url
       ) i ON i.u = urls.url
       LEFT JOIN (
         SELECT source_url AS u, COUNT(*) AS outb FROM link_graph
-        WHERE placement = 'content' GROUP BY source_url
+        WHERE placement = 'content' AND site_id = ${siteId} GROUP BY source_url
       ) o ON o.u = urls.url
     )
-    INSERT INTO link_stats (url, inbound_count, outbound_count, is_orphan, is_dead_end, updated_at)
-    SELECT url, inb, outb,
+    INSERT INTO link_stats (url, site_id, inbound_count, outbound_count, is_orphan, is_dead_end, updated_at)
+    SELECT url, ${siteId}, inb, outb,
       -- Orphan/dead-end badges apply only to real, live pages. The link graph
       -- also collects "ghost" URLs (old redirecting addresses, ?utm_ tracking
       -- variants, /page/N/ pagination) — those aren't pages needing links.
       -- Real page = known to the CMS (wp_posts) or reported live by Search
       -- Console (inventory).
       inb = 0 AND (
-        EXISTS (SELECT 1 FROM wp_posts w WHERE w.url = counts.url)
-        OR EXISTS (SELECT 1 FROM inventory i2 WHERE i2.url = counts.url)
+        EXISTS (SELECT 1 FROM wp_posts w WHERE w.url = counts.url AND w.site_id = ${siteId})
+        OR EXISTS (SELECT 1 FROM inventory i2 WHERE i2.url = counts.url AND i2.site_id = ${siteId})
       ),
       outb = 0 AND (
-        EXISTS (SELECT 1 FROM wp_posts w WHERE w.url = counts.url)
-        OR EXISTS (SELECT 1 FROM inventory i2 WHERE i2.url = counts.url)
+        EXISTS (SELECT 1 FROM wp_posts w WHERE w.url = counts.url AND w.site_id = ${siteId})
+        OR EXISTS (SELECT 1 FROM inventory i2 WHERE i2.url = counts.url AND i2.site_id = ${siteId})
       ),
       NOW() FROM counts
-    ON CONFLICT (url) DO UPDATE SET
+    ON CONFLICT (url, site_id) DO UPDATE SET
       inbound_count = EXCLUDED.inbound_count,
       outbound_count = EXCLUDED.outbound_count,
       is_orphan = EXCLUDED.is_orphan,
@@ -312,26 +316,28 @@ export async function recomputeStats(): Promise<void> {
       -- Same real-page rule as the upsert above: ghost URLs (redirects, utm
       -- variants, pagination) are zeroed but never flagged orphan/dead-end.
       is_orphan = (
-        EXISTS (SELECT 1 FROM wp_posts w WHERE w.url = ls.url)
-        OR EXISTS (SELECT 1 FROM inventory i2 WHERE i2.url = ls.url)
+        EXISTS (SELECT 1 FROM wp_posts w WHERE w.url = ls.url AND w.site_id = ${siteId})
+        OR EXISTS (SELECT 1 FROM inventory i2 WHERE i2.url = ls.url AND i2.site_id = ${siteId})
       ),
       is_dead_end = (
-        EXISTS (SELECT 1 FROM wp_posts w WHERE w.url = ls.url)
-        OR EXISTS (SELECT 1 FROM inventory i2 WHERE i2.url = ls.url)
+        EXISTS (SELECT 1 FROM wp_posts w WHERE w.url = ls.url AND w.site_id = ${siteId})
+        OR EXISTS (SELECT 1 FROM inventory i2 WHERE i2.url = ls.url AND i2.site_id = ${siteId})
       ),
       updated_at = NOW()
-    WHERE NOT EXISTS (
-      SELECT 1 FROM link_graph lg
-      WHERE lg.placement = 'content'
-        AND (lg.source_url = ls.url OR lg.target_url = ls.url)
-    )
+    WHERE ls.site_id = ${siteId}
+      AND NOT EXISTS (
+        SELECT 1 FROM link_graph lg
+        WHERE lg.placement = 'content'
+          AND lg.site_id = ${siteId}
+          AND (lg.source_url = ls.url OR lg.target_url = ls.url)
+      )
   `);
 
   // PageRank computation — content links only, same reasoning as above.
   const edges = await db
     .select({ source: linkGraphTable.sourceUrl, target: linkGraphTable.targetUrl })
     .from(linkGraphTable)
-    .where(eq(linkGraphTable.placement, "content"));
+    .where(and(eq(linkGraphTable.siteId, siteId), eq(linkGraphTable.placement, "content")));
   const urls = new Set<string>();
   const out = new Map<string, string[]>();
   for (const e of edges) {
@@ -359,15 +365,17 @@ export async function recomputeStats(): Promise<void> {
   for (const [url, rank] of pr) {
     await db
       .insert(linkStatsTable)
-      .values({ url, internalPagerank: rank })
+      .values({ url, siteId, internalPagerank: rank })
       .onConflictDoUpdate({
-        target: linkStatsTable.url,
+        target: [linkStatsTable.url, linkStatsTable.siteId],
         set: { internalPagerank: rank, updatedAt: new Date() },
       });
   }
 }
 
 export async function runCrawlLinkMap(): Promise<void> {
+  // Link-map crawl stays legacy-site-only until per-site job scheduling lands.
+  const site = await getLegacySite();
   const domain = getDomain();
   const sitemapUrl = getSitemap();
   if (!isAllowedUrl(sitemapUrl, domain)) {
@@ -379,9 +387,12 @@ export async function runCrawlLinkMap(): Promise<void> {
 
   await db
     .insert(crawlProgressTable)
-    .values({ id: 1, lastOffset: 0 })
+    .values({ id: 1, siteId: site.id, lastOffset: 0 })
     .onConflictDoNothing();
-  const progress = await db.select().from(crawlProgressTable);
+  const progress = await db
+    .select()
+    .from(crawlProgressTable)
+    .where(eq(crawlProgressTable.siteId, site.id));
   const offset = progress[0]?.lastOffset ?? 0;
   const chunk = allUrls.slice(offset, offset + CHUNK_SIZE);
   logger.info({ offset, chunk: chunk.length }, "Crawl: chunk");
@@ -389,12 +400,15 @@ export async function runCrawlLinkMap(): Promise<void> {
   // WP is canonical: skip any source URL that already exists in wp_posts.
   // Sitemap crawl only fills gaps for pages the WP REST crawler did not cover.
   // Comparison happens on canonical URLs since wp_posts stores those.
-  const block = await loadBlockRegexes();
-  const wpRows = await db.select({ url: wpPostsTable.url }).from(wpPostsTable);
+  const block = await loadBlockRegexes(site.id);
+  const wpRows = await db
+    .select({ url: wpPostsTable.url })
+    .from(wpPostsTable)
+    .where(eq(wpPostsTable.siteId, site.id));
   const wpSources = new Set(wpRows.map((r) => r.url));
   const sitemapChunk = chunk.filter((u) => {
-    const p = canonicalPath(u);
-    return p !== null && !wpSources.has(canonicalUrl(p));
+    const p = canonicalPath(u, site.host);
+    return p !== null && !wpSources.has(canonicalUrl(p, site.host));
   });
   logger.info(
     { skippedWp: chunk.length - sitemapChunk.length, fetching: sitemapChunk.length },
@@ -402,7 +416,7 @@ export async function runCrawlLinkMap(): Promise<void> {
   );
 
   const results = await processWithConcurrency(sitemapChunk, CONCURRENCY, (u) =>
-    fetchPage(u, domain, block),
+    fetchPage(u, domain, block, site.host),
   );
   let inserted = 0;
   let blocked404 = 0;
@@ -414,14 +428,14 @@ export async function runCrawlLinkMap(): Promise<void> {
       try {
         await db
           .insert(urlBlocklistTable)
-          .values({ pattern: r.path, note: "404 (crawler)", source: "crawler-404" })
+          .values({ pattern: r.path, siteId: site.id, note: "404 (crawler)", source: "crawler-404" })
           .onConflictDoNothing();
         // Record the 404 on any existing pages-registry row so the shared
         // content-pages count (status < 400) stops counting this page.
         await db
           .update(pagesTable)
           .set({ httpStatus: 404 })
-          .where(eq(pagesTable.path, r.path));
+          .where(and(eq(pagesTable.siteId, site.id), eq(pagesTable.path, r.path)));
         blocked404++;
       } catch (e) {
         logger.warn({ err: e, path: r.path }, "Crawl: blocklist 404 upsert failed");
@@ -435,6 +449,7 @@ export async function runCrawlLinkMap(): Promise<void> {
         .values({
           path: r.path,
           url: r.url,
+          siteId: site.id,
           title: r.page?.title ?? null,
           section: sectionFor(r.url),
           inSitemap: true,
@@ -442,7 +457,7 @@ export async function runCrawlLinkMap(): Promise<void> {
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({
-          target: pagesTable.path,
+          target: [pagesTable.path, pagesTable.siteId],
           set: {
             ...(r.page?.title ? { title: r.page.title } : {}),
             section: sectionFor(r.url),
@@ -463,7 +478,9 @@ export async function runCrawlLinkMap(): Promise<void> {
     // re-crawl. Only successfully-fetched pages are cleared, so a transient
     // fetch failure never wipes good data.
     try {
-      await db.delete(linkGraphTable).where(eq(linkGraphTable.sourceUrl, r.url));
+      await db
+        .delete(linkGraphTable)
+        .where(and(eq(linkGraphTable.siteId, site.id), eq(linkGraphTable.sourceUrl, r.url)));
     } catch (e) {
       logger.warn({ err: e, src: r.url }, "Crawl: clear prior edges failed");
     }
@@ -474,6 +491,7 @@ export async function runCrawlLinkMap(): Promise<void> {
           .values({
             sourceUrl: r.url,
             targetUrl: l.target,
+            siteId: site.id,
             anchorText: l.anchor || null,
             surroundingText: l.surrounding || null,
             placement: l.placement,
@@ -490,16 +508,16 @@ export async function runCrawlLinkMap(): Promise<void> {
   const nextOffset = offset + CHUNK_SIZE >= allUrls.length ? 0 : offset + CHUNK_SIZE;
   await db
     .insert(crawlProgressTable)
-    .values({ id: 1, lastOffset: nextOffset, lastRunAt: new Date() })
+    .values({ id: 1, siteId: site.id, lastOffset: nextOffset, lastRunAt: new Date() })
     .onConflictDoUpdate({
-      target: crawlProgressTable.id,
+      target: [crawlProgressTable.id, crawlProgressTable.siteId],
       set: { lastOffset: nextOffset, lastRunAt: new Date() },
     });
   logger.info({ inserted, nextOffset }, "Crawl: chunk done");
 
-  await recomputeStats();
+  await recomputeStats(site.id);
   logger.info("Crawl: stats recomputed");
 
   // Orphan/dead-end flags may have changed — refresh the action queue.
-  await chainActionQueueRecompute("crawl_link_map");
+  await chainActionQueueRecompute("crawl_link_map", site.id);
 }

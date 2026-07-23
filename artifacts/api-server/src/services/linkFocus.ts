@@ -59,9 +59,9 @@ function normalize(u: string): string {
   }
 }
 
-async function loadGscAggregates(): Promise<
-  Map<string, { clicks: number; impressions: number }>
-> {
+async function loadGscAggregates(
+  siteId: number,
+): Promise<Map<string, { clicks: number; impressions: number }>> {
   const cutoff = new Date(Date.now() - GSC_LOOKBACK_DAYS * 86_400_000)
     .toISOString()
     .slice(0, 10);
@@ -72,7 +72,12 @@ async function loadGscAggregates(): Promise<
       impressions: sql<number>`COALESCE(SUM(${gscSnapshotsTable.impressions}), 0)::int`,
     })
     .from(gscSnapshotsTable)
-    .where(gte(gscSnapshotsTable.snapshotDate, cutoff))
+    .where(
+      and(
+        gte(gscSnapshotsTable.snapshotDate, cutoff),
+        eq(gscSnapshotsTable.siteId, siteId),
+      ),
+    )
     .groupBy(gscSnapshotsTable.url);
   const m = new Map<string, { clicks: number; impressions: number }>();
   for (const r of rows) {
@@ -95,27 +100,50 @@ function popularityFromGsc(
   return 0.7 * c + 0.3 * i;
 }
 
-export async function buildFocus(rawUrl: string): Promise<FocusResult> {
+export async function buildFocus(rawUrl: string, siteId: number): Promise<FocusResult> {
   const seedUrl = rawUrl.trim();
   if (!seedUrl) return { found: false, seed: null, neighbors: [] };
   const seedNorm = normalize(seedUrl);
 
   const [invRows, statRows, inboundEdges, outboundEdges, allPosts, gscAggs] =
     await Promise.all([
-      db.select().from(inventoryTable).where(eq(inventoryTable.url, seedUrl)).limit(1),
-      db.select().from(linkStatsTable).where(eq(linkStatsTable.url, seedUrl)).limit(1),
+      db
+        .select()
+        .from(inventoryTable)
+        .where(and(eq(inventoryTable.url, seedUrl), eq(inventoryTable.siteId, siteId)))
+        .limit(1),
+      db
+        .select()
+        .from(linkStatsTable)
+        .where(and(eq(linkStatsTable.url, seedUrl), eq(linkStatsTable.siteId, siteId)))
+        .limit(1),
       // Focus view only considers content (body) edges — the goal is to
       // surface editorial linking relationships, not sitewide chrome.
       db
         .select()
         .from(linkGraphTable)
-        .where(and(eq(linkGraphTable.targetUrl, seedUrl), eq(linkGraphTable.placement, "content"))),
+        .where(
+          and(
+            eq(linkGraphTable.targetUrl, seedUrl),
+            eq(linkGraphTable.placement, "content"),
+            eq(linkGraphTable.siteId, siteId),
+          ),
+        ),
       db
         .select()
         .from(linkGraphTable)
-        .where(and(eq(linkGraphTable.sourceUrl, seedUrl), eq(linkGraphTable.placement, "content"))),
-      db.select().from(wpPostsTable).where(isNotNull(wpPostsTable.embedding)),
-      loadGscAggregates(),
+        .where(
+          and(
+            eq(linkGraphTable.sourceUrl, seedUrl),
+            eq(linkGraphTable.placement, "content"),
+            eq(linkGraphTable.siteId, siteId),
+          ),
+        ),
+      db
+        .select()
+        .from(wpPostsTable)
+        .where(and(isNotNull(wpPostsTable.embedding), eq(wpPostsTable.siteId, siteId))),
+      loadGscAggregates(siteId),
     ]);
 
   const inv = invRows[0];
@@ -151,10 +179,20 @@ export async function buildFocus(rawUrl: string): Promise<FocusResult> {
   const neighborUrls = Array.from(anchorMap.keys());
   const [neighborInv, neighborStats] = await Promise.all([
     neighborUrls.length
-      ? db.select().from(inventoryTable).where(inArray(inventoryTable.url, neighborUrls))
+      ? db
+          .select()
+          .from(inventoryTable)
+          .where(
+            and(inArray(inventoryTable.url, neighborUrls), eq(inventoryTable.siteId, siteId)),
+          )
       : Promise.resolve([] as (typeof inventoryTable.$inferSelect)[]),
     neighborUrls.length
-      ? db.select().from(linkStatsTable).where(inArray(linkStatsTable.url, neighborUrls))
+      ? db
+          .select()
+          .from(linkStatsTable)
+          .where(
+            and(inArray(linkStatsTable.url, neighborUrls), eq(linkStatsTable.siteId, siteId)),
+          )
       : Promise.resolve([] as (typeof linkStatsTable.$inferSelect)[]),
   ]);
   const invByUrl = new Map(neighborInv.map((r) => [r.url, r]));
@@ -232,7 +270,7 @@ export async function buildFocus(rawUrl: string): Promise<FocusResult> {
       const recStats = await db
         .select()
         .from(linkStatsTable)
-        .where(inArray(linkStatsTable.url, recUrls));
+        .where(and(inArray(linkStatsTable.url, recUrls), eq(linkStatsTable.siteId, siteId)));
       const recStatMap = new Map(recStats.map((r) => [r.url, r]));
       for (const r of top) {
         r.pagerank = recStatMap.get(r.url)?.internalPagerank ?? 0;

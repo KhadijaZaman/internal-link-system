@@ -128,11 +128,12 @@ function classify(
 }
 
 /** All ISO weeks for which the site has any GSC data, deduped to latest snapshot per week. */
-async function fetchWeekSnapshots(): Promise<Array<{ weekStart: string; snapDate: string }>> {
+async function fetchWeekSnapshots(siteId: number): Promise<Array<{ weekStart: string; snapDate: string }>> {
   const result = (await db.execute(sql`
     SELECT date_trunc('week', snapshot_date::timestamp)::date::text AS week_start,
            max(snapshot_date)::text AS snap_date
     FROM gsc_snapshots
+    WHERE site_id = ${siteId}
     GROUP BY 1
     ORDER BY 1
   `)) as unknown as { rows: Array<{ week_start: string; snap_date: string }> };
@@ -140,7 +141,7 @@ async function fetchWeekSnapshots(): Promise<Array<{ weekStart: string; snapDate
 }
 
 /** Weekly page-level series for a set of normalized paths. */
-async function fetchWeeklySeries(paths: string[]): Promise<Map<string, Map<string, ImpactWeekPoint>>> {
+async function fetchWeeklySeries(siteId: number, paths: string[]): Promise<Map<string, Map<string, ImpactWeekPoint>>> {
   const byPath = new Map<string, Map<string, ImpactWeekPoint>>();
   if (paths.length === 0) return byPath;
   const result = (await db.execute(sql`
@@ -148,6 +149,7 @@ async function fetchWeeklySeries(paths: string[]): Promise<Map<string, Map<strin
       SELECT date_trunc('week', snapshot_date::timestamp)::date AS week_start,
              max(snapshot_date) AS snap_date
       FROM gsc_snapshots
+      WHERE site_id = ${siteId}
       GROUP BY 1
     )
     SELECT w.week_start::text AS week_start,
@@ -159,7 +161,7 @@ async function fetchWeeklySeries(paths: string[]): Promise<Map<string, Map<strin
                 ELSE NULL END AS position
     FROM gsc_snapshots g
     JOIN week_snap w ON g.snapshot_date = w.snap_date
-    WHERE ${NORM_URL} IN (${sql.join(
+    WHERE g.site_id = ${siteId} AND ${NORM_URL} IN (${sql.join(
       paths.map((p) => sql`${p}`),
       sql`, `,
     )})
@@ -182,29 +184,29 @@ async function fetchWeeklySeries(paths: string[]): Promise<Map<string, Map<strin
   return byPath;
 }
 
-async function fetchCompletionEvents(): Promise<EventRow[]> {
+async function fetchCompletionEvents(siteId: number): Promise<EventRow[]> {
   const result = (await db.execute(sql`
     SELECT 'action' AS source, action_type AS kind, target_url AS url,
            title AS label, completed_at::text AS completed_at
     FROM action_items
-    WHERE status = 'done' AND completed_at IS NOT NULL
+    WHERE status = 'done' AND completed_at IS NOT NULL AND site_id = ${siteId}
     UNION ALL
     SELECT 'optimize', 'optimize_content', url, NULL, completed_at::text
     FROM optimize_queue
-    WHERE status = 'done' AND completed_at IS NOT NULL
+    WHERE status = 'done' AND completed_at IS NOT NULL AND site_id = ${siteId}
     UNION ALL
     SELECT 'suggestion', 'link_inserted', receiver_url, anchor_text, reviewed_at::text
     FROM link_suggestions
-    WHERE status = 'inserted' AND reviewed_at IS NOT NULL
+    WHERE status = 'inserted' AND reviewed_at IS NOT NULL AND site_id = ${siteId}
   `)) as unknown as { rows: EventRow[] };
   return result.rows ?? [];
 }
 
-export async function computeImpactWins(): Promise<{
+export async function computeImpactWins(siteId: number): Promise<{
   summary: Record<ImpactState, number>;
   items: ImpactWinItem[];
 }> {
-  const [events, weekSnaps] = await Promise.all([fetchCompletionEvents(), fetchWeekSnapshots()]);
+  const [events, weekSnaps] = await Promise.all([fetchCompletionEvents(siteId), fetchWeekSnapshots(siteId)]);
   const allWeeks = weekSnaps.map((w) => w.weekStart);
 
   // Group events per normalized path; anchor = most recent completion.
@@ -221,7 +223,7 @@ export async function computeImpactWins(): Promise<{
   }
 
   const paths = [...groups.keys()];
-  const seriesByPath = await fetchWeeklySeries(paths);
+  const seriesByPath = await fetchWeeklySeries(siteId, paths);
 
   const items: ImpactWinItem[] = [];
   for (const [path, g] of groups) {
@@ -282,14 +284,14 @@ export async function computeImpactWins(): Promise<{
   return { summary, items };
 }
 
-export async function computeImpactDetail(rawUrl: string): Promise<{
+export async function computeImpactDetail(siteId: number, rawUrl: string): Promise<{
   path: string;
   weeks: ImpactWeekPoint[];
 }> {
   const path = urlKey(rawUrl);
   const [weekSnaps, seriesByPath] = await Promise.all([
-    fetchWeekSnapshots(),
-    fetchWeeklySeries([path]),
+    fetchWeekSnapshots(siteId),
+    fetchWeeklySeries(siteId, [path]),
   ]);
   const series = seriesByPath.get(path) ?? new Map<string, ImpactWeekPoint>();
   const weeks = weekSnaps

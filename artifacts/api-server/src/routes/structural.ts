@@ -1,17 +1,24 @@
 import { Router, type IRouter } from "express";
-import { or, eq, sql } from "drizzle-orm";
+import { and, or, eq, sql } from "drizzle-orm";
 import { db, linkStatsTable, wpPostsTable, linkSuggestionsTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import { SuggestStructuralLinksBody } from "@workspace/api-zod";
 import { runStructuralLinking, STRUCTURAL_ENGINE_VERSION } from "../jobs/structuralLinking";
 
 const router: IRouter = Router();
 
-router.get("/structural/targets", requireAuth, async (_req, res) => {
+router.get("/structural/targets", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const stats = await db
     .select()
     .from(linkStatsTable)
-    .where(or(eq(linkStatsTable.isOrphan, true), eq(linkStatsTable.isDeadEnd, true)));
+    .where(
+      and(
+        or(eq(linkStatsTable.isOrphan, true), eq(linkStatsTable.isDeadEnd, true)),
+        eq(linkStatsTable.siteId, site.id),
+      ),
+    );
 
   const posts = await db
     .select({
@@ -19,7 +26,8 @@ router.get("/structural/targets", requireAuth, async (_req, res) => {
       title: wpPostsTable.title,
       hasEmbedding: sql<boolean>`${wpPostsTable.embedding} is not null`,
     })
-    .from(wpPostsTable);
+    .from(wpPostsTable)
+    .where(eq(wpPostsTable.siteId, site.id));
   const postByUrl = new Map(posts.map((p) => [p.url, p]));
 
   const sugg = await db
@@ -29,7 +37,8 @@ router.get("/structural/targets", requireAuth, async (_req, res) => {
       status: linkSuggestionsTable.status,
       engineVersion: linkSuggestionsTable.engineVersion,
     })
-    .from(linkSuggestionsTable);
+    .from(linkSuggestionsTable)
+    .where(eq(linkSuggestionsTable.siteId, site.id));
   const pendingByUrl = new Map<string, number>();
   for (const s of sugg) {
     if (s.engineVersion !== STRUCTURAL_ENGINE_VERSION) continue;

@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db, linkLookupsTable, type LinkLookup } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import { createAndRunLookups, type LookupInput } from "../services/linkLookups";
 
 const router: IRouter = Router();
@@ -30,7 +31,8 @@ function serialize(s: LinkLookup) {
   };
 }
 
-router.get("/link-lookups", requireAuth, async (_req, res) => {
+router.get("/link-lookups", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   // Project only the columns the list view needs — exclude the heavy
   // `embedding` vector and `fetchedBodyText` to keep list queries cheap.
   const rows = await db
@@ -56,6 +58,7 @@ router.get("/link-lookups", requireAuth, async (_req, res) => {
       completedAt: linkLookupsTable.completedAt,
     })
     .from(linkLookupsTable)
+    .where(eq(linkLookupsTable.siteId, site.id))
     .orderBy(desc(linkLookupsTable.createdAt))
     .limit(100);
   res.json(
@@ -69,13 +72,18 @@ router.get("/link-lookups", requireAuth, async (_req, res) => {
   );
 });
 
-router.get("/link-lookups/:id", requireAuth, async (req, res) => {
+router.get("/link-lookups/:id", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     res.status(400).json({ error: "Invalid id" });
     return;
   }
-  const rows = await db.select().from(linkLookupsTable).where(eq(linkLookupsTable.id, id)).limit(1);
+  const rows = await db
+    .select()
+    .from(linkLookupsTable)
+    .where(and(eq(linkLookupsTable.id, id), eq(linkLookupsTable.siteId, site.id)))
+    .limit(1);
   if (rows.length === 0) {
     res.status(404).json({ error: "Not found" });
     return;
@@ -83,17 +91,21 @@ router.get("/link-lookups/:id", requireAuth, async (req, res) => {
   res.json(serialize(rows[0]!));
 });
 
-router.delete("/link-lookups/:id", requireAuth, async (req, res) => {
+router.delete("/link-lookups/:id", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     res.status(400).json({ error: "Invalid id" });
     return;
   }
-  await db.delete(linkLookupsTable).where(eq(linkLookupsTable.id, id));
+  await db
+    .delete(linkLookupsTable)
+    .where(and(eq(linkLookupsTable.id, id), eq(linkLookupsTable.siteId, site.id)));
   res.json({ ok: true });
 });
 
-router.post("/link-lookups", requireAuth, async (req, res) => {
+router.post("/link-lookups", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const body = req.body as { inputs?: unknown } | undefined;
   const raw = Array.isArray(body?.inputs) ? body.inputs : null;
   if (!raw || raw.length === 0) {
@@ -137,7 +149,7 @@ router.post("/link-lookups", requireAuth, async (req, res) => {
       label: typeof item.label === "string" ? item.label : null,
     });
   }
-  const ids = await createAndRunLookups(inputs);
+  const ids = await createAndRunLookups(inputs, site.id);
   res.status(202).json({ ids });
 });
 

@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db, linkGraphTable, linkStatsTable, inventoryTable, gscSnapshotsTable } from "@workspace/db";
-import { desc, sql, gte } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import {
   canonicalPath,
   canonicalUrl,
@@ -29,13 +30,14 @@ const router: IRouter = Router();
  * joins only exist there — live GSC calls per range would burn quota).
  * Mirrors the action queue's fix_cannibalization rules via insights.ts.
  */
-async function loadCannibalizedQueries(): Promise<{
+async function loadCannibalizedQueries(siteId: number): Promise<{
   snapshotDate: string | null;
   byQuery: Map<string, string[]>;
 }> {
   const latestSnap = await db
     .select({ d: sql<string | null>`max(${gscSnapshotsTable.snapshotDate})::text` })
-    .from(gscSnapshotsTable);
+    .from(gscSnapshotsTable)
+    .where(eq(gscSnapshotsTable.siteId, siteId));
   const snapshotDate = latestSnap[0]?.d ?? null;
   const byQuery = new Map<string, string[]>();
   if (!snapshotDate) return { snapshotDate, byQuery };
@@ -49,7 +51,12 @@ async function loadCannibalizedQueries(): Promise<{
       clicks: sql<number>`max(${gscSnapshotsTable.clicks})::int`,
     })
     .from(gscSnapshotsTable)
-    .where(sql`${gscSnapshotsTable.snapshotDate} = ${snapshotDate}`)
+    .where(
+      and(
+        eq(gscSnapshotsTable.siteId, siteId),
+        sql`${gscSnapshotsTable.snapshotDate} = ${snapshotDate}`,
+      ),
+    )
     .groupBy(gscSnapshotsTable.url, gscSnapshotsTable.query);
 
   interface Agg {
@@ -157,7 +164,8 @@ function parseLimit(raw: unknown, def: number, max: number): number {
   return Math.min(Math.floor(n), max);
 }
 
-router.get("/gsc/overview", requireAuth, async (req, res) => {
+router.get("/gsc/overview", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const v = validateRangeParams(req);
   if ("error" in v) {
     res.status(400).json({ error: v.error });
@@ -166,7 +174,7 @@ router.get("/gsc/overview", requireAuth, async (req, res) => {
   const { startDate, endDate, url } = v;
   const compare = String(req.query["compare"] ?? "") === "true";
   try {
-    const key = `overview|${startDate}|${endDate}|${url ?? ""}|${compare}`;
+    const key = `s${site.id}|overview|${startDate}|${endDate}|${url ?? ""}|${compare}`;
     const data = await withCache(key, GSC_CACHE_TTL_MS, async () => {
       const series = await queryGscDimension({
         startDate,
@@ -214,7 +222,8 @@ router.get("/gsc/overview", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/gsc/queries", requireAuth, async (req, res) => {
+router.get("/gsc/queries", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const v = validateRangeParams(req);
   if ("error" in v) {
     res.status(400).json({ error: v.error });
@@ -225,7 +234,7 @@ router.get("/gsc/queries", requireAuth, async (req, res) => {
   try {
     // v2: per-row CTR insight (expected CTR / flag / missed clicks) and
     // cannibalization from the latest weekly snapshot.
-    const key = `queries:v2|${startDate}|${endDate}|${url ?? ""}|${limit}`;
+    const key = `s${site.id}|queries:v2|${startDate}|${endDate}|${url ?? ""}|${limit}`;
     const data = await withCache(key, GSC_CACHE_TTL_MS, async () => {
       const [rows, cannibal] = await Promise.all([
         queryGscDimension({
@@ -235,7 +244,7 @@ router.get("/gsc/queries", requireAuth, async (req, res) => {
           pageFilter: url,
           rowLimit: limit,
         }),
-        loadCannibalizedQueries(),
+        loadCannibalizedQueries(site.id),
       ]);
       const enriched = rows.map((r) => {
         const branded = isBranded(r.key);
@@ -273,7 +282,8 @@ router.get("/gsc/queries", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/gsc/pages", requireAuth, async (req, res) => {
+router.get("/gsc/pages", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const v = validateRangeParams(req);
   if ("error" in v) {
     res.status(400).json({ error: v.error });
@@ -285,7 +295,7 @@ router.get("/gsc/pages", requireAuth, async (req, res) => {
     // v2: rows collapse onto canonical paths (fragment/slash variants merge,
     // blocklisted paths drop) so totals match the Page Report exactly.
     // v3: per-row CTR insight (expected CTR / flag / missed clicks).
-    const key = `pages:v3|${startDate}|${endDate}|${url ?? ""}|${limit}`;
+    const key = `s${site.id}|pages:v3|${startDate}|${endDate}|${url ?? ""}|${limit}`;
     const data = await withCache(key, GSC_CACHE_TTL_MS, async () => {
       const [rows, block] = await Promise.all([
         queryGscDimension({
@@ -295,7 +305,7 @@ router.get("/gsc/pages", requireAuth, async (req, res) => {
           pageFilter: url,
           rowLimit: limit,
         }),
-        loadBlockRegexes(),
+        loadBlockRegexes(site.id),
       ]);
       const grouped = aggregateByCanonical(
         rows.map((r) => ({
@@ -304,14 +314,14 @@ router.get("/gsc/pages", requireAuth, async (req, res) => {
           impressions: r.impressions,
           position: r.position,
         })),
-        (r) => canonicalPath(r.key),
+        (r) => canonicalPath(r.key, site.host),
         block,
       );
       const mapped = Array.from(grouped.entries())
         .map(([path, g]) => {
           const insight = ctrInsight(g.merged.position, g.merged.ctr, g.merged.impressions);
           return {
-            url: canonicalUrl(path),
+            url: canonicalUrl(path, site.host),
             clicks: g.merged.clicks,
             impressions: g.merged.impressions,
             ctr: g.merged.ctr,
@@ -331,7 +341,8 @@ router.get("/gsc/pages", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/gsc/geo", requireAuth, async (req, res) => {
+router.get("/gsc/geo", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const v = validateRangeParams(req);
   if ("error" in v) {
     res.status(400).json({ error: v.error });
@@ -339,7 +350,7 @@ router.get("/gsc/geo", requireAuth, async (req, res) => {
   }
   const { startDate, endDate, url } = v;
   try {
-    const key = `geo|${startDate}|${endDate}|${url ?? ""}`;
+    const key = `s${site.id}|geo|${startDate}|${endDate}|${url ?? ""}`;
     const data = await withCache(key, GSC_CACHE_TTL_MS, async () => {
       const [countries, devices] = await Promise.all([
         queryGscDimension({ startDate, endDate, dimension: "country", pageFilter: url, rowLimit: 500 }),
@@ -355,22 +366,28 @@ router.get("/gsc/geo", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/gsc/indexing", requireAuth, async (req, res) => {
+router.get("/gsc/indexing", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   try {
-    const data = await withCache("indexing|sitemaps+candidates", 10 * 60 * 1000, async () => {
+    const data = await withCache(`s${site.id}|indexing|sitemaps+candidates`, 10 * 60 * 1000, async () => {
       const windowStartDate = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
       const windowEndDate = new Date().toISOString().slice(0, 10);
 
       const [sitemaps, inventoryRows, seenRows] = await Promise.all([
         listSitemaps().catch(() => []),
-        db.select({ url: inventoryTable.url }).from(inventoryTable),
+        db.select({ url: inventoryTable.url }).from(inventoryTable).where(eq(inventoryTable.siteId, site.id)),
         db
           .select({
             url: gscSnapshotsTable.url,
             lastSeen: sql<string>`max(${gscSnapshotsTable.snapshotDate})`,
           })
           .from(gscSnapshotsTable)
-          .where(gte(gscSnapshotsTable.snapshotDate, windowStartDate))
+          .where(
+            and(
+              eq(gscSnapshotsTable.siteId, site.id),
+              gte(gscSnapshotsTable.snapshotDate, windowStartDate),
+            ),
+          )
           .groupBy(gscSnapshotsTable.url),
       ]);
 
@@ -391,7 +408,7 @@ router.get("/gsc/indexing", requireAuth, async (req, res) => {
       const autoSample = trimmed.slice(0, 5);
       const autoResults = await Promise.all(
         autoSample.map((c) =>
-          withCache(`inspect|${c.url}`, 24 * 60 * 60 * 1000, async () => {
+          withCache(`s${site.id}|inspect|${c.url}`, 24 * 60 * 60 * 1000, async () => {
             try {
               const result = await inspectUrl(c.url);
               const idx = result.inspectionResult?.indexStatusResult;
@@ -452,7 +469,8 @@ router.get("/gsc/indexing", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/gsc/inspect", requireAuth, async (req, res) => {
+router.get("/gsc/inspect", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const rawUrl = req.query["url"];
   const url = typeof rawUrl === "string" ? rawUrl : "";
   if (!url || url.length > MAX_URL_LEN || !/^https?:\/\//i.test(url)) {
@@ -460,7 +478,7 @@ router.get("/gsc/inspect", requireAuth, async (req, res) => {
     return;
   }
   try {
-    const key = `inspect|${url}`;
+    const key = `s${site.id}|inspect|${url}`;
     const data = await withCache(key, 15 * 60 * 1000, async () => {
       const result = await inspectUrl(url);
       const idx = result.inspectionResult?.indexStatusResult;
@@ -487,7 +505,8 @@ router.get("/gsc/inspect", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/gsc/cwv", requireAuth, async (req, res) => {
+router.get("/gsc/cwv", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const url = req.query["url"] ? String(req.query["url"]) : undefined;
   try {
     const property = gscSiteUrl();
@@ -502,7 +521,7 @@ router.get("/gsc/cwv", requireAuth, async (req, res) => {
       }
     }
     const scope = url ?? origin ?? property;
-    const key = `cwv|${url ?? origin ?? "?"}`;
+    const key = `s${site.id}|cwv|${url ?? origin ?? "?"}`;
     const data = await withCache(key, 60 * 60 * 1000, async () => {
       const target = url ? { url } : { origin };
       const cx = await fetchCrux(target);
@@ -520,7 +539,8 @@ router.get("/gsc/cwv", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/gsc/links", requireAuth, async (req, res) => {
+router.get("/gsc/links", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   // GSC API does not expose the Links report, so external linking domains
   // come from DataForSEO's Backlinks API and internal-link signals come
   // from our own crawl.
@@ -536,6 +556,7 @@ router.get("/gsc/links", requireAuth, async (req, res) => {
       db
         .select({ url: linkStatsTable.url, inboundCount: linkStatsTable.inboundCount })
         .from(linkStatsTable)
+        .where(eq(linkStatsTable.siteId, site.id))
         .orderBy(desc(linkStatsTable.inboundCount))
         .limit(20),
       db
@@ -544,10 +565,11 @@ router.get("/gsc/links", requireAuth, async (req, res) => {
           c: sql<number>`count(*)::int`,
         })
         .from(linkGraphTable)
+        .where(eq(linkGraphTable.siteId, site.id))
         .groupBy(sql`1`)
         .orderBy(desc(sql<number>`count(*)`))
         .limit(20),
-      withCache(`backlinks|${backlinkTarget}`, 6 * 60 * 60 * 1000, () =>
+      withCache(`s${site.id}|backlinks|${backlinkTarget}`, 6 * 60 * 60 * 1000, () =>
         fetchTopReferringDomains(backlinkTarget, 50).catch(() => []),
       ),
     ]);
@@ -578,7 +600,8 @@ router.get("/gsc/links", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/gsc/indexing/inspect-batch", requireAuth, async (req, res) => {
+router.post("/gsc/indexing/inspect-batch", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const body = (req.body ?? {}) as { urls?: unknown };
   if (!Array.isArray(body.urls)) {
     res.status(400).json({ error: "urls must be an array of http(s) URLs (max 10)" });
@@ -595,7 +618,7 @@ router.post("/gsc/indexing/inspect-batch", requireAuth, async (req, res) => {
     const results = await Promise.all(
       urls.map(async (url) => {
         try {
-          const cached = await withCache(`inspect|${url}`, 24 * 60 * 60 * 1000, async () => {
+          const cached = await withCache(`s${site.id}|inspect|${url}`, 24 * 60 * 60 * 1000, async () => {
             const result = await inspectUrl(url);
             const idx = result.inspectionResult?.indexStatusResult;
             return {
@@ -630,7 +653,8 @@ router.post("/gsc/indexing/inspect-batch", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/gsc/url-drilldown", requireAuth, async (req, res) => {
+router.get("/gsc/url-drilldown", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const v = validateRangeParams(req);
   if ("error" in v) {
     res.status(400).json({ error: v.error });
@@ -642,7 +666,7 @@ router.get("/gsc/url-drilldown", requireAuth, async (req, res) => {
     return;
   }
   try {
-    const key = `drilldown|${url}|${startDate}|${endDate}`;
+    const key = `s${site.id}|drilldown|${url}|${startDate}|${endDate}`;
     const data = await withCache(key, GSC_CACHE_TTL_MS, async () => {
       const [queries, series] = await Promise.all([
         queryGscDimension({ startDate, endDate, dimension: "query", pageFilter: url, rowLimit: 200 }),

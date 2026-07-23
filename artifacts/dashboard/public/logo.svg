@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="168" height="40" viewBox="0 0 168 40" fill="none">
+  <rect width="40" height="40" rx="8" fill="hsl(220 96% 48%)"/>
+  <path d="M9 12l4.4 16h4.2l2.4-9.4L22.4 28h4.2L31 12h-3.9l-2.7 11.2L21.8 12h-3.6l-2.6 11.2L12.9 12H9z" fill="#fff"/>
+  <text x="48" y="27" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="19" font-weight="700" fill="hsl(220 50% 10%)">Wellows</text>
+</svg>

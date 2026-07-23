@@ -59,7 +59,7 @@ async function runFullCrawlLinkMap(): Promise<void> {
         .insert(crawlProgressTable)
         .values({ id: 1, lastOffset: 0 })
         .onConflictDoUpdate({
-          target: crawlProgressTable.id,
+          target: [crawlProgressTable.id, crawlProgressTable.siteId],
           set: { lastOffset: 0, lastRunAt: new Date() },
         }),
     { label: "crawl_link_map:reset_progress" },

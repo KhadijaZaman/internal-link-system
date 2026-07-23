@@ -1,17 +1,20 @@
 import { Router, type IRouter } from "express";
+import { eq } from "drizzle-orm";
 import { db, inventoryTable, linkStatsTable, linkGraphTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import { sectionFor } from "../lib/sections";
 import { buildFocus } from "../services/linkFocus";
 import { GetLinkGraphFocusQueryParams } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
-router.get("/link-graph", requireAuth, async (_req, res) => {
+router.get("/link-graph", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const [stats, inv, edges] = await Promise.all([
-    db.select().from(linkStatsTable),
-    db.select().from(inventoryTable),
-    db.select().from(linkGraphTable),
+    db.select().from(linkStatsTable).where(eq(linkStatsTable.siteId, site.id)),
+    db.select().from(inventoryTable).where(eq(inventoryTable.siteId, site.id)),
+    db.select().from(linkGraphTable).where(eq(linkGraphTable.siteId, site.id)),
   ]);
   const invMap = new Map(inv.map((i) => [i.url, i]));
   const nodes = stats.map((s) => {
@@ -74,13 +77,14 @@ router.get("/link-graph", requireAuth, async (_req, res) => {
   });
 });
 
-router.get("/link-graph/focus", requireAuth, async (req, res) => {
+router.get("/link-graph/focus", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const parsed = GetLinkGraphFocusQueryParams.safeParse(req.query);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid query" });
     return;
   }
-  const result = await buildFocus(parsed.data.url);
+  const result = await buildFocus(parsed.data.url, site.id);
   if (!result.found || !result.seed) {
     res.status(404).json({ error: "URL not found in inventory" });
     return;

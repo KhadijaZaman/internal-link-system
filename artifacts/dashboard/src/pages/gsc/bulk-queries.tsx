@@ -11,6 +11,7 @@ import { InfoTip } from "@/components/info-tip";
 import { HowThisWorks } from "@/components/how-this-works";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { getActiveSiteId } from "@/lib/site-context";
 
 const TIER_TOOLTIP: Record<Tier, string> = {
   off_page_one:
@@ -176,10 +177,14 @@ function BulkQueriesBody() {
     setLoading(true);
     setError(null);
     try {
+      const siteId = getActiveSiteId();
       const res = await fetch(BULK_URL, {
         method: "POST",
         credentials: "include",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          ...(siteId != null ? { "x-site-id": String(siteId) } : {}),
+        },
         body: JSON.stringify({ urls: urlList, days }),
       });
       if (!res.ok) {

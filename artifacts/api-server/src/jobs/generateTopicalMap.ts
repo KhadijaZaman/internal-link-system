@@ -20,6 +20,7 @@ import {
 } from "../integrations/claudeTopicalMap";
 import { embedBatch } from "../integrations/openaiEmbed";
 import { canonicalPath } from "../lib/urlCanon";
+import { getLegacySite } from "../lib/site";
 import { cosineSim } from "../lib/semanticScorer";
 import { withDbRetry } from "../lib/dbRetry";
 import { logger } from "../lib/logger";
@@ -390,12 +391,15 @@ function normQuery(q: string): string {
  * Mutates `nodes` in place. Embedding tier is fail-soft.
  */
 async function matchNodes(nodes: FlatNode[]): Promise<void> {
+  // Topical maps stay legacy-site-only until per-site job scheduling lands.
+  const site = await getLegacySite();
   const pages = await db
     .select({
       path: pagesTable.path,
       topQuery: pagesTable.topQuery,
     })
-    .from(pagesTable);
+    .from(pagesTable)
+    .where(eq(pagesTable.siteId, site.id));
 
   const bySegment = new Map<string, string>();
   const byQuery = new Map<string, string>();
@@ -438,9 +442,9 @@ async function matchNodes(nodes: FlatNode[]): Promise<void> {
         embedding: wpPostsTable.embedding,
       })
       .from(wpPostsTable)
-      .where(isNotNull(wpPostsTable.embedding));
+      .where(and(eq(wpPostsTable.siteId, site.id), isNotNull(wpPostsTable.embedding)));
     const sitePosts = posts
-      .map((p) => ({ path: canonicalPath(p.url), embedding: p.embedding }))
+      .map((p) => ({ path: canonicalPath(p.url, site.host), embedding: p.embedding }))
       .filter(
         (p): p is { path: string; embedding: number[] } =>
           p.path !== null && p.embedding !== null && pagePaths.has(p.path),

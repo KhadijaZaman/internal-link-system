@@ -1,6 +1,7 @@
 import { sql, desc, gte, and, lt, isNotNull, eq } from "drizzle-orm";
 import { db, actionItemsTable, digestsTable, healthSnapshotsTable } from "@workspace/db";
 import { computeImpactWins } from "./impact";
+import { getLegacySite } from "../lib/site";
 import { logger } from "../lib/logger";
 import { withDbRetry } from "../lib/dbRetry";
 
@@ -78,7 +79,7 @@ function scoreLabelOf(score: number | null): string | null {
   return "critical";
 }
 
-export async function computeWeeklyDigest(now = new Date()): Promise<DigestPayload> {
+export async function computeWeeklyDigest(siteId: number, now = new Date()): Promise<DigestPayload> {
   const weekOf = isoWeekMonday(now);
   const weekStart = new Date(`${weekOf}T00:00:00.000Z`);
   const weekEnd = new Date(weekStart.getTime() + 7 * 86_400_000);
@@ -88,12 +89,13 @@ export async function computeWeeklyDigest(now = new Date()): Promise<DigestPaylo
       db
         .select({ score: healthSnapshotsTable.score })
         .from(healthSnapshotsTable)
+        .where(eq(healthSnapshotsTable.siteId, siteId))
         .orderBy(desc(healthSnapshotsTable.snapshotDate))
         .limit(1),
       db
         .select({ score: healthSnapshotsTable.score })
         .from(healthSnapshotsTable)
-        .where(lt(healthSnapshotsTable.snapshotDate, weekOf))
+        .where(and(eq(healthSnapshotsTable.siteId, siteId), lt(healthSnapshotsTable.snapshotDate, weekOf)))
         .orderBy(desc(healthSnapshotsTable.snapshotDate))
         .limit(1),
       db
@@ -105,7 +107,11 @@ export async function computeWeeklyDigest(now = new Date()): Promise<DigestPaylo
         })
         .from(actionItemsTable)
         .where(
-          and(gte(actionItemsTable.createdAt, weekStart), lt(actionItemsTable.createdAt, weekEnd)),
+          and(
+            eq(actionItemsTable.siteId, siteId),
+            gte(actionItemsTable.createdAt, weekStart),
+            lt(actionItemsTable.createdAt, weekEnd),
+          ),
         )
         .orderBy(desc(actionItemsTable.score)),
       db
@@ -119,6 +125,7 @@ export async function computeWeeklyDigest(now = new Date()): Promise<DigestPaylo
         .from(actionItemsTable)
         .where(
           and(
+            eq(actionItemsTable.siteId, siteId),
             eq(actionItemsTable.status, "done"),
             isNotNull(actionItemsTable.completedAt),
             gte(actionItemsTable.completedAt, weekStart),
@@ -129,8 +136,8 @@ export async function computeWeeklyDigest(now = new Date()): Promise<DigestPaylo
       db
         .select({ n: sql<number>`count(*)::int` })
         .from(actionItemsTable)
-        .where(eq(actionItemsTable.status, "open")),
-      computeImpactWins(),
+        .where(and(eq(actionItemsTable.siteId, siteId), eq(actionItemsTable.status, "open"))),
+      computeImpactWins(siteId),
     ]);
 
   const current = currentSnap[0]?.score ?? null;
@@ -194,14 +201,19 @@ export async function computeWeeklyDigest(now = new Date()): Promise<DigestPaylo
 
 /** Job entrypoint — upserts this ISO week's digest row. */
 export async function runWeeklyDigest(): Promise<void> {
-  const payload = await computeWeeklyDigest();
+  const site = await getLegacySite();
+  const payload = await computeWeeklyDigest(site.id);
   await withDbRetry(
     () =>
       db
         .insert(digestsTable)
-        .values({ weekOf: payload.weekOf, payload: payload as unknown as Record<string, unknown> })
+        .values({
+          siteId: site.id,
+          weekOf: payload.weekOf,
+          payload: payload as unknown as Record<string, unknown>,
+        })
         .onConflictDoUpdate({
-          target: digestsTable.weekOf,
+          target: [digestsTable.siteId, digestsTable.weekOf],
           set: { payload: payload as unknown as Record<string, unknown> },
         }),
     { label: "digest:upsert" },

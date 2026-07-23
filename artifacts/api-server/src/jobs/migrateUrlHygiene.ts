@@ -18,6 +18,7 @@ import {
   BLOCKLIST_SEEDS,
 } from "../lib/urlCanon";
 import { sectionFor } from "../lib/sections";
+import { getLegacySite } from "../lib/site";
 import { recomputeStats } from "./crawlLinkMap";
 import { withDbRetry } from "../lib/dbRetry";
 import { logger } from "../lib/logger";
@@ -35,6 +36,8 @@ import { logger } from "../lib/logger";
  * canonical `pages` registry from what remains.
  */
 export async function runMigrateUrlHygiene(): Promise<void> {
+  // Retroactive migration only ever applies to the legacy site's data.
+  const site = await getLegacySite();
   logger.info("URL hygiene migration: starting");
 
   // ---- 0. (Re-)seed blocklist patterns; safe on every run.
@@ -43,18 +46,18 @@ export async function runMigrateUrlHygiene(): Promise<void> {
       () =>
         db
           .insert(urlBlocklistTable)
-          .values({ pattern: s.pattern, note: s.note, source: "seed" })
+          .values({ pattern: s.pattern, siteId: site.id, note: s.note, source: "seed" })
           .onConflictDoNothing(),
       { label: "blocklist seed" },
     );
   }
-  const block = await loadBlockRegexes();
+  const block = await loadBlockRegexes(site.id);
 
   /** Map a stored URL to its canonical URL, or null when it must be deleted. */
   const mapUrl = (u: string): string | null => {
-    const p = canonicalPath(u);
+    const p = canonicalPath(u, site.host);
     if (!p || isBlockedPath(p, block)) return null;
-    return canonicalUrl(p);
+    return canonicalUrl(p, site.host);
   };
 
   /**
@@ -245,6 +248,7 @@ export async function runMigrateUrlHygiene(): Promise<void> {
             .insert(inventoryTable)
             .values({
               url: canon,
+              siteId: site.id,
               title: primary.title,
               h1: primary.h1,
               section: sectionFor(canon),
@@ -255,7 +259,7 @@ export async function runMigrateUrlHygiene(): Promise<void> {
               lastUpdated: new Date(),
             })
             .onConflictDoUpdate({
-              target: inventoryTable.url,
+              target: [inventoryTable.url, inventoryTable.siteId],
               set: {
                 position: posW > 0 ? posSum / posW : null,
                 impressions,
@@ -423,7 +427,7 @@ export async function runMigrateUrlHygiene(): Promise<void> {
 
   // ---- 7. Rebuild link stats + PageRank on the cleaned graph.
   try {
-    await recomputeStats();
+    await recomputeStats(site.id);
   } catch (e) {
     logger.warn({ err: e }, "URL hygiene: recomputeStats failed");
   }
@@ -432,9 +436,10 @@ export async function runMigrateUrlHygiene(): Promise<void> {
   {
     const wp = await db
       .select({ url: wpPostsTable.url, title: wpPostsTable.title })
-      .from(wpPostsTable);
+      .from(wpPostsTable)
+      .where(eq(wpPostsTable.siteId, site.id));
     for (const r of wp) {
-      const p = canonicalPath(r.url);
+      const p = canonicalPath(r.url, site.host);
       if (!p) continue;
       await withDbRetry(
         () =>
@@ -442,7 +447,8 @@ export async function runMigrateUrlHygiene(): Promise<void> {
             .insert(pagesTable)
             .values({
               path: p,
-              url: canonicalUrl(p),
+              url: canonicalUrl(p, site.host),
+              siteId: site.id,
               title: r.title,
               section: sectionFor(r.url),
               inWp: true,
@@ -451,7 +457,7 @@ export async function runMigrateUrlHygiene(): Promise<void> {
               updatedAt: new Date(),
             })
             .onConflictDoUpdate({
-              target: pagesTable.path,
+              target: [pagesTable.path, pagesTable.siteId],
               set: {
                 title: r.title,
                 section: sectionFor(r.url),
@@ -463,9 +469,12 @@ export async function runMigrateUrlHygiene(): Promise<void> {
         { label: "pages seed from wp_posts" },
       );
     }
-    const inv = await db.select().from(inventoryTable);
+    const inv = await db
+      .select()
+      .from(inventoryTable)
+      .where(eq(inventoryTable.siteId, site.id));
     for (const r of inv) {
-      const p = canonicalPath(r.url);
+      const p = canonicalPath(r.url, site.host);
       if (!p) continue;
       await withDbRetry(
         () =>
@@ -473,7 +482,8 @@ export async function runMigrateUrlHygiene(): Promise<void> {
             .insert(pagesTable)
             .values({
               path: p,
-              url: canonicalUrl(p),
+              url: canonicalUrl(p, site.host),
+              siteId: site.id,
               title: r.title,
               section: sectionFor(r.url),
               inGsc: true,
@@ -484,7 +494,7 @@ export async function runMigrateUrlHygiene(): Promise<void> {
               updatedAt: new Date(),
             })
             .onConflictDoUpdate({
-              target: pagesTable.path,
+              target: [pagesTable.path, pagesTable.siteId],
               set: {
                 inGsc: true,
                 topQuery: r.topQuery,

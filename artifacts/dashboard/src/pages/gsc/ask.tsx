@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Bot, Send, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getActiveSiteId } from "@/lib/site-context";
 import { InfoTip } from "@/components/info-tip";
 import { HowThisWorks } from "@/components/how-this-works";
 
@@ -40,10 +41,14 @@ interface StreamArgs {
 }
 
 async function streamChat(args: StreamArgs): Promise<void> {
+  const siteId = getActiveSiteId();
   const res = await fetch(STREAM_URL, {
     method: "POST",
     credentials: "include",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(siteId != null ? { "x-site-id": String(siteId) } : {}),
+    },
     body: JSON.stringify({
       messages: args.messages,
       startDate: args.startDate,

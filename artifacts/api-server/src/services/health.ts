@@ -1,4 +1,4 @@
-import { sql, desc, asc, eq, lte, lt } from "drizzle-orm";
+import { sql, desc, asc, and, eq, lte, lt } from "drizzle-orm";
 import {
   db,
   healthSnapshotsTable,
@@ -59,7 +59,7 @@ function scoreLabel(score: number): HealthScore["label"] {
   return "critical";
 }
 
-export async function computeHealthScore(): Promise<HealthScore> {
+export async function computeHealthScore(siteId: number): Promise<HealthScore> {
   const [statsRow, loserRow, backlogRows, staleRow] = await Promise.all([
     db
       .select({
@@ -67,24 +67,25 @@ export async function computeHealthScore(): Promise<HealthScore> {
         orphans: sql<number>`count(*) FILTER (WHERE is_orphan)::int`,
         deadEnds: sql<number>`count(*) FILTER (WHERE is_dead_end)::int`,
       })
-      .from(linkStatsTable),
+      .from(linkStatsTable)
+      .where(eq(linkStatsTable.siteId, siteId)),
     db
       .select({ n: sql<number>`count(DISTINCT url)::int` })
       .from(queryLosersTable)
       .where(
-        sql`week_of = (SELECT max(week_of) FROM query_losers) AND severity IN ('critical', 'high')`,
+        sql`site_id = ${siteId} AND week_of = (SELECT max(week_of) FROM query_losers WHERE site_id = ${siteId}) AND severity IN ('critical', 'high')`,
       ),
     Promise.all([
       db
         .select({ n: sql<number>`count(*)::int` })
         .from(linkSuggestionsTable)
-        .where(eq(linkSuggestionsTable.status, "pending_review")),
+        .where(and(eq(linkSuggestionsTable.status, "pending_review"), eq(linkSuggestionsTable.siteId, siteId))),
       db
         .select({ n: sql<number>`count(*)::int` })
         .from(optimizeQueueTable)
-        .where(eq(optimizeQueueTable.status, "optimize")),
+        .where(and(eq(optimizeQueueTable.status, "optimize"), eq(optimizeQueueTable.siteId, siteId))),
     ]),
-    db.execute(sql`SELECT max(snapshot_date)::text AS last_date FROM gsc_snapshots`) as unknown as Promise<{
+    db.execute(sql`SELECT max(snapshot_date)::text AS last_date FROM gsc_snapshots WHERE site_id = ${siteId}`) as unknown as Promise<{
       rows: Array<{ last_date: string | null }>;
     }>,
   ]);
@@ -170,21 +171,22 @@ export async function computeHealthScore(): Promise<HealthScore> {
 }
 
 /** Upsert today's snapshot (called at the end of every action-queue recompute). */
-export async function persistHealthSnapshot(): Promise<void> {
+export async function persistHealthSnapshot(siteId: number): Promise<void> {
   try {
-    const health = await computeHealthScore();
+    const health = await computeHealthScore(siteId);
     const today = new Date().toISOString().slice(0, 10);
     await withDbRetry(
       () =>
         db
           .insert(healthSnapshotsTable)
           .values({
+            siteId,
             snapshotDate: today,
             score: health.score,
             components: { label: health.label, components: health.components },
           })
           .onConflictDoUpdate({
-            target: healthSnapshotsTable.snapshotDate,
+            target: [healthSnapshotsTable.siteId, healthSnapshotsTable.snapshotDate],
             set: {
               score: health.score,
               components: { label: health.label, components: health.components },
@@ -280,21 +282,21 @@ function parseSnapshotComponents(raw: unknown): Map<string, { raw: number; deduc
  * oldest snapshot before today. Returns null when there is no prior snapshot
  * to compare against (fresh installs).
  */
-export async function explainHealthChange(current: HealthScore): Promise<HealthDecline | null> {
+export async function explainHealthChange(siteId: number, current: HealthScore): Promise<HealthDecline | null> {
   const today = new Date().toISOString().slice(0, 10);
   const cutoff = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
 
   let [baseline] = await db
     .select()
     .from(healthSnapshotsTable)
-    .where(lte(healthSnapshotsTable.snapshotDate, cutoff))
+    .where(and(eq(healthSnapshotsTable.siteId, siteId), lte(healthSnapshotsTable.snapshotDate, cutoff)))
     .orderBy(desc(healthSnapshotsTable.snapshotDate))
     .limit(1);
   if (!baseline) {
     [baseline] = await db
       .select()
       .from(healthSnapshotsTable)
-      .where(lt(healthSnapshotsTable.snapshotDate, today))
+      .where(and(eq(healthSnapshotsTable.siteId, siteId), lt(healthSnapshotsTable.snapshotDate, today)))
       .orderBy(asc(healthSnapshotsTable.snapshotDate))
       .limit(1);
   }
@@ -338,10 +340,11 @@ export async function explainHealthChange(current: HealthScore): Promise<HealthD
   };
 }
 
-export async function getHealthTrend(limit = 26): Promise<Array<{ date: string; score: number }>> {
+export async function getHealthTrend(siteId: number, limit = 26): Promise<Array<{ date: string; score: number }>> {
   const rows = await db
     .select({ date: healthSnapshotsTable.snapshotDate, score: healthSnapshotsTable.score })
     .from(healthSnapshotsTable)
+    .where(eq(healthSnapshotsTable.siteId, siteId))
     .orderBy(desc(healthSnapshotsTable.snapshotDate))
     .limit(limit);
   return rows.reverse().map((r) => ({ date: r.date, score: r.score }));

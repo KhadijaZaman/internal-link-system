@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { desc, eq, sql, ilike } from "drizzle-orm";
+import { and, desc, eq, sql, ilike } from "drizzle-orm";
 import {
   db,
   queryLosersTable,
@@ -8,6 +8,7 @@ import {
   pageTargetKeywordsTable,
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import { queryGscDimension, aggregateTotals, withCache, GSC_CACHE_TTL_MS } from "../integrations/gsc";
 import { generateQueryInsight } from "../integrations/claude";
 
@@ -25,10 +26,12 @@ function normalizeSeverity(raw: string | null): "critical" | "high" | "medium" |
   return "low";
 }
 
-router.get("/losers", requireAuth, async (_req, res) => {
+router.get("/losers", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const latest = await db
     .select({ weekOf: queryLosersTable.weekOf })
     .from(queryLosersTable)
+    .where(eq(queryLosersTable.siteId, site.id))
     .orderBy(desc(queryLosersTable.weekOf))
     .limit(1);
   const week = latest[0]?.weekOf ?? null;
@@ -39,7 +42,7 @@ router.get("/losers", requireAuth, async (_req, res) => {
   const items = await db
     .select()
     .from(queryLosersTable)
-    .where(eq(queryLosersTable.weekOf, week));
+    .where(and(eq(queryLosersTable.siteId, site.id), eq(queryLosersTable.weekOf, week)));
   const counts = { critical: 0, high: 0, medium: 0, low: 0 } as Record<string, number>;
   for (const r of items) {
     const sev = (r.severity ?? "").toLowerCase();
@@ -64,7 +67,8 @@ router.get("/losers", requireAuth, async (_req, res) => {
   });
 });
 
-router.get("/losers/query-insights", requireAuth, async (req, res) => {
+router.get("/losers/query-insights", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const raw = String(req.query["q"] ?? "").trim();
   if (raw.length < 2 || raw.length > 200) {
     res.status(400).json({ error: "q must be 2-200 characters" });
@@ -72,7 +76,7 @@ router.get("/losers/query-insights", requireAuth, async (req, res) => {
   }
   const q = raw.toLowerCase();
   try {
-    const data = await withCache(`query-insights|${q}`, QUERY_INSIGHT_TTL_MS, async () => {
+    const data = await withCache(`s${site.id}|query-insights|${q}`, QUERY_INSIGHT_TTL_MS, async () => {
       const endDate = isoDaysAgo(3);
       const startDate = isoDaysAgo(31);
       const prevEnd = isoDaysAgo(32);
@@ -108,13 +112,19 @@ router.get("/losers/query-insights", requireAuth, async (req, res) => {
       const latestWeek = await db
         .select({ weekOf: queryLosersTable.weekOf })
         .from(queryLosersTable)
+        .where(eq(queryLosersTable.siteId, site.id))
         .orderBy(desc(queryLosersTable.weekOf))
         .limit(1);
       const recentLosers = latestWeek[0]?.weekOf
         ? await db
             .select()
             .from(queryLosersTable)
-            .where(sql`${queryLosersTable.weekOf} = ${latestWeek[0].weekOf} and (${ilike(queryLosersTable.query, `%${q}%`)})`)
+            .where(
+              and(
+                eq(queryLosersTable.siteId, site.id),
+                sql`${queryLosersTable.weekOf} = ${latestWeek[0].weekOf} and (${ilike(queryLosersTable.query, `%${q}%`)})`,
+              ),
+            )
             .limit(10)
         : [];
 
@@ -159,7 +169,8 @@ router.get("/losers/query-insights", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/losers/weeks", requireAuth, async (_req, res) => {
+router.get("/losers/weeks", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const rows = await db
     .select({
       weekOf: queryLosersTable.weekOf,
@@ -167,6 +178,7 @@ router.get("/losers/weeks", requireAuth, async (_req, res) => {
       pageCount: sql<number>`count(distinct ${queryLosersTable.url})::int`,
     })
     .from(queryLosersTable)
+    .where(eq(queryLosersTable.siteId, site.id))
     .groupBy(queryLosersTable.weekOf)
     .orderBy(desc(queryLosersTable.weekOf));
   res.json(
@@ -178,7 +190,8 @@ router.get("/losers/weeks", requireAuth, async (_req, res) => {
   );
 });
 
-router.get("/losers/pages", requireAuth, async (req, res) => {
+router.get("/losers/pages", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const rawWeek = String(req.query["weekOf"] ?? "").trim();
   let week: string | null = null;
   if (rawWeek !== "") {
@@ -191,6 +204,7 @@ router.get("/losers/pages", requireAuth, async (req, res) => {
     const latest = await db
       .select({ weekOf: queryLosersTable.weekOf })
       .from(queryLosersTable)
+      .where(eq(queryLosersTable.siteId, site.id))
       .orderBy(desc(queryLosersTable.weekOf))
       .limit(1);
     week = latest[0]?.weekOf ?? null;
@@ -202,9 +216,18 @@ router.get("/losers/pages", requireAuth, async (req, res) => {
   }
 
   const [items, watchlist, targetKeywords] = await Promise.all([
-    db.select().from(queryLosersTable).where(eq(queryLosersTable.weekOf, week)),
-    db.select({ query: watchlistQueriesTable.query }).from(watchlistQueriesTable),
-    db.select({ url: pageTargetKeywordsTable.url }).from(pageTargetKeywordsTable),
+    db
+      .select()
+      .from(queryLosersTable)
+      .where(and(eq(queryLosersTable.siteId, site.id), eq(queryLosersTable.weekOf, week))),
+    db
+      .select({ query: watchlistQueriesTable.query })
+      .from(watchlistQueriesTable)
+      .where(eq(watchlistQueriesTable.siteId, site.id)),
+    db
+      .select({ url: pageTargetKeywordsTable.url })
+      .from(pageTargetKeywordsTable)
+      .where(eq(pageTargetKeywordsTable.siteId, site.id)),
   ]);
 
   const watchSet = new Set(watchlist.map((w) => w.query.toLowerCase()));
@@ -303,7 +326,8 @@ router.get("/losers/pages", requireAuth, async (req, res) => {
   res.json({ weekOf: week, pages });
 });
 
-router.post("/losers/:id/send-to-optimizer", requireAuth, async (req, res) => {
+router.post("/losers/:id/send-to-optimizer", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     res.status(400).json({ error: "Invalid id" });
@@ -312,7 +336,7 @@ router.post("/losers/:id/send-to-optimizer", requireAuth, async (req, res) => {
   const loser = await db
     .select()
     .from(queryLosersTable)
-    .where(eq(queryLosersTable.id, id))
+    .where(and(eq(queryLosersTable.siteId, site.id), eq(queryLosersTable.id, id)))
     .limit(1);
   if (loser.length === 0) {
     res.status(404).json({ error: "Not found" });
@@ -324,6 +348,7 @@ router.post("/losers/:id/send-to-optimizer", requireAuth, async (req, res) => {
   const inserted = await db
     .insert(optimizeQueueTable)
     .values({
+      siteId: site.id,
       url: item.url,
       priority,
       notes: `From loser: query="${item.query}" severity=${item.severity}`,

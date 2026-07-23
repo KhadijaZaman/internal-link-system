@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
 import { requireAuth } from "../lib/auth";
+import { requireLegacySiteOwner } from "../lib/site";
 import { ALL_JOBS, loadJobStatuses, runJob, type JobName } from "../jobs/runner";
 
 const router: IRouter = Router();
 
-router.post("/jobs/:jobName/run", requireAuth, async (req, res) => {
+router.post("/jobs/:jobName/run", requireAuth, requireLegacySiteOwner, async (req, res) => {
   const name = req.params.jobName as JobName;
   if (!ALL_JOBS.includes(name)) {
     res.status(400).json({ jobName: name, started: false, message: "Unknown job" });
@@ -18,7 +19,7 @@ router.post("/jobs/:jobName/run", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/jobs/status", requireAuth, async (_req, res) => {
+router.get("/jobs/status", requireAuth, requireLegacySiteOwner, async (_req, res) => {
   const rows = await loadJobStatuses();
   res.json(
     rows.map((r) => ({

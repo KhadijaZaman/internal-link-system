@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import OpenAI from "openai";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import {
   queryGscDimension,
   aggregateTotals,
@@ -96,7 +97,7 @@ function trim<T extends { impressions: number; clicks: number; ctr: number; posi
     }));
 }
 
-async function buildContext(opts: ContextOpts): Promise<string> {
+async function buildContext(opts: ContextOpts, siteId: number): Promise<string> {
   const { startDate, endDate, url } = opts;
   const prev = previousRange(startDate, endDate);
   const property = gscSiteUrl();
@@ -118,8 +119,8 @@ async function buildContext(opts: ContextOpts): Promise<string> {
     url ? Promise.resolve([]) : queryGscDimension({ startDate, endDate, dimension: "page", rowLimit: 30 }),
     queryGscDimension({ startDate, endDate, dimension: "date", pageFilter: url ?? undefined, rowLimit: 5000 }),
     queryGscDimension({ startDate: prev.startDate, endDate: prev.endDate, dimension: "date", pageFilter: url ?? undefined, rowLimit: 5000 }),
-    withCache("ctx|sitemaps", 30 * 60 * 1000, () => listSitemaps().catch(() => [])),
-    withCache(`ctx|cwv|${url ?? cruxTarget.origin ?? "?"}`, 60 * 60 * 1000, () => fetchCrux(cruxTarget)),
+    withCache(`s${siteId}|ctx|sitemaps`, 30 * 60 * 1000, () => listSitemaps().catch(() => [])),
+    withCache(`s${siteId}|ctx|cwv|${url ?? cruxTarget.origin ?? "?"}`, 60 * 60 * 1000, () => fetchCrux(cruxTarget)),
   ]);
 
   const totals = aggregateTotals(dates);
@@ -289,7 +290,8 @@ function parseChatBody(req: { body: unknown }): {
   return { startDate, endDate, url, messages, includeDefault };
 }
 
-router.post("/gsc/chat", requireAuth, async (req, res) => {
+router.post("/gsc/chat", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const parsed = parseChatBody(req);
   if ("error" in parsed) {
     res.status(400).json({ error: parsed.error });
@@ -297,7 +299,7 @@ router.post("/gsc/chat", requireAuth, async (req, res) => {
   }
 
   try {
-    const contextJson = await buildContext(parsed);
+    const contextJson = await buildContext(parsed, site.id);
     const withCtx = buildPromptMessages(parsed.messages, parsed.includeDefault, contextJson);
     if (!withCtx) {
       res.status(400).json({ error: "no messages" });
@@ -323,7 +325,8 @@ router.post("/gsc/chat", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/gsc/chat/stream", requireAuth, async (req, res) => {
+router.post("/gsc/chat/stream", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const parsed = parseChatBody(req);
   if ("error" in parsed) {
     res.status(400).json({ error: parsed.error });
@@ -363,7 +366,7 @@ router.post("/gsc/chat/stream", requireAuth, async (req, res) => {
   }, 15_000);
 
   try {
-    const contextJson = await buildContext(parsed);
+    const contextJson = await buildContext(parsed, site.id);
     const withCtx = buildPromptMessages(parsed.messages, parsed.includeDefault, contextJson);
     if (!withCtx) {
       send("error", { error: "no messages" });

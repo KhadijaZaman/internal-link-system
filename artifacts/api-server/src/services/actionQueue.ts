@@ -10,9 +10,10 @@ import {
   queryLosersTable,
   wpPostsTable,
 } from "@workspace/db";
-import { desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { withDbRetry } from "../lib/dbRetry";
+import { getLegacySite } from "../lib/site";
 import { persistHealthSnapshot } from "./health";
 import {
   EXPECTED_CTR,
@@ -129,7 +130,7 @@ interface DesiredAction {
   source: Record<string, unknown>;
 }
 
-async function loadTitleMap(urls: string[]): Promise<Map<string, string>> {
+async function loadTitleMap(urls: string[], siteId: number): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   const unique = Array.from(new Set(urls));
   if (unique.length === 0) return map;
@@ -137,11 +138,11 @@ async function loadTitleMap(urls: string[]): Promise<Map<string, string>> {
     db
       .select({ url: wpPostsTable.url, title: wpPostsTable.title, h1: wpPostsTable.h1 })
       .from(wpPostsTable)
-      .where(inArray(wpPostsTable.url, unique)),
+      .where(and(inArray(wpPostsTable.url, unique), eq(wpPostsTable.siteId, siteId))),
     db
       .select({ url: inventoryTable.url, title: inventoryTable.title })
       .from(inventoryTable)
-      .where(inArray(inventoryTable.url, unique)),
+      .where(and(inArray(inventoryTable.url, unique), eq(inventoryTable.siteId, siteId))),
   ]);
   for (const p of posts) {
     const t = p.title ?? p.h1;
@@ -155,7 +156,7 @@ async function loadTitleMap(urls: string[]): Promise<Map<string, string>> {
 }
 
 /** inventory metrics keyed by normalized URL (inventory.url is the GSC page URL). */
-async function loadInventoryByKey(): Promise<
+async function loadInventoryByKey(siteId: number): Promise<
   Map<string, { impressions: number; clicks: number; topQuery: string | null }>
 > {
   const rows = await db
@@ -165,7 +166,8 @@ async function loadInventoryByKey(): Promise<
       clicks: inventoryTable.clicks,
       topQuery: inventoryTable.topQuery,
     })
-    .from(inventoryTable);
+    .from(inventoryTable)
+    .where(eq(inventoryTable.siteId, siteId));
   const map = new Map<string, { impressions: number; clicks: number; topQuery: string | null }>();
   for (const r of rows) {
     const k = urlKey(r.url);
@@ -180,8 +182,8 @@ async function loadInventoryByKey(): Promise<
   return map;
 }
 
-async function collectDesiredActions(): Promise<DesiredAction[]> {
-  const invByKey = await loadInventoryByKey();
+async function collectDesiredActions(siteId: number): Promise<DesiredAction[]> {
+  const invByKey = await loadInventoryByKey(siteId);
   const metricsFor = (url: string) =>
     invByKey.get(urlKey(url)) ?? { impressions: 0, clicks: 0, topQuery: null };
 
@@ -196,7 +198,8 @@ async function collectDesiredActions(): Promise<DesiredAction[]> {
       inbound: linkStatsTable.inboundCount,
       outbound: linkStatsTable.outboundCount,
     })
-    .from(linkStatsTable);
+    .from(linkStatsTable)
+    .where(eq(linkStatsTable.siteId, siteId));
   for (const s of stats) {
     const m = metricsFor(s.url);
     if (s.isOrphan) {
@@ -235,6 +238,7 @@ async function collectDesiredActions(): Promise<DesiredAction[]> {
   const latestWeek = await db
     .select({ weekOf: queryLosersTable.weekOf })
     .from(queryLosersTable)
+    .where(eq(queryLosersTable.siteId, siteId))
     .orderBy(desc(queryLosersTable.weekOf))
     .limit(1);
   if (latestWeek.length > 0) {
@@ -242,7 +246,7 @@ async function collectDesiredActions(): Promise<DesiredAction[]> {
     const losers = await db
       .select()
       .from(queryLosersTable)
-      .where(eq(queryLosersTable.weekOf, weekOf));
+      .where(and(eq(queryLosersTable.weekOf, weekOf), eq(queryLosersTable.siteId, siteId)));
     const byUrl = new Map<
       string,
       { url: string; severity: string; queries: { query: string; drop: number }[]; impressions: number }
@@ -293,7 +297,12 @@ async function collectDesiredActions(): Promise<DesiredAction[]> {
       priorityScore: linkSuggestionsTable.priorityScore,
     })
     .from(linkSuggestionsTable)
-    .where(eq(linkSuggestionsTable.status, "pending_review"));
+    .where(
+      and(
+        eq(linkSuggestionsTable.status, "pending_review"),
+        eq(linkSuggestionsTable.siteId, siteId),
+      ),
+    );
   const byReceiver = new Map<string, { url: string; count: number; best: number }>();
   for (const p of pending) {
     const k = urlKey(p.receiverUrl);
@@ -328,7 +337,12 @@ async function collectDesiredActions(): Promise<DesiredAction[]> {
       briefMarkdown: optimizeQueueTable.briefMarkdown,
     })
     .from(optimizeQueueTable)
-    .where(eq(optimizeQueueTable.status, "optimize"));
+    .where(
+      and(
+        eq(optimizeQueueTable.status, "optimize"),
+        eq(optimizeQueueTable.siteId, siteId),
+      ),
+    );
   for (const q of queued) {
     const m = metricsFor(q.url);
     const hasBrief = Boolean(q.briefMarkdown && q.briefMarkdown.trim().length > 0);
@@ -354,10 +368,14 @@ async function collectDesiredActions(): Promise<DesiredAction[]> {
   // calls): CTR under-performers and keyword cannibalization.
   const latestSnap = await db
     .select({ d: sql<string | null>`max(${gscSnapshotsTable.snapshotDate})::text` })
-    .from(gscSnapshotsTable);
+    .from(gscSnapshotsTable)
+    .where(eq(gscSnapshotsTable.siteId, siteId));
   const snapDate = latestSnap[0]?.d ?? null;
   if (snapDate) {
-    const excludes = await db.select().from(linkExcludeListTable);
+    const excludes = await db
+      .select()
+      .from(linkExcludeListTable)
+      .where(eq(linkExcludeListTable.siteId, siteId));
     const excludeRegexes = excludes.map((e) => compileExcludePattern(e.pattern));
     // max() per url+query guards against double rows if the GSC job ran twice
     // on one snapshot date.
@@ -370,7 +388,12 @@ async function collectDesiredActions(): Promise<DesiredAction[]> {
         clicks: sql<number>`max(${gscSnapshotsTable.clicks})::int`,
       })
       .from(gscSnapshotsTable)
-      .where(eq(gscSnapshotsTable.snapshotDate, snapDate))
+      .where(
+        and(
+          eq(gscSnapshotsTable.snapshotDate, snapDate),
+          eq(gscSnapshotsTable.siteId, siteId),
+        ),
+      )
       .groupBy(gscSnapshotsTable.url, gscSnapshotsTable.query);
 
     // GSC reports /page/#anchor variants as separate pages — SUM by urlKey.
@@ -540,7 +563,7 @@ async function collectDesiredActions(): Promise<DesiredAction[]> {
 
   // Attach titles in one pass.
   const all = Array.from(byKey.values());
-  const titles = await loadTitleMap(all.map((d) => d.targetUrl));
+  const titles = await loadTitleMap(all.map((d) => d.targetUrl), siteId);
   for (const d of all) d.title = titles.get(urlKey(d.targetUrl)) ?? null;
   return all;
 }
@@ -552,11 +575,14 @@ export interface RecomputeResult {
   autoClosed: number;
 }
 
-export async function recomputeActionQueue(): Promise<RecomputeResult> {
-  const desired = await collectDesiredActions();
+export async function recomputeActionQueue(siteId: number): Promise<RecomputeResult> {
+  const desired = await collectDesiredActions(siteId);
   const desiredByKey = new Map(desired.map((d) => [d.dedupeKey, d]));
 
-  const existing = await db.select().from(actionItemsTable);
+  const existing = await db
+    .select()
+    .from(actionItemsTable)
+    .where(eq(actionItemsTable.siteId, siteId));
   const existingByKey = new Map(existing.map((r) => [r.dedupeKey, r]));
 
   const now = new Date();
@@ -586,7 +612,7 @@ export async function recomputeActionQueue(): Promise<RecomputeResult> {
               targetUrl: want.targetUrl,
               lastSeenAt: now,
             })
-            .where(eq(actionItemsTable.id, row.id)),
+            .where(and(eq(actionItemsTable.id, row.id), eq(actionItemsTable.siteId, siteId))),
         { label: "action_queue:update" },
       );
       updated++;
@@ -599,7 +625,7 @@ export async function recomputeActionQueue(): Promise<RecomputeResult> {
           db
             .update(actionItemsTable)
             .set({ status: "done", resolution: "auto", completedAt: now, lastSeenAt: now })
-            .where(eq(actionItemsTable.id, row.id)),
+            .where(and(eq(actionItemsTable.id, row.id), eq(actionItemsTable.siteId, siteId))),
         { label: "action_queue:auto_close" },
       );
       autoClosed++;
@@ -612,6 +638,7 @@ export async function recomputeActionQueue(): Promise<RecomputeResult> {
         db
           .insert(actionItemsTable)
           .values({
+            siteId,
             dedupeKey: want.dedupeKey,
             actionType: want.actionType,
             targetUrl: want.targetUrl,
@@ -624,7 +651,7 @@ export async function recomputeActionQueue(): Promise<RecomputeResult> {
             status: "open",
             lastSeenAt: now,
           })
-          .onConflictDoNothing({ target: actionItemsTable.dedupeKey }),
+          .onConflictDoNothing({ target: [actionItemsTable.siteId, actionItemsTable.dedupeKey] }),
       { label: "action_queue:insert" },
     );
     created++;
@@ -633,7 +660,7 @@ export async function recomputeActionQueue(): Promise<RecomputeResult> {
   const openCount = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(actionItemsTable)
-    .where(eq(actionItemsTable.status, "open"));
+    .where(and(eq(actionItemsTable.status, "open"), eq(actionItemsTable.siteId, siteId)));
 
   const result = {
     open: openCount[0]?.n ?? 0,
@@ -645,14 +672,15 @@ export async function recomputeActionQueue(): Promise<RecomputeResult> {
 
   // Every recompute refreshes today's health snapshot — the queue runs after
   // each data-producing job, so the score always reflects the latest signals.
-  await persistHealthSnapshot();
+  await persistHealthSnapshot(siteId);
 
   return result;
 }
 
-/** Job entrypoint. */
+/** Job entrypoint — legacy-site-only until per-site job scheduling lands. */
 export async function runRecomputeActionQueue(): Promise<void> {
-  await recomputeActionQueue();
+  const site = await getLegacySite();
+  await recomputeActionQueue(site.id);
 }
 
 /**
@@ -660,9 +688,9 @@ export async function runRecomputeActionQueue(): Promise<void> {
  * semantic linking). Never throws — a queue refresh failure must not fail
  * the parent job.
  */
-export async function chainActionQueueRecompute(after: string): Promise<void> {
+export async function chainActionQueueRecompute(after: string, siteId: number): Promise<void> {
   try {
-    await recomputeActionQueue();
+    await recomputeActionQueue(siteId);
   } catch (e) {
     logger.warn({ err: e, after }, "Chained action queue recompute failed");
   }

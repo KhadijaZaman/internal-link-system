@@ -15,6 +15,7 @@
 // rolls forward every day instead of going stale.
 import { db, trackedSubmissionsTable, appStateTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { LEGACY_SITE_ID } from "../lib/site";
 import {
   queryGscDimension,
   pageVariantsRegex,
@@ -253,19 +254,29 @@ export class NoTrackedKeywordsError extends Error {
 
 const SHEET_ID_STATE_KEY = "keyword_movement_sheet_id";
 
-async function loadStoredSheetId(): Promise<string | null> {
+// app_state is global (key/value), so the persisted spreadsheet id is scoped
+// into the key: the legacy site keeps the original key (preserving the
+// operator's bookmarked sheet), every other site gets a per-site suffix so
+// exports never clobber each other's spreadsheets.
+function sheetStateKey(siteId: number): string {
+  return siteId === LEGACY_SITE_ID
+    ? SHEET_ID_STATE_KEY
+    : `${SHEET_ID_STATE_KEY}:${siteId}`;
+}
+
+async function loadStoredSheetId(siteId: number): Promise<string | null> {
   const [row] = await db
     .select()
     .from(appStateTable)
-    .where(eq(appStateTable.key, SHEET_ID_STATE_KEY))
+    .where(eq(appStateTable.key, sheetStateKey(siteId)))
     .limit(1);
   return row?.value ?? null;
 }
 
-async function storeSheetId(id: string): Promise<void> {
+async function storeSheetId(id: string, siteId: number): Promise<void> {
   await db
     .insert(appStateTable)
-    .values({ key: SHEET_ID_STATE_KEY, value: id, updatedAt: new Date() })
+    .values({ key: sheetStateKey(siteId), value: id, updatedAt: new Date() })
     .onConflictDoUpdate({
       target: appStateTable.key,
       set: { value: id, updatedAt: new Date() },
@@ -295,12 +306,18 @@ async function fetchExistingSheet(id: string): Promise<ExistingSheetMeta | null>
   }
 }
 
-export async function exportKeywordMovementSheet(days: number): Promise<{
+export async function exportKeywordMovementSheet(
+  days: number,
+  siteId: number,
+): Promise<{
   url: string;
   title: string;
   keywordCount: number;
 }> {
-  const subs = await db.select().from(trackedSubmissionsTable);
+  const subs = await db
+    .select()
+    .from(trackedSubmissionsTable)
+    .where(eq(trackedSubmissionsTable.siteId, siteId));
   const tracked = subs
     .filter((s) => (s.keyword ?? "").trim().length > 0)
     .map((s) => ({ url: s.url, keyword: (s.keyword ?? "").trim() }));
@@ -366,7 +383,7 @@ export async function exportKeywordMovementSheet(days: number): Promise<{
   };
 
   // ---- Create the spreadsheet, or rewrite the stored one in place ----
-  const storedId = await loadStoredSheetId();
+  const storedId = await loadStoredSheetId(siteId);
   const existing = storedId ? await fetchExistingSheet(storedId) : null;
 
   let spreadsheetId: string;
@@ -460,7 +477,7 @@ export async function exportKeywordMovementSheet(days: number): Promise<{
     });
     spreadsheetId = created.spreadsheetId;
     spreadsheetUrl = created.spreadsheetUrl;
-    await storeSheetId(spreadsheetId);
+    await storeSheetId(spreadsheetId, siteId);
   }
 
   await sheetsRequest(`/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {

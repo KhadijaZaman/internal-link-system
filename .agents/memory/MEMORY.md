@@ -21,3 +21,4 @@
 - [E2E testing auth bridge](e2e-test-auth-bridge.md) — testing subagent can't read ADMIN_PASSWORD; mint session via bash, pass cookie via addCookies url-form, logout after.
 - [Crawl reconcile guard](crawl-reconcile-guard.md) — partial sitemap fetch once mass-deleted inventory & crashed health score; reconciles must propagate child failures + abort on >20% shrink.
 - [GSC operator junk queries](gsc-operator-junk-queries.md) — AI-scraper operator queries pollute GSC top-N; filter structurally before paid spend; requeued jobs need heartbeat-based staleness.
+- [Multi-tenant auth gates](multi-tenant-auth-gates.md) — after swapping admin-password for self-signup auth, audit every auth-only route for missing ownership gates; spend/proxy routes evade scoping sweeps.

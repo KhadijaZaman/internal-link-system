@@ -5,11 +5,13 @@ import {
   exportKeywordMovementSheet,
   NoTrackedKeywordsError,
 } from "../services/keywordMovementSheet";
+import { getLegacySite } from "../lib/site";
 import { logger } from "../lib/logger";
 
 export async function runSyncKeywordSheet(): Promise<void> {
+  const site = await getLegacySite();
   try {
-    const result = await exportKeywordMovementSheet(90);
+    const result = await exportKeywordMovementSheet(90, site.id);
     logger.info(
       { keywordCount: result.keywordCount, title: result.title },
       "Keyword movement sheet refreshed",

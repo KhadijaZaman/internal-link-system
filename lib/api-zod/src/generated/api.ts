@@ -17,30 +17,6 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
- * @summary Admin login
- */
-
-
-
-export const LoginBody = zod.object({
-  "password": zod.string().min(1)
-})
-
-export const LoginResponse = zod.object({
-  "authenticated": zod.boolean(),
-  "username": zod.string().nullish()
-})
-
-
-/**
- * @summary Admin logout
- */
-export const LogoutResponse = zod.object({
-  "status": zod.string()
-})
-
-
-/**
  * @summary Current session
  */
 export const GetSessionResponse = zod.object({

@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import { queryGa4Pages, type Ga4Channel } from "../integrations/ga4";
 
 const router: IRouter = Router();
@@ -18,7 +19,8 @@ function validateRange(
   return { startDate, endDate };
 }
 
-router.get("/ga4/pages", requireAuth, async (req, res) => {
+router.get("/ga4/pages", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const v = validateRange(req);
   if ("error" in v) {
     res.status(400).json({ error: v.error });
@@ -31,7 +33,7 @@ router.get("/ga4/pages", requireAuth, async (req, res) => {
   }
   const channel: Ga4Channel = c;
   try {
-    const data = await queryGa4Pages({ ...v, channel });
+    const data = await queryGa4Pages({ ...v, channel, site });
     res.json({ startDate: v.startDate, endDate: v.endDate, channel, ...data });
   } catch (err) {
     req.log.error({ err }, "GA4 pages failed");

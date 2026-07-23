@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
   db,
   topicalMapsTable,
@@ -10,6 +10,7 @@ import {
   type TopicalMapNode,
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { requireSite, getSite } from "../lib/site";
 import { GenerateTopicalMapBody, UpdateTopicalMapNodeBody } from "@workspace/api-zod";
 import { runJob } from "../jobs/runner";
 import { reconcileStaleTopicalMaps } from "../jobs/generateTopicalMap";
@@ -75,7 +76,7 @@ function serializeNode(n: JoinedNode) {
   };
 }
 
-async function fetchJoinedNodes(mapId: number): Promise<JoinedNode[]> {
+async function fetchJoinedNodes(mapId: number, siteId: number): Promise<JoinedNode[]> {
   const rows = await db
     .select({
       node: topicalMapNodesTable,
@@ -85,8 +86,16 @@ async function fetchJoinedNodes(mapId: number): Promise<JoinedNode[]> {
       gscPosition: pagesTable.position,
     })
     .from(topicalMapNodesTable)
-    .leftJoin(pagesTable, eq(topicalMapNodesTable.matchedPagePath, pagesTable.path))
-    .where(eq(topicalMapNodesTable.mapId, mapId))
+    .leftJoin(
+      pagesTable,
+      and(
+        eq(topicalMapNodesTable.matchedPagePath, pagesTable.path),
+        eq(pagesTable.siteId, siteId),
+      ),
+    )
+    .where(
+      and(eq(topicalMapNodesTable.siteId, siteId), eq(topicalMapNodesTable.mapId, mapId)),
+    )
     .orderBy(topicalMapNodesTable.id);
   return rows.map((r) => ({
     ...r.node,
@@ -151,12 +160,14 @@ function buildCoverage(nodes: JoinedNode[]) {
   };
 }
 
-async function buildDetail(map: TopicalMap) {
-  const nodes = await fetchJoinedNodes(map.id);
+async function buildDetail(map: TopicalMap, siteId: number) {
+  const nodes = await fetchJoinedNodes(map.id, siteId);
   const bridges = await db
     .select()
     .from(topicalMapBridgesTable)
-    .where(eq(topicalMapBridgesTable.mapId, map.id))
+    .where(
+      and(eq(topicalMapBridgesTable.siteId, siteId), eq(topicalMapBridgesTable.mapId, map.id)),
+    )
     .orderBy(topicalMapBridgesTable.id);
   return {
     map: serializeMap(map),
@@ -171,7 +182,8 @@ async function buildDetail(map: TopicalMap) {
   };
 }
 
-router.post("/topical-map/generate", requireAuth, async (req, res) => {
+router.post("/topical-map/generate", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const parsed = GenerateTopicalMapBody.safeParse(req.body ?? {});
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
@@ -184,12 +196,12 @@ router.post("/topical-map/generate", requireAuth, async (req, res) => {
   const active = await db
     .select({ id: topicalMapsTable.id, status: topicalMapsTable.status })
     .from(topicalMapsTable)
-    .where(eq(topicalMapsTable.status, "running"))
+    .where(and(eq(topicalMapsTable.siteId, site.id), eq(topicalMapsTable.status, "running")))
     .limit(1);
   const queued = await db
     .select({ id: topicalMapsTable.id })
     .from(topicalMapsTable)
-    .where(eq(topicalMapsTable.status, "queued"))
+    .where(and(eq(topicalMapsTable.siteId, site.id), eq(topicalMapsTable.status, "queued")))
     .limit(1);
   if (active.length > 0 || queued.length > 0) {
     res.status(409).json({ error: "A map generation is already in progress." });
@@ -202,6 +214,7 @@ router.post("/topical-map/generate", requireAuth, async (req, res) => {
   const [map] = await db
     .insert(topicalMapsTable)
     .values({
+      siteId: site.id,
       status: "queued",
       sourceContext: input.sourceContext.trim(),
       centralEntity: input.centralEntity.trim(),
@@ -219,7 +232,9 @@ router.post("/topical-map/generate", requireAuth, async (req, res) => {
   const result = await runJob("generate_topical_map");
   if (!result.started) {
     // Orphan-row race guard: nothing will pick this row up, so remove it.
-    await db.delete(topicalMapsTable).where(eq(topicalMapsTable.id, map.id));
+    await db
+      .delete(topicalMapsTable)
+      .where(and(eq(topicalMapsTable.siteId, site.id), eq(topicalMapsTable.id, map.id)));
     res.status(409).json({ error: `Could not start generation: ${result.reason}` });
     return;
   }
@@ -227,18 +242,21 @@ router.post("/topical-map/generate", requireAuth, async (req, res) => {
   res.status(202).json(serializeMap(map));
 });
 
-router.get("/topical-map/runs", requireAuth, async (_req, res) => {
+router.get("/topical-map/runs", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   // Self-heal after a mid-run server restart: the dashboard polls this list.
   await reconcileStaleTopicalMaps();
   const rows = await db
     .select()
     .from(topicalMapsTable)
+    .where(eq(topicalMapsTable.siteId, site.id))
     .orderBy(desc(topicalMapsTable.createdAt))
     .limit(10);
   res.json(rows.map(serializeMap));
 });
 
-router.get("/topical-map/runs/:mapId", requireAuth, async (req, res) => {
+router.get("/topical-map/runs/:mapId", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const mapId = Number(req.params.mapId);
   if (!Number.isInteger(mapId)) {
     res.status(404).json({ error: "Not found" });
@@ -247,30 +265,32 @@ router.get("/topical-map/runs/:mapId", requireAuth, async (req, res) => {
   const [map] = await db
     .select()
     .from(topicalMapsTable)
-    .where(eq(topicalMapsTable.id, mapId))
+    .where(and(eq(topicalMapsTable.siteId, site.id), eq(topicalMapsTable.id, mapId)))
     .limit(1);
   if (!map) {
     res.status(404).json({ error: "Not found" });
     return;
   }
-  res.json(await buildDetail(map));
+  res.json(await buildDetail(map, site.id));
 });
 
-router.get("/topical-map/latest", requireAuth, async (_req, res) => {
+router.get("/topical-map/latest", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const [map] = await db
     .select()
     .from(topicalMapsTable)
-    .where(eq(topicalMapsTable.status, "complete"))
+    .where(and(eq(topicalMapsTable.siteId, site.id), eq(topicalMapsTable.status, "complete")))
     .orderBy(desc(topicalMapsTable.finishedAt))
     .limit(1);
   if (!map) {
     res.status(404).json({ error: "No complete topical map yet" });
     return;
   }
-  res.json(await buildDetail(map));
+  res.json(await buildDetail(map, site.id));
 });
 
-router.patch("/topical-map/nodes/:nodeId", requireAuth, async (req, res) => {
+router.patch("/topical-map/nodes/:nodeId", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
   const nodeId = Number(req.params.nodeId);
   if (!Number.isInteger(nodeId)) {
     res.status(404).json({ error: "Not found" });
@@ -284,7 +304,7 @@ router.patch("/topical-map/nodes/:nodeId", requireAuth, async (req, res) => {
   const [node] = await db
     .select()
     .from(topicalMapNodesTable)
-    .where(eq(topicalMapNodesTable.id, nodeId))
+    .where(and(eq(topicalMapNodesTable.siteId, site.id), eq(topicalMapNodesTable.id, nodeId)))
     .limit(1);
   if (!node) {
     res.status(404).json({ error: "Not found" });
@@ -297,7 +317,7 @@ router.patch("/topical-map/nodes/:nodeId", requireAuth, async (req, res) => {
   await db
     .update(topicalMapNodesTable)
     .set({ status: parsed.data.status })
-    .where(eq(topicalMapNodesTable.id, nodeId));
+    .where(and(eq(topicalMapNodesTable.siteId, site.id), eq(topicalMapNodesTable.id, nodeId)));
 
   const [row] = await db
     .select({
@@ -308,8 +328,14 @@ router.patch("/topical-map/nodes/:nodeId", requireAuth, async (req, res) => {
       gscPosition: pagesTable.position,
     })
     .from(topicalMapNodesTable)
-    .leftJoin(pagesTable, eq(topicalMapNodesTable.matchedPagePath, pagesTable.path))
-    .where(eq(topicalMapNodesTable.id, nodeId))
+    .leftJoin(
+      pagesTable,
+      and(
+        eq(topicalMapNodesTable.matchedPagePath, pagesTable.path),
+        eq(pagesTable.siteId, site.id),
+      ),
+    )
+    .where(and(eq(topicalMapNodesTable.siteId, site.id), eq(topicalMapNodesTable.id, nodeId)))
     .limit(1);
   res.json(
     serializeNode({
