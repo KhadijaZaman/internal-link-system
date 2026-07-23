@@ -2,9 +2,13 @@ import { Router, type IRouter } from "express";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { db, sitesTable, claimAttemptsTable } from "@workspace/db";
 import { asc, eq, lt, sql } from "drizzle-orm";
-import { ClaimLegacySiteBody, CreateSiteBody } from "@workspace/api-zod";
+import {
+  ClaimLegacySiteBody,
+  CreateSiteBody,
+  UpdateSiteLimitsBody,
+} from "@workspace/api-zod";
 import { requireAuth, type AuthedRequest } from "../lib/auth";
-import { invalidateSiteCache } from "../lib/site";
+import { getSite, invalidateSiteCache, requireSite } from "../lib/site";
 import { normalizeHost } from "../lib/urlCanon";
 
 const router: IRouter = Router();
@@ -257,6 +261,85 @@ router.post("/sites/claim-legacy", requireAuth, async (req, res, next) => {
     invalidateSiteCache(LEGACY_SITE_ID);
     req.log.info({ userId }, "legacy site claimed");
     res.json(toSiteDto(updated[0]));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Per-site job spend limits. Bounds mirror the OpenAPI contract; the Zod body
+// schema (generated from the spec) enforces them on PATCH, and GET returns
+// them so the UI can render validation without hardcoding.
+// ---------------------------------------------------------------------------
+
+const LIMIT_BOUNDS = {
+  maxCrawlPages: { min: 50, max: 20000, default: 2000 },
+  maxLlmCallsPerRun: { min: 10, max: 5000, default: 500 },
+  maxSerpQueriesPerRun: { min: 5, max: 2000, default: 100 },
+} as const;
+
+function toLimitsResponse(site: {
+  maxCrawlPages: number;
+  maxLlmCallsPerRun: number;
+  maxSerpQueriesPerRun: number;
+}) {
+  return {
+    limits: {
+      maxCrawlPages: site.maxCrawlPages,
+      maxLlmCallsPerRun: site.maxLlmCallsPerRun,
+      maxSerpQueriesPerRun: site.maxSerpQueriesPerRun,
+    },
+    bounds: LIMIT_BOUNDS,
+  };
+}
+
+router.get("/site/limits", requireAuth, requireSite, (req, res) => {
+  res.json(toLimitsResponse(getSite(req)));
+});
+
+router.patch("/site/limits", requireAuth, requireSite, async (req, res, next) => {
+  try {
+    const site = getSite(req);
+    const parsed = UpdateSiteLimitsBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "A limit is outside the allowed bounds" });
+      return;
+    }
+    const patch: Partial<{
+      maxCrawlPages: number;
+      maxLlmCallsPerRun: number;
+      maxSerpQueriesPerRun: number;
+    }> = {};
+    const { maxCrawlPages, maxLlmCallsPerRun, maxSerpQueriesPerRun } = parsed.data;
+    if (maxCrawlPages !== undefined && Number.isInteger(maxCrawlPages)) {
+      patch.maxCrawlPages = maxCrawlPages;
+    }
+    if (maxLlmCallsPerRun !== undefined && Number.isInteger(maxLlmCallsPerRun)) {
+      patch.maxLlmCallsPerRun = maxLlmCallsPerRun;
+    }
+    if (
+      maxSerpQueriesPerRun !== undefined &&
+      Number.isInteger(maxSerpQueriesPerRun)
+    ) {
+      patch.maxSerpQueriesPerRun = maxSerpQueriesPerRun;
+    }
+    if (Object.keys(patch).length === 0) {
+      res.status(400).json({ error: "No valid limits provided" });
+      return;
+    }
+
+    const updated = await db
+      .update(sitesTable)
+      .set(patch)
+      .where(eq(sitesTable.id, site.id))
+      .returning({
+        maxCrawlPages: sitesTable.maxCrawlPages,
+        maxLlmCallsPerRun: sitesTable.maxLlmCallsPerRun,
+        maxSerpQueriesPerRun: sitesTable.maxSerpQueriesPerRun,
+      });
+    invalidateSiteCache(site.id);
+    req.log.info({ siteId: site.id, ...patch }, "site spend limits updated");
+    res.json(toLimitsResponse(updated[0]));
   } catch (err) {
     next(err);
   }

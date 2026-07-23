@@ -148,6 +148,45 @@ paths:
           description: Legacy site already claimed
         "429":
           description: Too many attempts
+  /site/limits:
+    get:
+      operationId: getSiteLimits
+      tags: [sites]
+      summary: Job spend limits for the active site
+      responses:
+        "200":
+          description: Current per-run spend caps plus the allowed bounds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteLimitsResponse"
+        "401":
+          description: Not signed in
+        "403":
+          description: Not the site owner
+    patch:
+      operationId: updateSiteLimits
+      tags: [sites]
+      summary: Update job spend limits for the active site
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSiteLimitsInput"
+      responses:
+        "200":
+          description: Updated limits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteLimitsResponse"
+        "400":
+          description: A limit is outside the allowed bounds
+        "401":
+          description: Not signed in
+        "403":
+          description: Not the site owner
   /integrations:
     get:
       operationId: getIntegrations
@@ -1968,6 +2007,42 @@ components:
           items:
             $ref: "#/components/schemas/Site"
         legacyClaimable: { type: boolean }
+    SiteLimits:
+      type: object
+      required: [maxCrawlPages, maxLlmCallsPerRun, maxSerpQueriesPerRun]
+      properties:
+        maxCrawlPages: { type: integer }
+        maxLlmCallsPerRun: { type: integer }
+        maxSerpQueriesPerRun: { type: integer }
+    SiteLimitBounds:
+      type: object
+      required: [min, max, default]
+      properties:
+        min: { type: integer }
+        max: { type: integer }
+        default: { type: integer }
+    SiteLimitsResponse:
+      type: object
+      required: [limits, bounds]
+      properties:
+        limits:
+          $ref: "#/components/schemas/SiteLimits"
+        bounds:
+          type: object
+          required: [maxCrawlPages, maxLlmCallsPerRun, maxSerpQueriesPerRun]
+          properties:
+            maxCrawlPages:
+              $ref: "#/components/schemas/SiteLimitBounds"
+            maxLlmCallsPerRun:
+              $ref: "#/components/schemas/SiteLimitBounds"
+            maxSerpQueriesPerRun:
+              $ref: "#/components/schemas/SiteLimitBounds"
+    UpdateSiteLimitsInput:
+      type: object
+      properties:
+        maxCrawlPages: { type: integer, minimum: 50, maximum: 20000 }
+        maxLlmCallsPerRun: { type: integer, minimum: 10, maximum: 5000 }
+        maxSerpQueriesPerRun: { type: integer, minimum: 5, maximum: 2000 }
     ClaimLegacyInput:
       type: object
       required: [password]

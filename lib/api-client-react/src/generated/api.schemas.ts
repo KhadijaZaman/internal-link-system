@@ -29,6 +29,47 @@ export interface SitesResponse {
   legacyClaimable: boolean;
 }
 
+export interface SiteLimits {
+  maxCrawlPages: number;
+  maxLlmCallsPerRun: number;
+  maxSerpQueriesPerRun: number;
+}
+
+export interface SiteLimitBounds {
+  min: number;
+  max: number;
+  default: number;
+}
+
+export type SiteLimitsResponseBounds = {
+  maxCrawlPages: SiteLimitBounds;
+  maxLlmCallsPerRun: SiteLimitBounds;
+  maxSerpQueriesPerRun: SiteLimitBounds;
+};
+
+export interface SiteLimitsResponse {
+  limits: SiteLimits;
+  bounds: SiteLimitsResponseBounds;
+}
+
+export interface UpdateSiteLimitsInput {
+  /**
+     * @minimum 50
+     * @maximum 20000
+     */
+  maxCrawlPages?: number;
+  /**
+     * @minimum 10
+     * @maximum 5000
+     */
+  maxLlmCallsPerRun?: number;
+  /**
+     * @minimum 5
+     * @maximum 2000
+     */
+  maxSerpQueriesPerRun?: number;
+}
+
 export interface ClaimLegacyInput {
   /**
      * @minLength 1

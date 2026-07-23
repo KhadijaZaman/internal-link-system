@@ -80,6 +80,81 @@ export const ClaimLegacySiteResponse = zod.object({
 
 
 /**
+ * @summary Job spend limits for the active site
+ */
+export const GetSiteLimitsResponse = zod.object({
+  "limits": zod.object({
+  "maxCrawlPages": zod.number(),
+  "maxLlmCallsPerRun": zod.number(),
+  "maxSerpQueriesPerRun": zod.number()
+}),
+  "bounds": zod.object({
+  "maxCrawlPages": zod.object({
+  "min": zod.number(),
+  "max": zod.number(),
+  "default": zod.number()
+}),
+  "maxLlmCallsPerRun": zod.object({
+  "min": zod.number(),
+  "max": zod.number(),
+  "default": zod.number()
+}),
+  "maxSerpQueriesPerRun": zod.object({
+  "min": zod.number(),
+  "max": zod.number(),
+  "default": zod.number()
+})
+})
+})
+
+
+/**
+ * @summary Update job spend limits for the active site
+ */
+export const updateSiteLimitsBodyMaxCrawlPagesMin = 50;
+export const updateSiteLimitsBodyMaxCrawlPagesMax = 20000;
+
+export const updateSiteLimitsBodyMaxLlmCallsPerRunMin = 10;
+export const updateSiteLimitsBodyMaxLlmCallsPerRunMax = 5000;
+
+export const updateSiteLimitsBodyMaxSerpQueriesPerRunMin = 5;
+export const updateSiteLimitsBodyMaxSerpQueriesPerRunMax = 2000;
+
+
+
+export const UpdateSiteLimitsBody = zod.object({
+  "maxCrawlPages": zod.number().min(updateSiteLimitsBodyMaxCrawlPagesMin).max(updateSiteLimitsBodyMaxCrawlPagesMax).optional(),
+  "maxLlmCallsPerRun": zod.number().min(updateSiteLimitsBodyMaxLlmCallsPerRunMin).max(updateSiteLimitsBodyMaxLlmCallsPerRunMax).optional(),
+  "maxSerpQueriesPerRun": zod.number().min(updateSiteLimitsBodyMaxSerpQueriesPerRunMin).max(updateSiteLimitsBodyMaxSerpQueriesPerRunMax).optional()
+})
+
+export const UpdateSiteLimitsResponse = zod.object({
+  "limits": zod.object({
+  "maxCrawlPages": zod.number(),
+  "maxLlmCallsPerRun": zod.number(),
+  "maxSerpQueriesPerRun": zod.number()
+}),
+  "bounds": zod.object({
+  "maxCrawlPages": zod.object({
+  "min": zod.number(),
+  "max": zod.number(),
+  "default": zod.number()
+}),
+  "maxLlmCallsPerRun": zod.object({
+  "min": zod.number(),
+  "max": zod.number(),
+  "default": zod.number()
+}),
+  "maxSerpQueriesPerRun": zod.object({
+  "min": zod.number(),
+  "max": zod.number(),
+  "default": zod.number()
+})
+})
+})
+
+
+/**
  * @summary Connection status for the active site's data sources
  */
 export const GetIntegrationsResponse = zod.object({

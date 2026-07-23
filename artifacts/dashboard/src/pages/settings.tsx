@@ -10,6 +10,9 @@ import {
   useConnectGa4,
   useConnectBing,
   useDisconnectIntegration,
+  useGetSiteLimits,
+  getGetSiteLimitsQueryKey,
+  useUpdateSiteLimits,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +47,163 @@ function StatusBadge({ connected }: { connected: boolean }) {
     <Badge variant="secondary" className="gap-1">
       <Circle className="h-3 w-3" /> Not connected
     </Badge>
+  );
+}
+
+type LimitKey = "maxCrawlPages" | "maxLlmCallsPerRun" | "maxSerpQueriesPerRun";
+
+const LIMIT_META: Record<LimitKey, { label: string; help: string }> = {
+  maxCrawlPages: {
+    label: "Max pages crawled per run",
+    help: "How many pages a crawl job may fetch before it stops.",
+  },
+  maxLlmCallsPerRun: {
+    label: "Max AI calls per run",
+    help: "Caps paid AI (LLM and embedding) calls per job run.",
+  },
+  maxSerpQueriesPerRun: {
+    label: "Max SERP queries per run",
+    help: "Caps paid search-result lookups per job run.",
+  },
+};
+
+function SpendLimitsCard() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { data, isLoading } = useGetSiteLimits({
+    query: { queryKey: getGetSiteLimitsQueryKey() },
+  });
+
+  const [draft, setDraft] = useState<Record<LimitKey, string>>({
+    maxCrawlPages: "",
+    maxLlmCallsPerRun: "",
+    maxSerpQueriesPerRun: "",
+  });
+
+  useEffect(() => {
+    if (!data) return;
+    setDraft({
+      maxCrawlPages: String(data.limits.maxCrawlPages),
+      maxLlmCallsPerRun: String(data.limits.maxLlmCallsPerRun),
+      maxSerpQueriesPerRun: String(data.limits.maxSerpQueriesPerRun),
+    });
+  }, [data]);
+
+  const update = useUpdateSiteLimits({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: "Spend limits saved" });
+        queryClient.invalidateQueries({ queryKey: getGetSiteLimitsQueryKey() });
+      },
+      onError: (err: unknown) => {
+        const msg =
+          (err as { data?: { error?: string } })?.data?.error ??
+          "Could not save limits";
+        toast({ title: msg, variant: "destructive" });
+      },
+    },
+  });
+
+  if (isLoading || !data) {
+    return (
+      <Card data-testid="card-spend-limits">
+        <CardHeader>
+          <CardTitle>Job spend limits</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Spinner />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const keys = Object.keys(LIMIT_META) as LimitKey[];
+
+  const parsedValue = (k: LimitKey): number | null => {
+    const n = Number(draft[k]);
+    return draft[k].trim() !== "" && Number.isInteger(n) ? n : null;
+  };
+
+  const errorFor = (k: LimitKey): string | null => {
+    const b = data.bounds[k];
+    const n = parsedValue(k);
+    if (n === null) return "Enter a whole number";
+    if (n < b.min || n > b.max)
+      return `Must be between ${b.min.toLocaleString()} and ${b.max.toLocaleString()}`;
+    return null;
+  };
+
+  const anyError = keys.some((k) => errorFor(k) !== null);
+  const changed = keys.some((k) => parsedValue(k) !== data.limits[k]);
+
+  return (
+    <Card data-testid="card-spend-limits">
+      <CardHeader>
+        <CardTitle>Job spend limits</CardTitle>
+        <CardDescription>
+          Per-run guardrails for background jobs on this site. When a job hits
+          a cap it stops that kind of paid work early — raise a limit if runs
+          are being cut short, or lower it to keep costs down.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (anyError || update.isPending) return;
+            update.mutate({
+              data: {
+                maxCrawlPages: parsedValue("maxCrawlPages")!,
+                maxLlmCallsPerRun: parsedValue("maxLlmCallsPerRun")!,
+                maxSerpQueriesPerRun: parsedValue("maxSerpQueriesPerRun")!,
+              },
+            });
+          }}
+        >
+          {keys.map((k) => {
+            const b = data.bounds[k];
+            const err = errorFor(k);
+            return (
+              <div key={k} className="space-y-1.5">
+                <Label htmlFor={`limit-${k}`}>{LIMIT_META[k].label}</Label>
+                <div className="flex items-center gap-3">
+                  <Input
+                    id={`limit-${k}`}
+                    className="max-w-[10rem]"
+                    inputMode="numeric"
+                    value={draft[k]}
+                    onChange={(e) =>
+                      setDraft((d) => ({ ...d, [k]: e.target.value }))
+                    }
+                    data-testid={`input-${k}`}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    {b.min.toLocaleString()}–{b.max.toLocaleString()} (default{" "}
+                    {b.default.toLocaleString()})
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {LIMIT_META[k].help}
+                </p>
+                {err ? (
+                  <p className="text-xs text-destructive" data-testid={`error-${k}`}>
+                    {err}
+                  </p>
+                ) : null}
+              </div>
+            );
+          })}
+          <Button
+            type="submit"
+            disabled={anyError || !changed || update.isPending}
+            data-testid="button-save-limits"
+          >
+            {update.isPending ? "Saving…" : "Save limits"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -375,6 +535,9 @@ export default function SettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Spend limits */}
+      <SpendLimitsCard />
     </div>
   );
 }

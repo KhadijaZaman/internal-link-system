@@ -122,6 +122,7 @@ import type {
   SetGscPropertyInput,
   SimilarityRun,
   Site,
+  SiteLimitsResponse,
   SitesResponse,
   StartClusterRunInput,
   StartSimilarityRunInput,
@@ -138,6 +139,7 @@ import type {
   TrackedSubmission,
   TrackedSubmissionCreate,
   TrackedSubmissionUpdate,
+  UpdateSiteLimitsInput,
   UpdateTopicalMapNodeInput,
   UrlLinkBreakdown,
   WatchlistInput,
@@ -532,6 +534,154 @@ export const useClaimLegacySite = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getClaimLegacySiteMutationOptions(options));
+    }
+
+export const getGetSiteLimitsUrl = () => {
+
+
+
+
+  return `/api/site/limits`
+}
+
+/**
+ * @summary Job spend limits for the active site
+ */
+export const getSiteLimits = async ( options?: RequestInit): Promise<SiteLimitsResponse> => {
+
+  return customFetch<SiteLimitsResponse>(getGetSiteLimitsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSiteLimitsQueryKey = () => {
+    return [
+    `/api/site/limits`
+    ] as const;
+    }
+
+
+export const getGetSiteLimitsQueryOptions = <TData = Awaited<ReturnType<typeof getSiteLimits>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSiteLimits>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSiteLimitsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSiteLimits>>> = ({ signal }) => getSiteLimits({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSiteLimits>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSiteLimitsQueryResult = NonNullable<Awaited<ReturnType<typeof getSiteLimits>>>
+export type GetSiteLimitsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Job spend limits for the active site
+ */
+
+export function useGetSiteLimits<TData = Awaited<ReturnType<typeof getSiteLimits>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSiteLimits>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSiteLimitsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateSiteLimitsUrl = () => {
+
+
+
+
+  return `/api/site/limits`
+}
+
+/**
+ * @summary Update job spend limits for the active site
+ */
+export const updateSiteLimits = async (updateSiteLimitsInput: UpdateSiteLimitsInput, options?: RequestInit): Promise<SiteLimitsResponse> => {
+
+  return customFetch<SiteLimitsResponse>(getUpdateSiteLimitsUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateSiteLimitsInput,)
+  }
+);}
+
+
+
+
+export const getUpdateSiteLimitsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSiteLimits>>, TError,{data: BodyType<UpdateSiteLimitsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSiteLimits>>, TError,{data: BodyType<UpdateSiteLimitsInput>}, TContext> => {
+
+const mutationKey = ['updateSiteLimits'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSiteLimits>>, {data: BodyType<UpdateSiteLimitsInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateSiteLimits(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSiteLimitsMutationResult = NonNullable<Awaited<ReturnType<typeof updateSiteLimits>>>
+    export type UpdateSiteLimitsMutationBody = BodyType<UpdateSiteLimitsInput>
+    export type UpdateSiteLimitsMutationError = ErrorType<void>
+
+    /**
+ * @summary Update job spend limits for the active site
+ */
+export const useUpdateSiteLimits = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSiteLimits>>, TError,{data: BodyType<UpdateSiteLimitsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSiteLimits>>,
+        TError,
+        {data: BodyType<UpdateSiteLimitsInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateSiteLimitsMutationOptions(options));
     }
 
 export const getGetIntegrationsUrl = () => {
