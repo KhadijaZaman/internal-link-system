@@ -9,6 +9,8 @@
  * `summary()` so the operator can see a cap was hit.
  */
 
+import { registerBudget } from "./budgetContext";
+
 export type BudgetKind = "llmCalls" | "serpQueries" | "crawlPages";
 
 export interface BudgetLimits {
@@ -79,10 +81,31 @@ export class JobBudget {
   }
 }
 
+/** Structured per-kind usage snapshot, persisted on job_runs when a cap is hit. */
+export interface BudgetUsageReport {
+  capped: boolean;
+  kinds: Array<{ kind: BudgetKind; used: number; limit: number; capHit: boolean }>;
+}
+
+export function usageReport(budgets: JobBudget[]): BudgetUsageReport | null {
+  if (budgets.length === 0) return null;
+  const kinds = (["llmCalls", "serpQueries", "crawlPages"] as BudgetKind[]).map(
+    (kind) => ({
+      kind,
+      used: budgets.reduce((s, b) => s + b.usedCount(kind), 0),
+      limit: budgets.reduce((s, b) => s + b.limits[kind], 0),
+      capHit: budgets.some((b) => b.exhausted(kind)),
+    }),
+  );
+  return { capped: kinds.some((k) => k.capHit), kinds };
+}
+
 export function budgetForSite(site: SiteLimitsSource): JobBudget {
-  return new JobBudget({
+  const budget = new JobBudget({
     llmCalls: site.maxLlmCallsPerRun,
     serpQueries: site.maxSerpQueriesPerRun,
     crawlPages: site.maxCrawlPages,
   });
+  registerBudget(budget);
+  return budget;
 }

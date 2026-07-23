@@ -2102,6 +2102,26 @@ components:
         lastStatus: { type: ["string", "null"] }
         lastDurationMs: { type: ["integer", "null"] }
         lastError: { type: ["string", "null"] }
+        lastBudget:
+          oneOf:
+            - $ref: "#/components/schemas/JobBudgetUsage"
+            - type: "null"
+    JobBudgetUsage:
+      type: object
+      description: Spend-cap usage report from the last run; present only when the run stopped early because a per-run budget was exhausted.
+      required: [capped, kinds]
+      properties:
+        capped: { type: boolean }
+        kinds:
+          type: array
+          items:
+            type: object
+            required: [kind, used, limit, capHit]
+            properties:
+              kind: { type: string, enum: [llmCalls, serpQueries, crawlPages] }
+              used: { type: integer }
+              limit: { type: integer }
+              capHit: { type: boolean }
     DashboardSummary:
       type: object
       required:
@@ -3702,6 +3722,10 @@ components:
         lastStatus: { type: ["string", "null"] }
         lastDurationMs: { type: ["integer", "null"] }
         lastError: { type: ["string", "null"] }
+        lastBudget:
+          oneOf:
+            - $ref: "#/components/schemas/JobBudgetUsage"
+            - type: "null"
     ContentNgramHit:
       type: object
       required: [gram, count]

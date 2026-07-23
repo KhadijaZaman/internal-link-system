@@ -72,6 +72,7 @@ router.get("/dashboard/summary", requireAuth, requireSite, async (req, res) => {
       lastStatus: j.lastStatus,
       lastDurationMs: j.lastDurationMs,
       lastError: j.lastError,
+      lastBudget: j.lastBudget,
     })),
   });
 });

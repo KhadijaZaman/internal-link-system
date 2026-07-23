@@ -142,6 +142,30 @@ export interface IntegrationsStatus {
   bing: IntegrationsStatusBing;
 }
 
+export type JobBudgetUsageKindsItemKind = typeof JobBudgetUsageKindsItemKind[keyof typeof JobBudgetUsageKindsItemKind];
+
+
+export const JobBudgetUsageKindsItemKind = {
+  llmCalls: 'llmCalls',
+  serpQueries: 'serpQueries',
+  crawlPages: 'crawlPages',
+} as const;
+
+export type JobBudgetUsageKindsItem = {
+  kind: JobBudgetUsageKindsItemKind;
+  used: number;
+  limit: number;
+  capHit: boolean;
+};
+
+/**
+ * Spend-cap usage report from the last run; present only when the run stopped early because a per-run budget was exhausted.
+ */
+export interface JobBudgetUsage {
+  capped: boolean;
+  kinds: JobBudgetUsageKindsItem[];
+}
+
 export interface JobLastRun {
   name: string;
   /** @nullable */
@@ -152,6 +176,7 @@ export interface JobLastRun {
   lastDurationMs?: number | null;
   /** @nullable */
   lastError?: string | null;
+  lastBudget?: JobBudgetUsage | null;
 }
 
 export type DashboardSummarySectionCounts = {
@@ -1773,6 +1798,7 @@ export interface JobStatus {
   lastDurationMs?: number | null;
   /** @nullable */
   lastError?: string | null;
+  lastBudget?: JobBudgetUsage | null;
 }
 
 export interface ContentNgramHit {

@@ -274,7 +274,16 @@ export const GetDashboardSummaryResponse = zod.object({
   "lastRunAt": zod.coerce.date().nullish(),
   "lastStatus": zod.string().nullish(),
   "lastDurationMs": zod.number().nullish(),
-  "lastError": zod.string().nullish()
+  "lastError": zod.string().nullish(),
+  "lastBudget": zod.union([zod.object({
+  "capped": zod.boolean(),
+  "kinds": zod.array(zod.object({
+  "kind": zod.enum(['llmCalls', 'serpQueries', 'crawlPages']),
+  "used": zod.number(),
+  "limit": zod.number(),
+  "capHit": zod.boolean()
+}))
+}).describe('Spend-cap usage report from the last run; present only when the run stopped early because a per-run budget was exhausted.'),zod.null()]).optional()
 }))
 })
 
@@ -2232,7 +2241,16 @@ export const GetJobStatusResponseItem = zod.object({
   "lastRunAt": zod.coerce.date().nullish(),
   "lastStatus": zod.string().nullish(),
   "lastDurationMs": zod.number().nullish(),
-  "lastError": zod.string().nullish()
+  "lastError": zod.string().nullish(),
+  "lastBudget": zod.union([zod.object({
+  "capped": zod.boolean(),
+  "kinds": zod.array(zod.object({
+  "kind": zod.enum(['llmCalls', 'serpQueries', 'crawlPages']),
+  "used": zod.number(),
+  "limit": zod.number(),
+  "capHit": zod.boolean()
+}))
+}).describe('Spend-cap usage report from the last run; present only when the run stopped early because a per-run budget was exhausted.'),zod.null()]).optional()
 })
 export const GetJobStatusResponse = zod.array(GetJobStatusResponseItem)
 

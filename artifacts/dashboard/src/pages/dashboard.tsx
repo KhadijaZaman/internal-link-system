@@ -14,6 +14,7 @@ import {
   getGetHealthScoreQueryKey,
   getGetDailyActivityQueryKey,
   getListActionsQueryKey,
+  type JobBudgetUsage,
 } from "@workspace/api-client-react";
 
 type DashboardUrlType =
@@ -87,6 +88,32 @@ function isRunnableJobName(name: string): name is RunnableJobName {
 }
 
 const PIPELINE_JOB: RunnableJobName = "run_full_pipeline";
+
+const BUDGET_KIND_LABELS: Record<string, string> = {
+  llmCalls: "AI calls",
+  serpQueries: "SERP queries",
+  crawlPages: "crawled pages",
+};
+
+function SpendCapBadge({ budget, testId }: { budget: JobBudgetUsage; testId: string }) {
+  const capped = budget.kinds.filter((k) => k.capHit);
+  if (capped.length === 0) return null;
+  const detail = capped
+    .map((k) => `${k.used.toLocaleString()}/${k.limit.toLocaleString()} ${BUDGET_KIND_LABELS[k.kind] ?? k.kind}`)
+    .join(" · ");
+  return (
+    <div
+      className="mt-2 flex items-start gap-1.5 text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-md px-2 py-1.5"
+      data-testid={testId}
+    >
+      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+      <span className="leading-snug">
+        <span className="font-semibold">Hit spend cap</span> — stopped early at {detail}. Results are
+        partial; run again to continue, or raise the site's per-run limits.
+      </span>
+    </div>
+  );
+}
 
 interface KpiSpec {
   title: string;
@@ -825,6 +852,9 @@ export default function Dashboard() {
                     </div>
                   </div>
                 )}
+                {pipelineHistory?.lastBudget?.capped && (
+                  <SpendCapBadge budget={pipelineHistory.lastBudget} testId="badge-spend-cap-pipeline" />
+                )}
                 {pipelineHistory?.lastError && (
                   <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/30 p-2 rounded-md border border-red-200 dark:border-red-900 mt-2 line-clamp-2">
                     {pipelineHistory.lastError}
@@ -886,6 +916,12 @@ export default function Dashboard() {
                           </span>
                         </div>
                       </div>
+                      {(() => {
+                        const budget = live?.lastBudget ?? job.lastBudget;
+                        return budget?.capped ? (
+                          <SpendCapBadge budget={budget} testId={`badge-spend-cap-${job.name}`} />
+                        ) : null;
+                      })()}
                     </div>
                     
                     <div className="flex items-center justify-between mt-1">

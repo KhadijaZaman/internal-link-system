@@ -34,6 +34,7 @@ router.get("/jobs/status", requireAuth, requireSite, async (req, res) => {
       lastStatus: r.lastStatus,
       lastDurationMs: r.lastDurationMs,
       lastError: r.lastError,
+      lastBudget: r.lastBudget,
     })),
   );
 });

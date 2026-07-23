@@ -3,6 +3,8 @@ import { and, eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { withDbRetry } from "../lib/dbRetry";
 import type { SiteContext } from "../lib/site";
+import { runWithBudgetCapture } from "../lib/budgetContext";
+import { usageReport, type BudgetUsageReport } from "../lib/jobBudget";
 
 export type JobName =
   | "crawl_link_map"
@@ -139,6 +141,7 @@ async function recordJobStart(name: JobName, siteId: number): Promise<void> {
     lastStatus: "running",
     lastDurationMs: null,
     lastError: null,
+    lastBudget: null,
   };
   try {
     await withDbRetry(
@@ -187,22 +190,31 @@ export async function runJob(
   const completion = (async () => {
     let status = "ok";
     let err: string | null = null;
-    try {
+    let budgetReport: BudgetUsageReport | null = null;
+    const { budgets, result } = runWithBudgetCapture(async () => {
       await recordJobStart(name, site.id);
       ensureHeartbeat();
       await fn(site);
+    });
+    try {
+      await result;
     } catch (e) {
       status = "error";
       err = e instanceof Error ? `${e.message}\n${e.stack ?? ""}` : String(e);
       logger.error({ jobName: name, siteId: site.id, err: e }, "Job failed");
     } finally {
       const duration = Date.now() - startedAt;
+      // Persist the spend-cap report only when a cap was actually hit —
+      // "no report" means the run completed within budget.
+      const report = usageReport(budgets);
+      budgetReport = report?.capped ? report : null;
       try {
         const finalValues = {
           lastRunAt: new Date(),
           lastStatus: status,
           lastDurationMs: duration,
           lastError: err,
+          lastBudget: budgetReport,
         };
         await withDbRetry(
           () =>
@@ -239,6 +251,7 @@ export async function loadJobStatuses(siteId: number): Promise<
     lastStatus: string | null;
     lastDurationMs: number | null;
     lastError: string | null;
+    lastBudget: BudgetUsageReport | null;
   }>
 > {
   const rows = await db
@@ -288,6 +301,7 @@ export async function loadJobStatuses(siteId: number): Promise<
       lastStatus,
       lastDurationMs: r?.lastDurationMs ?? null,
       lastError,
+      lastBudget: (r?.lastBudget as BudgetUsageReport | null) ?? null,
     });
   }
   return statuses;

@@ -5,6 +5,7 @@
  * Wellows internal linking system API
  * OpenAPI spec version: 0.1.0
  */
+import type { JobBudgetUsage } from './jobBudgetUsage';
 
 export interface JobLastRun {
   name: string;
@@ -16,4 +17,5 @@ export interface JobLastRun {
   lastDurationMs?: number | null;
   /** @nullable */
   lastError?: string | null;
+  lastBudget?: JobBudgetUsage | null;
 }
