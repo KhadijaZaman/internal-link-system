@@ -28,6 +28,39 @@ import { useToast } from "@/hooks/use-toast";
 import { useSiteContext } from "@/lib/site-context";
 import { Globe, KeyRound, LogOut, Plus } from "lucide-react";
 
+const LOCKOUT_STORAGE_KEY = "claim-legacy-lockout-until";
+
+function readStoredLockout(): number | null {
+  try {
+    const raw = sessionStorage.getItem(LOCKOUT_STORAGE_KEY);
+    if (!raw) return null;
+    const until = Number(raw);
+    if (!Number.isFinite(until) || until <= Date.now()) {
+      sessionStorage.removeItem(LOCKOUT_STORAGE_KEY);
+      return null;
+    }
+    return until;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredLockout(until: number): void {
+  try {
+    sessionStorage.setItem(LOCKOUT_STORAGE_KEY, String(until));
+  } catch {
+    // sessionStorage unavailable — countdown still works in-memory
+  }
+}
+
+function clearStoredLockout(): void {
+  try {
+    sessionStorage.removeItem(LOCKOUT_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 function formatWait(seconds: number): string {
   if (seconds < 90) return `${seconds} seconds`;
   const minutes = Math.ceil(seconds / 60);
@@ -54,18 +87,24 @@ export function WelcomePage() {
   const { toast } = useToast();
   const [claimOpen, setClaimOpen] = useState(false);
   const [password, setPassword] = useState("");
-  const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
+  const [lockoutUntil, setLockoutUntil] = useState<number | null>(() =>
+    readStoredLockout(),
+  );
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (lockoutUntil === null) return;
     if (Date.now() >= lockoutUntil) {
       setLockoutUntil(null);
+      clearStoredLockout();
       return;
     }
     const timer = setInterval(() => {
       setNow(Date.now());
-      if (Date.now() >= lockoutUntil) setLockoutUntil(null);
+      if (Date.now() >= lockoutUntil) {
+        setLockoutUntil(null);
+        clearStoredLockout();
+      }
     }, 1000);
     return () => clearInterval(timer);
   }, [lockoutUntil]);
@@ -94,7 +133,9 @@ export function WelcomePage() {
           )?.data?.retryAfterSeconds;
           if (retryAfterSeconds && retryAfterSeconds > 0) {
             message = `Too many attempts — try again in ${formatWait(retryAfterSeconds)}.`;
-            setLockoutUntil(Date.now() + retryAfterSeconds * 1000);
+            const until = Date.now() + retryAfterSeconds * 1000;
+            setLockoutUntil(until);
+            writeStoredLockout(until);
             setNow(Date.now());
           } else {
             message = "Too many attempts — try again later.";
