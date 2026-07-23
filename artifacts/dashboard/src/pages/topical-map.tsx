@@ -41,6 +41,7 @@ import {
   X,
 } from "lucide-react";
 import { HowThisWorks } from "@/components/how-this-works";
+import { JobSpendCapNotice } from "@/components/spend-cap-badge";
 import { InfoTip } from "@/components/info-tip";
 import * as d3 from "d3";
 
@@ -464,6 +465,7 @@ export default function TopicalMapPage() {
           core and outer sections, expanded into topics, and matched against your existing
           pages to reveal coverage gaps.
         </p>
+        <JobSpendCapNotice jobName="generate_topical_map" />
       </div>
 
       <HowThisWorks

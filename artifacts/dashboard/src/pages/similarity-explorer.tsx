@@ -31,6 +31,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { HowThisWorks } from "@/components/how-this-works";
+import { JobSpendCapNotice } from "@/components/spend-cap-badge";
 import { InfoTip } from "@/components/info-tip";
 
 const MAX_URLS = 100;
@@ -175,6 +176,7 @@ export default function SimilarityExplorer() {
           Paste up to {MAX_URLS} article URLs (one per line). Each article is fetched and
           compared: topics, main theme, pairwise cosine similarity, and topic clusters.
         </p>
+        <JobSpendCapNotice jobName="analyze_similarity" />
       </div>
 
       <HowThisWorks

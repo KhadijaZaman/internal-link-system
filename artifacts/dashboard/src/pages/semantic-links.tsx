@@ -20,6 +20,7 @@ import {
   type LinkSuggestion,
 } from "@workspace/api-client-react";
 import { HowThisWorks } from "@/components/how-this-works";
+import { JobSpendCapNotice } from "@/components/spend-cap-badge";
 
 const TIER_NAMES: Record<string, string> = {
   T1: "T1 — Home / top-of-funnel landing pages",
@@ -1885,6 +1886,7 @@ export default function SemanticLinks() {
           <p className="text-muted-foreground mt-1 text-sm">
             Unified internal linking hub — proposals, audits, exclusions, and engine settings.
           </p>
+          <JobSpendCapNotice jobName="semantic_linking" />
           <div className="mt-3">
             <HowThisWorks
               summary="The semantic linking engine scores every page-pair on your site, suggests the best new internal links, audits orphans / over-linked / broken, and waits for your approve-or-reject decision before anything changes."

@@ -35,6 +35,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { COUNTRY_OPTIONS } from "@/components/perf-blocks";
 import { HowThisWorks } from "@/components/how-this-works";
+import { JobSpendCapNotice } from "@/components/spend-cap-badge";
 import { InfoTip } from "@/components/info-tip";
 import {
   Boxes,
@@ -313,6 +314,7 @@ export default function Clustering() {
           ranking URLs. Each cluster shows your page vs the competitor pages winning
           the clicks.
         </p>
+        <JobSpendCapNotice jobName="keyword_clustering" />
       </div>
 
       <HowThisWorks
