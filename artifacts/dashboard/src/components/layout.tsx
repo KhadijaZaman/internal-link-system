@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import { useClerk, useUser } from "@clerk/react";
 import { Button } from "@/components/ui/button";
 import { SiteSwitcher } from "@/components/site-switcher";
-import { LayoutDashboard, Network, TrendingDown, Settings2, LogOut, LineChart, FileText, Ban, PenLine, Link2, Compass, BookOpen, ClipboardList, Bot, Gauge, Table2, ListTodo, Newspaper, Waypoints, SearchCheck, Boxes, GitCompareArrows, Sparkles, Map } from "lucide-react";
+import { LayoutDashboard, Network, TrendingDown, Settings2, LogOut, LineChart, FileText, Ban, PenLine, Link2, Compass, BookOpen, ClipboardList, Bot, Gauge, Table2, ListTodo, Newspaper, Waypoints, SearchCheck, Boxes, GitCompareArrows, Sparkles, Map, Plug } from "lucide-react";
 
 interface NavItem {
   href: string;
@@ -60,6 +60,7 @@ const navSections: NavSection[] = [
   {
     label: "Site settings",
     items: [
+      { href: "/settings", label: "Connections", icon: Plug },
       { href: "/wp/classifications", label: "WP Classifications", icon: FileText },
       { href: "/wp/exclude-list", label: "Exclude List", icon: Ban },
     ],

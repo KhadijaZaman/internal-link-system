@@ -37,6 +37,70 @@ export interface ClaimLegacyInput {
   password: string;
 }
 
+export interface CreateSiteInput {
+  /**
+     * @minLength 3
+     * @maxLength 300
+     */
+  domain: string;
+  /** @maxLength 120 */
+  displayName?: string;
+  /** @maxLength 500 */
+  sitemapUrl?: string;
+}
+
+export interface SetGscPropertyInput {
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  property: string;
+}
+
+export interface ConnectGa4Input {
+  /**
+     * @minLength 1
+     * @maxLength 20000
+     */
+  serviceAccountJson: string;
+  /**
+     * @minLength 1
+     * @maxLength 50
+     */
+  propertyId: string;
+}
+
+export interface ConnectBingInput {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  apiKey: string;
+}
+
+export type IntegrationsStatusGsc = {
+  connected: boolean;
+  /** @nullable */
+  property: string | null;
+  needsProperty: boolean;
+};
+
+export type IntegrationsStatusGa4 = {
+  connected: boolean;
+  /** @nullable */
+  propertyId: string | null;
+};
+
+export type IntegrationsStatusBing = {
+  connected: boolean;
+};
+
+export interface IntegrationsStatus {
+  gsc: IntegrationsStatusGsc;
+  ga4: IntegrationsStatusGa4;
+  bing: IntegrationsStatusBing;
+}
+
 export interface JobLastRun {
   name: string;
   /** @nullable */
@@ -2561,6 +2625,17 @@ export const Ga4ChannelParameter = {
 export type UrlFilterParameter = string;
 
 export type RowLimitParameter = number;
+
+export type GetGscAuthUrl200 = {
+  url: string;
+  redirectUri: string;
+};
+
+export type ListGscProperties200 = {
+  properties: string[];
+  /** @nullable */
+  selected: string | null;
+};
 
 export type GetLinkGraphFocusParams = {
 url: string;

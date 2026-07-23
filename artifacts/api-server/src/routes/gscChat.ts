@@ -100,7 +100,7 @@ function trim<T extends { impressions: number; clicks: number; ctr: number; posi
 async function buildContext(opts: ContextOpts, siteId: number): Promise<string> {
   const { startDate, endDate, url } = opts;
   const prev = previousRange(startDate, endDate);
-  const property = gscSiteUrl();
+  const property = await gscSiteUrl(siteId);
   let cruxTarget: { origin?: string; url?: string };
   if (url) {
     cruxTarget = { url };
@@ -115,11 +115,11 @@ async function buildContext(opts: ContextOpts, siteId: number): Promise<string> 
   }
 
   const [queries, pages, dates, prevDates, sitemapsResult, cruxResult] = await Promise.all([
-    queryGscDimension({ startDate, endDate, dimension: "query", pageFilter: url ?? undefined, rowLimit: 50 }),
-    url ? Promise.resolve([]) : queryGscDimension({ startDate, endDate, dimension: "page", rowLimit: 30 }),
-    queryGscDimension({ startDate, endDate, dimension: "date", pageFilter: url ?? undefined, rowLimit: 5000 }),
-    queryGscDimension({ startDate: prev.startDate, endDate: prev.endDate, dimension: "date", pageFilter: url ?? undefined, rowLimit: 5000 }),
-    withCache(`s${siteId}|ctx|sitemaps`, 30 * 60 * 1000, () => listSitemaps().catch(() => [])),
+    queryGscDimension({ siteId, startDate, endDate, dimension: "query", pageFilter: url ?? undefined, rowLimit: 50 }),
+    url ? Promise.resolve([]) : queryGscDimension({ siteId, startDate, endDate, dimension: "page", rowLimit: 30 }),
+    queryGscDimension({ siteId, startDate, endDate, dimension: "date", pageFilter: url ?? undefined, rowLimit: 5000 }),
+    queryGscDimension({ siteId, startDate: prev.startDate, endDate: prev.endDate, dimension: "date", pageFilter: url ?? undefined, rowLimit: 5000 }),
+    withCache(`s${siteId}|ctx|sitemaps`, 30 * 60 * 1000, () => listSitemaps(siteId).catch(() => [])),
     withCache(`s${siteId}|ctx|cwv|${url ?? cruxTarget.origin ?? "?"}`, 60 * 60 * 1000, () => fetchCrux(cruxTarget)),
   ]);
 

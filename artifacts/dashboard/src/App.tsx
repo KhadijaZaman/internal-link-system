@@ -49,6 +49,7 @@ import Clustering from "@/pages/clustering";
 import SimilarityExplorer from "@/pages/similarity-explorer";
 import BingPage from "@/pages/bing";
 import TopicalMap from "@/pages/topical-map";
+import SettingsPage from "@/pages/settings";
 import { GscRangeProvider } from "@/components/gsc/range-context";
 
 const queryClient = new QueryClient({
@@ -320,6 +321,7 @@ function Router() {
       <Route path="/similarity" component={() => <ProtectedRoute component={SimilarityExplorer} />} />
       <Route path="/bing" component={() => <ProtectedRoute component={BingPage} />} />
       <Route path="/topical-map" component={() => <ProtectedRoute component={TopicalMap} />} />
+      <Route path="/settings" component={() => <ProtectedRoute component={SettingsPage} />} />
       <Route path="/gsc/:rest*">
         {() => (
           <GscRangeProvider>

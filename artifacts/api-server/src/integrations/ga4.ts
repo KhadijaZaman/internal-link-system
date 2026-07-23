@@ -1,6 +1,7 @@
 import { google } from "googleapis";
 import { withCache } from "./gsc";
 import { canonicalPath, isBlockedPath, loadBlockRegexes, normalizeHost } from "../lib/urlCanon";
+import { getGa4Creds } from "../lib/siteIntegrations";
 
 /** Minimal site scope needed by GA4 fetches. */
 export interface Ga4Site {
@@ -11,42 +12,17 @@ export interface Ga4Site {
 const GA4_SCOPE = "https://www.googleapis.com/auth/analytics.readonly";
 const GA4_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
-interface ServiceAccount {
-  client_email: string;
-  private_key: string;
-}
-
-function serviceAccount(): ServiceAccount {
-  const raw = process.env["GA4_SERVICE_ACCOUNT_JSON"];
-  if (!raw) throw new Error("GA4_SERVICE_ACCOUNT_JSON must be set");
-  let parsed: Partial<ServiceAccount>;
-  try {
-    parsed = JSON.parse(raw) as Partial<ServiceAccount>;
-  } catch {
-    throw new Error("GA4_SERVICE_ACCOUNT_JSON is not valid JSON");
-  }
-  if (!parsed.client_email || !parsed.private_key) {
-    throw new Error("GA4_SERVICE_ACCOUNT_JSON missing client_email/private_key");
-  }
-  return { client_email: parsed.client_email, private_key: parsed.private_key };
-}
-
-export function ga4PropertyId(): string {
-  const raw = process.env["GA4_PROPERTY_ID"];
-  if (!raw) throw new Error("GA4_PROPERTY_ID must be set");
-  return raw.replace(/^properties\//, "").trim();
-}
-
-async function accessToken(): Promise<string> {
-  const sa = serviceAccount();
+/** Per-site GA4 auth (service account + property id), env fallback for legacy site 1. */
+async function ga4Auth(siteId: number): Promise<{ token: string; propertyId: string }> {
+  const creds = await getGa4Creds(siteId);
   const auth = new google.auth.JWT({
-    email: sa.client_email,
-    key: sa.private_key,
+    email: creds.clientEmail,
+    key: creds.privateKey,
     scopes: [GA4_SCOPE],
   });
   const { token } = await auth.getAccessToken();
   if (!token) throw new Error("Failed to obtain GA4 access token");
-  return token;
+  return { token, propertyId: creds.propertyId.replace(/^properties\//, "").trim() };
 }
 
 /** Which slice of traffic a GA4 view is scoped to. Default is organic. */
@@ -144,8 +120,7 @@ async function fetchRawPathAggs(
   // app.wellows.com / calendly.com, never on the marketing host, so the
   // filtered report always reported 0).
   return withCache(`s${site.id}|ga4:pages:v4|${startDate}|${endDate}`, GA4_CACHE_TTL_MS, async () => {
-    const token = await accessToken();
-    const property = ga4PropertyId();
+    const { token, propertyId: property } = await ga4Auth(site.id);
     const block = await loadBlockRegexes(site.id);
     const dateRanges = [{ startDate, endDate }];
 

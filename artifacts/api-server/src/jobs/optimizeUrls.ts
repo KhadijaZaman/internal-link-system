@@ -28,6 +28,7 @@ export async function processOptimizeItem(item: OptimizeItem): Promise<void> {
       .where(eq(optimizeQueueTable.id, item.id));
 
     const rows = await queryGsc({
+      siteId: item.siteId,
       startDate: dateOffset(90),
       endDate: dateOffset(1),
       dimensions: ["query"],

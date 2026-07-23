@@ -1,21 +1,26 @@
 import { google, type searchconsole_v1 } from "googleapis";
+import { getGscCreds } from "../lib/siteIntegrations";
 
-function client(): searchconsole_v1.Searchconsole {
-  const clientId = process.env["GSC_CLIENT_ID"];
-  const clientSecret = process.env["GSC_CLIENT_SECRET"];
-  const refreshToken = process.env["GSC_REFRESH_TOKEN"];
-  if (!clientId || !clientSecret || !refreshToken) {
-    throw new Error("GSC_CLIENT_ID / GSC_CLIENT_SECRET / GSC_REFRESH_TOKEN must be set");
-  }
-  const oauth = new google.auth.OAuth2(clientId, clientSecret);
-  oauth.setCredentials({ refresh_token: refreshToken });
-  return google.searchconsole({ version: "v1", auth: oauth });
+interface GscConn {
+  sc: searchconsole_v1.Searchconsole;
+  siteUrl: string;
 }
 
-export function gscSiteUrl(): string {
-  const s = process.env["GSC_PROPERTY"];
-  if (!s) throw new Error("GSC_PROPERTY must be set");
-  return s;
+/** Per-site GSC client: per-site stored refresh token + property, with env
+ *  fallback for the legacy site (id 1) only. */
+async function connect(siteId: number): Promise<GscConn> {
+  const creds = await getGscCreds(siteId);
+  const oauth = new google.auth.OAuth2(creds.clientId, creds.clientSecret);
+  oauth.setCredentials({ refresh_token: creds.refreshToken });
+  return {
+    sc: google.searchconsole({ version: "v1", auth: oauth }),
+    siteUrl: creds.property,
+  };
+}
+
+/** The GSC property string for a site (for display / diagnostics). */
+export async function gscSiteUrl(siteId: number): Promise<string> {
+  return (await getGscCreds(siteId)).property;
 }
 
 export interface GscRow {
@@ -28,13 +33,14 @@ export interface GscRow {
 }
 
 export async function queryGsc(opts: {
+  siteId: number;
   startDate: string;
   endDate: string;
   dimensions?: string[];
   pageFilter?: string;
   rowLimit?: number;
 }): Promise<GscRow[]> {
-  const sc = client();
+  const { sc, siteUrl } = await connect(opts.siteId);
   const rowLimit = opts.rowLimit ?? 25000;
   const dimensions = opts.dimensions ?? ["page", "query"];
   const all: GscRow[] = [];
@@ -57,7 +63,7 @@ export async function queryGsc(opts: {
       ];
     }
     const res = await sc.searchanalytics.query({
-      siteUrl: gscSiteUrl(),
+      siteUrl,
       requestBody: body,
     });
     const rows = res.data.rows ?? [];
@@ -98,6 +104,7 @@ export interface GscTotals {
 }
 
 export async function queryGscDimension(opts: {
+  siteId: number;
   startDate: string;
   endDate: string;
   dimension: "query" | "page" | "country" | "device" | "date";
@@ -112,7 +119,7 @@ export async function queryGscDimension(opts: {
   countryFilter?: string;
   rowLimit?: number;
 }): Promise<GscDimensionRow[]> {
-  const sc = client();
+  const { sc, siteUrl } = await connect(opts.siteId);
   const rowLimit = opts.rowLimit ?? 5000;
   const body: searchconsole_v1.Schema$SearchAnalyticsQueryRequest = {
     startDate: opts.startDate,
@@ -145,7 +152,7 @@ export async function queryGscDimension(opts: {
     body.dimensionFilterGroups = [{ filters }];
   }
   const res = await sc.searchanalytics.query({
-    siteUrl: gscSiteUrl(),
+    siteUrl,
     requestBody: body,
   });
   return (res.data.rows ?? []).map((r) => ({
@@ -201,18 +208,18 @@ export function aggregateTotals(rows: { clicks: number; impressions: number; pos
   };
 }
 
-export async function listSitemaps(): Promise<searchconsole_v1.Schema$WmxSitemap[]> {
-  const sc = client();
-  const res = await sc.sitemaps.list({ siteUrl: gscSiteUrl() });
+export async function listSitemaps(siteId: number): Promise<searchconsole_v1.Schema$WmxSitemap[]> {
+  const { sc, siteUrl } = await connect(siteId);
+  const res = await sc.sitemaps.list({ siteUrl });
   return res.data.sitemap ?? [];
 }
 
-export async function inspectUrl(url: string): Promise<searchconsole_v1.Schema$InspectUrlIndexResponse> {
-  const sc = client();
+export async function inspectUrl(siteId: number, url: string): Promise<searchconsole_v1.Schema$InspectUrlIndexResponse> {
+  const { sc, siteUrl } = await connect(siteId);
   const res = await sc.urlInspection.index.inspect({
     requestBody: {
       inspectionUrl: url,
-      siteUrl: gscSiteUrl(),
+      siteUrl,
     },
   });
   return res.data;

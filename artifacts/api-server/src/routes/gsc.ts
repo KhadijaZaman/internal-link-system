@@ -177,6 +177,7 @@ router.get("/gsc/overview", requireAuth, requireSite, async (req, res) => {
     const key = `s${site.id}|overview|${startDate}|${endDate}|${url ?? ""}|${compare}`;
     const data = await withCache(key, GSC_CACHE_TTL_MS, async () => {
       const series = await queryGscDimension({
+        siteId: site.id,
         startDate,
         endDate,
         dimension: "date",
@@ -199,6 +200,7 @@ router.get("/gsc/overview", requireAuth, requireSite, async (req, res) => {
       if (compare) {
         const prev = previousRange(startDate, endDate);
         const prevSeries = await queryGscDimension({
+          siteId: site.id,
           startDate: prev.startDate,
           endDate: prev.endDate,
           dimension: "date",
@@ -238,6 +240,7 @@ router.get("/gsc/queries", requireAuth, requireSite, async (req, res) => {
     const data = await withCache(key, GSC_CACHE_TTL_MS, async () => {
       const [rows, cannibal] = await Promise.all([
         queryGscDimension({
+          siteId: site.id,
           startDate,
           endDate,
           dimension: "query",
@@ -299,6 +302,7 @@ router.get("/gsc/pages", requireAuth, requireSite, async (req, res) => {
     const data = await withCache(key, GSC_CACHE_TTL_MS, async () => {
       const [rows, block] = await Promise.all([
         queryGscDimension({
+          siteId: site.id,
           startDate,
           endDate,
           dimension: "page",
@@ -353,8 +357,8 @@ router.get("/gsc/geo", requireAuth, requireSite, async (req, res) => {
     const key = `s${site.id}|geo|${startDate}|${endDate}|${url ?? ""}`;
     const data = await withCache(key, GSC_CACHE_TTL_MS, async () => {
       const [countries, devices] = await Promise.all([
-        queryGscDimension({ startDate, endDate, dimension: "country", pageFilter: url, rowLimit: 500 }),
-        queryGscDimension({ startDate, endDate, dimension: "device", pageFilter: url, rowLimit: 50 }),
+        queryGscDimension({ siteId: site.id, startDate, endDate, dimension: "country", pageFilter: url, rowLimit: 500 }),
+        queryGscDimension({ siteId: site.id, startDate, endDate, dimension: "device", pageFilter: url, rowLimit: 50 }),
       ]);
       const sortBy = (arr: typeof countries) => arr.sort((a, b) => b.impressions - a.impressions);
       return { countries: sortBy(countries), devices: sortBy(devices) };
@@ -374,7 +378,7 @@ router.get("/gsc/indexing", requireAuth, requireSite, async (req, res) => {
       const windowEndDate = new Date().toISOString().slice(0, 10);
 
       const [sitemaps, inventoryRows, seenRows] = await Promise.all([
-        listSitemaps().catch(() => []),
+        listSitemaps(site.id).catch(() => []),
         db.select({ url: inventoryTable.url }).from(inventoryTable).where(eq(inventoryTable.siteId, site.id)),
         db
           .select({
@@ -410,7 +414,7 @@ router.get("/gsc/indexing", requireAuth, requireSite, async (req, res) => {
         autoSample.map((c) =>
           withCache(`s${site.id}|inspect|${c.url}`, 24 * 60 * 60 * 1000, async () => {
             try {
-              const result = await inspectUrl(c.url);
+              const result = await inspectUrl(site.id, c.url);
               const idx = result.inspectionResult?.indexStatusResult;
               return {
                 url: c.url,
@@ -480,7 +484,7 @@ router.get("/gsc/inspect", requireAuth, requireSite, async (req, res) => {
   try {
     const key = `s${site.id}|inspect|${url}`;
     const data = await withCache(key, 15 * 60 * 1000, async () => {
-      const result = await inspectUrl(url);
+      const result = await inspectUrl(site.id, url);
       const idx = result.inspectionResult?.indexStatusResult;
       const mob = result.inspectionResult?.mobileUsabilityResult;
       return {
@@ -509,7 +513,7 @@ router.get("/gsc/cwv", requireAuth, requireSite, async (req, res) => {
   const site = getSite(req);
   const url = req.query["url"] ? String(req.query["url"]) : undefined;
   try {
-    const property = gscSiteUrl();
+    const property = await gscSiteUrl(site.id);
     let origin: string | undefined;
     if (property.startsWith("sc-domain:")) {
       origin = `https://${property.slice("sc-domain:".length)}`;
@@ -545,7 +549,7 @@ router.get("/gsc/links", requireAuth, requireSite, async (req, res) => {
   // come from DataForSEO's Backlinks API and internal-link signals come
   // from our own crawl.
   try {
-    const property = gscSiteUrl();
+    const property = await gscSiteUrl(site.id);
     let backlinkTarget = property;
     if (property.startsWith("sc-domain:")) backlinkTarget = property.slice("sc-domain:".length);
     else {
@@ -619,7 +623,7 @@ router.post("/gsc/indexing/inspect-batch", requireAuth, requireSite, async (req,
       urls.map(async (url) => {
         try {
           const cached = await withCache(`s${site.id}|inspect|${url}`, 24 * 60 * 60 * 1000, async () => {
-            const result = await inspectUrl(url);
+            const result = await inspectUrl(site.id, url);
             const idx = result.inspectionResult?.indexStatusResult;
             return {
               url,
@@ -669,8 +673,8 @@ router.get("/gsc/url-drilldown", requireAuth, requireSite, async (req, res) => {
     const key = `s${site.id}|drilldown|${url}|${startDate}|${endDate}`;
     const data = await withCache(key, GSC_CACHE_TTL_MS, async () => {
       const [queries, series] = await Promise.all([
-        queryGscDimension({ startDate, endDate, dimension: "query", pageFilter: url, rowLimit: 200 }),
-        queryGscDimension({ startDate, endDate, dimension: "date", pageFilter: url, rowLimit: 5000 }),
+        queryGscDimension({ siteId: site.id, startDate, endDate, dimension: "query", pageFilter: url, rowLimit: 200 }),
+        queryGscDimension({ siteId: site.id, startDate, endDate, dimension: "date", pageFilter: url, rowLimit: 5000 }),
       ]);
       return {
         url,

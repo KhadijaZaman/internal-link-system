@@ -413,6 +413,7 @@ async function processRun(run: ClusterRun): Promise<void> {
   start.setUTCDate(start.getUTCDate() - (p.days - 1));
 
   const gscRows = await queryGscDimension({
+    siteId: run.siteId,
     startDate: isoDay(start),
     endDate: isoDay(end),
     dimension: "query",

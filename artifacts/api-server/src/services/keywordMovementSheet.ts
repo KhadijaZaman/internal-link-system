@@ -343,6 +343,7 @@ export async function exportKeywordMovementSheet(
   // variants) filtered to the exact keyword (case-insensitive).
   const series = await mapWithConcurrency(tracked, 4, async (t) => {
     const rows = await queryGscDimension({
+      siteId,
       startDate,
       endDate,
       dimension: "date",

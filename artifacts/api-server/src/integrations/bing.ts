@@ -1,4 +1,5 @@
 import { siteOrigin } from "../lib/urlCanon";
+import { getBingApiKey } from "../lib/siteIntegrations";
 
 // Bing Webmaster API (classic). Covers regular Bing organic search stats.
 // NOTE: the AI Performance report (Copilot / Bing AI citations) has NO API
@@ -16,11 +17,6 @@ import { siteOrigin } from "../lib/urlCanon";
 
 const BING_BASE = "https://ssl.bing.com/webmaster/api.svc/json";
 
-function apiKey(): string {
-  const k = process.env["BING_WEBMASTER_API_KEY"];
-  if (!k) throw new Error("BING_WEBMASTER_API_KEY must be set");
-  return k;
-}
 
 /** Bing property URL. The verified property is the bare https origin. */
 export function bingSiteUrl(siteHost: string): string {
@@ -60,8 +56,9 @@ export function parseBingDate(raw: string): string | null {
   return d.toISOString().slice(0, 10);
 }
 
-async function callBing(method: string, siteHost: string): Promise<RawStatRow[]> {
-  const url = `${BING_BASE}/${method}?siteUrl=${encodeURIComponent(bingSiteUrl(siteHost))}&apikey=${apiKey()}`;
+async function callBing(method: string, siteId: number, siteHost: string): Promise<RawStatRow[]> {
+  const apiKey = await getBingApiKey(siteId);
+  const url = `${BING_BASE}/${method}?siteUrl=${encodeURIComponent(bingSiteUrl(siteHost))}&apikey=${apiKey}`;
   const res = await fetch(url, {
     headers: { Accept: "application/json" },
     signal: AbortSignal.timeout(60_000),
@@ -101,11 +98,11 @@ function toRows(raw: RawStatRow[], method: string): BingStatRow[] {
 }
 
 /** Page-level stats (~6-month window; `key` holds the page URL). */
-export async function fetchBingPageStats(siteHost: string): Promise<BingStatRow[]> {
-  return toRows(await callBing("GetPageStats", siteHost), "GetPageStats");
+export async function fetchBingPageStats(siteId: number, siteHost: string): Promise<BingStatRow[]> {
+  return toRows(await callBing("GetPageStats", siteId, siteHost), "GetPageStats");
 }
 
 /** Query-level stats (~6-month window; `key` holds the search query). */
-export async function fetchBingQueryStats(siteHost: string): Promise<BingStatRow[]> {
-  return toRows(await callBing("GetQueryStats", siteHost), "GetQueryStats");
+export async function fetchBingQueryStats(siteId: number, siteHost: string): Promise<BingStatRow[]> {
+  return toRows(await callBing("GetQueryStats", siteId, siteHost), "GetQueryStats");
 }

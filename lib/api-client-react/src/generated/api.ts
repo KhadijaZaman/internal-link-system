@@ -32,6 +32,8 @@ import type {
   BingPagesReport,
   ClaimLegacyInput,
   ClusterRun,
+  ConnectBingInput,
+  ConnectGa4Input,
   ContentAuditTextInput,
   ContentEntitiesAudit,
   ContentNgramsAudit,
@@ -42,6 +44,7 @@ import type {
   ContentWriteInput,
   ContentWriteResult,
   CreateLinkLookups202,
+  CreateSiteInput,
   DailyActivity,
   DashboardSummary,
   DashboardUrlList,
@@ -51,6 +54,7 @@ import type {
   GetAuthoritySnapshotParams,
   GetDailyActivityParams,
   GetGa4PagesParams,
+  GetGscAuthUrl200,
   GetGscCwvParams,
   GetGscGeoParams,
   GetGscOverviewParams,
@@ -84,6 +88,7 @@ import type {
   ImpactDetail,
   ImpactWins,
   InspectGscUrlParams,
+  IntegrationsStatus,
   InventoryPageDetail,
   JobRunResult,
   JobStatus,
@@ -100,6 +105,7 @@ import type {
   LinkingSettings,
   LinkingSettingsInput,
   ListActionsParams,
+  ListGscProperties200,
   ListPageKeywordsParams,
   ListSuggestionsParams,
   LoserPagesResponse,
@@ -113,6 +119,7 @@ import type {
   PageTargetKeyword,
   PruningReport,
   QueryInsights,
+  SetGscPropertyInput,
   SimilarityRun,
   Site,
   SitesResponse,
@@ -308,6 +315,77 @@ export function useGetSession<TData = Awaited<ReturnType<typeof getSession>>, TE
 
 
 
+export const getCreateSiteUrl = () => {
+
+
+
+
+  return `/api/sites`
+}
+
+/**
+ * @summary Add a new site owned by the signed-in user
+ */
+export const createSite = async (createSiteInput: CreateSiteInput, options?: RequestInit): Promise<Site> => {
+
+  return customFetch<Site>(getCreateSiteUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createSiteInput,)
+  }
+);}
+
+
+
+
+export const getCreateSiteMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSite>>, TError,{data: BodyType<CreateSiteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSite>>, TError,{data: BodyType<CreateSiteInput>}, TContext> => {
+
+const mutationKey = ['createSite'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSite>>, {data: BodyType<CreateSiteInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSite(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSiteMutationResult = NonNullable<Awaited<ReturnType<typeof createSite>>>
+    export type CreateSiteMutationBody = BodyType<CreateSiteInput>
+    export type CreateSiteMutationError = ErrorType<void>
+
+    /**
+ * @summary Add a new site owned by the signed-in user
+ */
+export const useCreateSite = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSite>>, TError,{data: BodyType<CreateSiteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSite>>,
+        TError,
+        {data: BodyType<CreateSiteInput>},
+        TContext
+      > => {
+      return useMutation(getCreateSiteMutationOptions(options));
+    }
+
 export const getListSitesUrl = () => {
 
 
@@ -454,6 +532,513 @@ export const useClaimLegacySite = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getClaimLegacySiteMutationOptions(options));
+    }
+
+export const getGetIntegrationsUrl = () => {
+
+
+
+
+  return `/api/integrations`
+}
+
+/**
+ * @summary Connection status for the active site's data sources
+ */
+export const getIntegrations = async ( options?: RequestInit): Promise<IntegrationsStatus> => {
+
+  return customFetch<IntegrationsStatus>(getGetIntegrationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetIntegrationsQueryKey = () => {
+    return [
+    `/api/integrations`
+    ] as const;
+    }
+
+
+export const getGetIntegrationsQueryOptions = <TData = Awaited<ReturnType<typeof getIntegrations>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getIntegrations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetIntegrationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getIntegrations>>> = ({ signal }) => getIntegrations({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getIntegrations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetIntegrationsQueryResult = NonNullable<Awaited<ReturnType<typeof getIntegrations>>>
+export type GetIntegrationsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Connection status for the active site's data sources
+ */
+
+export function useGetIntegrations<TData = Awaited<ReturnType<typeof getIntegrations>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getIntegrations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetIntegrationsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetGscAuthUrlUrl = () => {
+
+
+
+
+  return `/api/integrations/gsc/auth-url`
+}
+
+/**
+ * @summary Start the Google Search Console OAuth flow for the active site
+ */
+export const getGscAuthUrl = async ( options?: RequestInit): Promise<GetGscAuthUrl200> => {
+
+  return customFetch<GetGscAuthUrl200>(getGetGscAuthUrlUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getGetGscAuthUrlMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getGscAuthUrl>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof getGscAuthUrl>>, TError,void, TContext> => {
+
+const mutationKey = ['getGscAuthUrl'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof getGscAuthUrl>>, void> = () => {
+
+
+          return  getGscAuthUrl(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GetGscAuthUrlMutationResult = NonNullable<Awaited<ReturnType<typeof getGscAuthUrl>>>
+
+    export type GetGscAuthUrlMutationError = ErrorType<void>
+
+    /**
+ * @summary Start the Google Search Console OAuth flow for the active site
+ */
+export const useGetGscAuthUrl = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getGscAuthUrl>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof getGscAuthUrl>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getGetGscAuthUrlMutationOptions(options));
+    }
+
+export const getListGscPropertiesUrl = () => {
+
+
+
+
+  return `/api/integrations/gsc/properties`
+}
+
+/**
+ * @summary GSC properties available on the connected Google account
+ */
+export const listGscProperties = async ( options?: RequestInit): Promise<ListGscProperties200> => {
+
+  return customFetch<ListGscProperties200>(getListGscPropertiesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListGscPropertiesQueryKey = () => {
+    return [
+    `/api/integrations/gsc/properties`
+    ] as const;
+    }
+
+
+export const getListGscPropertiesQueryOptions = <TData = Awaited<ReturnType<typeof listGscProperties>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listGscProperties>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListGscPropertiesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listGscProperties>>> = ({ signal }) => listGscProperties({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listGscProperties>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListGscPropertiesQueryResult = NonNullable<Awaited<ReturnType<typeof listGscProperties>>>
+export type ListGscPropertiesQueryError = ErrorType<void>
+
+
+/**
+ * @summary GSC properties available on the connected Google account
+ */
+
+export function useListGscProperties<TData = Awaited<ReturnType<typeof listGscProperties>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listGscProperties>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListGscPropertiesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSetGscPropertyUrl = () => {
+
+
+
+
+  return `/api/integrations/gsc/property`
+}
+
+/**
+ * @summary Select which GSC property feeds this site
+ */
+export const setGscProperty = async (setGscPropertyInput: SetGscPropertyInput, options?: RequestInit): Promise<OkResponse> => {
+
+  return customFetch<OkResponse>(getSetGscPropertyUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      setGscPropertyInput,)
+  }
+);}
+
+
+
+
+export const getSetGscPropertyMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setGscProperty>>, TError,{data: BodyType<SetGscPropertyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setGscProperty>>, TError,{data: BodyType<SetGscPropertyInput>}, TContext> => {
+
+const mutationKey = ['setGscProperty'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setGscProperty>>, {data: BodyType<SetGscPropertyInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  setGscProperty(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetGscPropertyMutationResult = NonNullable<Awaited<ReturnType<typeof setGscProperty>>>
+    export type SetGscPropertyMutationBody = BodyType<SetGscPropertyInput>
+    export type SetGscPropertyMutationError = ErrorType<void>
+
+    /**
+ * @summary Select which GSC property feeds this site
+ */
+export const useSetGscProperty = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setGscProperty>>, TError,{data: BodyType<SetGscPropertyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setGscProperty>>,
+        TError,
+        {data: BodyType<SetGscPropertyInput>},
+        TContext
+      > => {
+      return useMutation(getSetGscPropertyMutationOptions(options));
+    }
+
+export const getConnectGa4Url = () => {
+
+
+
+
+  return `/api/integrations/ga4`
+}
+
+/**
+ * @summary Save GA4 service-account credentials for the active site
+ */
+export const connectGa4 = async (connectGa4Input: ConnectGa4Input, options?: RequestInit): Promise<OkResponse> => {
+
+  return customFetch<OkResponse>(getConnectGa4Url(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      connectGa4Input,)
+  }
+);}
+
+
+
+
+export const getConnectGa4MutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof connectGa4>>, TError,{data: BodyType<ConnectGa4Input>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof connectGa4>>, TError,{data: BodyType<ConnectGa4Input>}, TContext> => {
+
+const mutationKey = ['connectGa4'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof connectGa4>>, {data: BodyType<ConnectGa4Input>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  connectGa4(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConnectGa4MutationResult = NonNullable<Awaited<ReturnType<typeof connectGa4>>>
+    export type ConnectGa4MutationBody = BodyType<ConnectGa4Input>
+    export type ConnectGa4MutationError = ErrorType<void>
+
+    /**
+ * @summary Save GA4 service-account credentials for the active site
+ */
+export const useConnectGa4 = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof connectGa4>>, TError,{data: BodyType<ConnectGa4Input>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof connectGa4>>,
+        TError,
+        {data: BodyType<ConnectGa4Input>},
+        TContext
+      > => {
+      return useMutation(getConnectGa4MutationOptions(options));
+    }
+
+export const getConnectBingUrl = () => {
+
+
+
+
+  return `/api/integrations/bing`
+}
+
+/**
+ * @summary Save a Bing Webmaster API key for the active site
+ */
+export const connectBing = async (connectBingInput: ConnectBingInput, options?: RequestInit): Promise<OkResponse> => {
+
+  return customFetch<OkResponse>(getConnectBingUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      connectBingInput,)
+  }
+);}
+
+
+
+
+export const getConnectBingMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof connectBing>>, TError,{data: BodyType<ConnectBingInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof connectBing>>, TError,{data: BodyType<ConnectBingInput>}, TContext> => {
+
+const mutationKey = ['connectBing'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof connectBing>>, {data: BodyType<ConnectBingInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  connectBing(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConnectBingMutationResult = NonNullable<Awaited<ReturnType<typeof connectBing>>>
+    export type ConnectBingMutationBody = BodyType<ConnectBingInput>
+    export type ConnectBingMutationError = ErrorType<void>
+
+    /**
+ * @summary Save a Bing Webmaster API key for the active site
+ */
+export const useConnectBing = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof connectBing>>, TError,{data: BodyType<ConnectBingInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof connectBing>>,
+        TError,
+        {data: BodyType<ConnectBingInput>},
+        TContext
+      > => {
+      return useMutation(getConnectBingMutationOptions(options));
+    }
+
+export const getDisconnectIntegrationUrl = (provider: 'gsc' | 'ga4' | 'bing',) => {
+
+
+
+
+  return `/api/integrations/${provider}`
+}
+
+/**
+ * @summary Disconnect a data source from the active site
+ */
+export const disconnectIntegration = async (provider: 'gsc' | 'ga4' | 'bing', options?: RequestInit): Promise<OkResponse> => {
+
+  return customFetch<OkResponse>(getDisconnectIntegrationUrl(provider),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDisconnectIntegrationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectIntegration>>, TError,{provider: 'gsc' | 'ga4' | 'bing'}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof disconnectIntegration>>, TError,{provider: 'gsc' | 'ga4' | 'bing'}, TContext> => {
+
+const mutationKey = ['disconnectIntegration'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof disconnectIntegration>>, {provider: 'gsc' | 'ga4' | 'bing'}> = (props) => {
+          const {provider} = props ?? {};
+
+          return  disconnectIntegration(provider,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DisconnectIntegrationMutationResult = NonNullable<Awaited<ReturnType<typeof disconnectIntegration>>>
+
+    export type DisconnectIntegrationMutationError = ErrorType<void>
+
+    /**
+ * @summary Disconnect a data source from the active site
+ */
+export const useDisconnectIntegration = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectIntegration>>, TError,{provider: 'gsc' | 'ga4' | 'bing'}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof disconnectIntegration>>,
+        TError,
+        {provider: 'gsc' | 'ga4' | 'bing'},
+        TContext
+      > => {
+      return useMutation(getDisconnectIntegrationMutationOptions(options));
     }
 
 export const getGetDashboardSummaryUrl = () => {

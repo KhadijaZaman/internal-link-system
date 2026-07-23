@@ -306,6 +306,7 @@ router.get(
         const countryFilter = country ?? undefined;
         const [overallDaily, keywordDaily, queryRows] = await Promise.all([
           queryGscDimension({
+            siteId: site.id,
             startDate: prevStartDate,
             endDate,
             dimension: "date",
@@ -314,6 +315,7 @@ router.get(
           }),
           keyword
             ? queryGscDimension({
+                siteId: site.id,
                 startDate: prevStartDate,
                 endDate,
                 dimension: "date",
@@ -326,6 +328,7 @@ router.get(
               })
             : Promise.resolve([] as GscDimensionRow[]),
           queryGscDimension({
+            siteId: site.id,
             startDate,
             endDate,
             dimension: "query",

@@ -14,6 +14,8 @@ tags:
     description: Admin authentication
   - name: sites
     description: Sites owned by the signed-in user
+  - name: integrations
+    description: Per-site data-source connections (GSC, GA4, Bing)
   - name: dashboard
     description: Dashboard summary data
   - name: graph
@@ -84,6 +86,29 @@ paths:
               schema:
                 $ref: "#/components/schemas/AuthSession"
   /sites:
+    post:
+      operationId: createSite
+      tags: [sites]
+      summary: Add a new site owned by the signed-in user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSiteInput"
+      responses:
+        "201":
+          description: Site created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Site"
+        "400":
+          description: Invalid domain or sitemap URL
+        "401":
+          description: Not signed in
+        "409":
+          description: Domain already registered or site limit reached
     get:
       operationId: listSites
       tags: [sites]
@@ -123,6 +148,139 @@ paths:
           description: Legacy site already claimed
         "429":
           description: Too many attempts
+  /integrations:
+    get:
+      operationId: getIntegrations
+      tags: [integrations]
+      summary: Connection status for the active site's data sources
+      responses:
+        "200":
+          description: Per-provider connection status (never includes credentials)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationsStatus"
+        "401":
+          description: Not signed in
+  /integrations/gsc/auth-url:
+    post:
+      operationId: getGscAuthUrl
+      tags: [integrations]
+      summary: Start the Google Search Console OAuth flow for the active site
+      responses:
+        "200":
+          description: Google consent URL to redirect the operator to
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url, redirectUri]
+                properties:
+                  url: { type: string }
+                  redirectUri: { type: string }
+        "401":
+          description: Not signed in
+  /integrations/gsc/properties:
+    get:
+      operationId: listGscProperties
+      tags: [integrations]
+      summary: GSC properties available on the connected Google account
+      responses:
+        "200":
+          description: Available properties and current selection
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [properties, selected]
+                properties:
+                  properties:
+                    type: array
+                    items: { type: string }
+                  selected: { type: ["string", "null"] }
+        "409":
+          description: GSC not connected
+  /integrations/gsc/property:
+    post:
+      operationId: setGscProperty
+      tags: [integrations]
+      summary: Select which GSC property feeds this site
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetGscPropertyInput"
+      responses:
+        "200":
+          description: Property selected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          description: Property not in the connected account's list
+        "409":
+          description: GSC not connected
+  /integrations/ga4:
+    put:
+      operationId: connectGa4
+      tags: [integrations]
+      summary: Save GA4 service-account credentials for the active site
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectGa4Input"
+      responses:
+        "200":
+          description: GA4 connected (credentials verified with a live call)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          description: Invalid or unverifiable credentials
+  /integrations/bing:
+    put:
+      operationId: connectBing
+      tags: [integrations]
+      summary: Save a Bing Webmaster API key for the active site
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectBingInput"
+      responses:
+        "200":
+          description: Bing connected (key verified with a live call)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          description: Invalid or unverifiable API key
+  /integrations/{provider}:
+    delete:
+      operationId: disconnectIntegration
+      tags: [integrations]
+      summary: Disconnect a data source from the active site
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string, enum: [gsc, ga4, bing] }
+      responses:
+        "200":
+          description: Disconnected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          description: Unknown provider
   /dashboard/summary:
     get:
       operationId: getDashboardSummary
@@ -1815,6 +1973,51 @@ components:
       required: [password]
       properties:
         password: { type: string, minLength: 1, maxLength: 200 }
+    CreateSiteInput:
+      type: object
+      required: [domain]
+      properties:
+        domain: { type: string, minLength: 3, maxLength: 300 }
+        displayName: { type: string, maxLength: 120 }
+        sitemapUrl: { type: string, maxLength: 500 }
+    SetGscPropertyInput:
+      type: object
+      required: [property]
+      properties:
+        property: { type: string, minLength: 1, maxLength: 500 }
+    ConnectGa4Input:
+      type: object
+      required: [serviceAccountJson, propertyId]
+      properties:
+        serviceAccountJson: { type: string, minLength: 1, maxLength: 20000 }
+        propertyId: { type: string, minLength: 1, maxLength: 50 }
+    ConnectBingInput:
+      type: object
+      required: [apiKey]
+      properties:
+        apiKey: { type: string, minLength: 1, maxLength: 200 }
+    IntegrationsStatus:
+      type: object
+      required: [gsc, ga4, bing]
+      properties:
+        gsc:
+          type: object
+          required: [connected, property, needsProperty]
+          properties:
+            connected: { type: boolean }
+            property: { type: ["string", "null"] }
+            needsProperty: { type: boolean }
+        ga4:
+          type: object
+          required: [connected, propertyId]
+          properties:
+            connected: { type: boolean }
+            propertyId: { type: ["string", "null"] }
+        bing:
+          type: object
+          required: [connected]
+          properties:
+            connected: { type: boolean }
     JobLastRun:
       type: object
       required: [name]

@@ -26,6 +26,25 @@ export const GetSessionResponse = zod.object({
 
 
 /**
+ * @summary Add a new site owned by the signed-in user
+ */
+export const createSiteBodyDomainMin = 3;
+export const createSiteBodyDomainMax = 300;
+
+export const createSiteBodyDisplayNameMax = 120;
+
+export const createSiteBodySitemapUrlMax = 500;
+
+
+
+export const CreateSiteBody = zod.object({
+  "domain": zod.string().min(createSiteBodyDomainMin).max(createSiteBodyDomainMax),
+  "displayName": zod.string().max(createSiteBodyDisplayNameMax).optional(),
+  "sitemapUrl": zod.string().max(createSiteBodySitemapUrlMax).optional()
+})
+
+
+/**
  * @summary Sites owned by the signed-in user
  */
 export const ListSitesResponse = zod.object({
@@ -57,6 +76,106 @@ export const ClaimLegacySiteResponse = zod.object({
   "host": zod.string(),
   "displayName": zod.string(),
   "sitemapUrl": zod.string().nullable()
+})
+
+
+/**
+ * @summary Connection status for the active site's data sources
+ */
+export const GetIntegrationsResponse = zod.object({
+  "gsc": zod.object({
+  "connected": zod.boolean(),
+  "property": zod.string().nullable(),
+  "needsProperty": zod.boolean()
+}),
+  "ga4": zod.object({
+  "connected": zod.boolean(),
+  "propertyId": zod.string().nullable()
+}),
+  "bing": zod.object({
+  "connected": zod.boolean()
+})
+})
+
+
+/**
+ * @summary Start the Google Search Console OAuth flow for the active site
+ */
+export const GetGscAuthUrlResponse = zod.object({
+  "url": zod.string(),
+  "redirectUri": zod.string()
+})
+
+
+/**
+ * @summary GSC properties available on the connected Google account
+ */
+export const ListGscPropertiesResponse = zod.object({
+  "properties": zod.array(zod.string()),
+  "selected": zod.string().nullable()
+})
+
+
+/**
+ * @summary Select which GSC property feeds this site
+ */
+export const setGscPropertyBodyPropertyMax = 500;
+
+
+
+export const SetGscPropertyBody = zod.object({
+  "property": zod.string().min(1).max(setGscPropertyBodyPropertyMax)
+})
+
+export const SetGscPropertyResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Save GA4 service-account credentials for the active site
+ */
+export const connectGa4BodyServiceAccountJsonMax = 20000;
+
+export const connectGa4BodyPropertyIdMax = 50;
+
+
+
+export const ConnectGa4Body = zod.object({
+  "serviceAccountJson": zod.string().min(1).max(connectGa4BodyServiceAccountJsonMax),
+  "propertyId": zod.string().min(1).max(connectGa4BodyPropertyIdMax)
+})
+
+export const ConnectGa4Response = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Save a Bing Webmaster API key for the active site
+ */
+export const connectBingBodyApiKeyMax = 200;
+
+
+
+export const ConnectBingBody = zod.object({
+  "apiKey": zod.string().min(1).max(connectBingBodyApiKeyMax)
+})
+
+export const ConnectBingResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Disconnect a data source from the active site
+ */
+export const DisconnectIntegrationParams = zod.object({
+  "provider": zod.enum(['gsc', 'ga4', 'bing'])
+})
+
+export const DisconnectIntegrationResponse = zod.object({
+  "ok": zod.boolean()
 })
 
 

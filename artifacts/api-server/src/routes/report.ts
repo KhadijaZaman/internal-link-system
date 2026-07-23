@@ -79,8 +79,8 @@ router.get("/report/pages", requireAuth, requireSite, async (req, res) => {
       // GSC is the core source (page aggregates + per-query rows). GA4 is
       // best-effort so the report still renders if its quota is exhausted.
       const [pageAgg, pageQueryRows, inv, block] = await Promise.all([
-        queryGscDimension({ startDate, endDate, dimension: "page", rowLimit: 5000 }),
-        queryGsc({ startDate, endDate, dimensions: ["page", "query"], rowLimit: 25000 }),
+        queryGscDimension({ siteId: site.id, startDate, endDate, dimension: "page", rowLimit: 5000 }),
+        queryGsc({ siteId: site.id, startDate, endDate, dimensions: ["page", "query"], rowLimit: 25000 }),
         db
           .select({ url: inventoryTable.url, title: inventoryTable.title })
           .from(inventoryTable)

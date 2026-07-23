@@ -84,11 +84,13 @@ router.get("/losers/query-insights", requireAuth, requireSite, async (req, res) 
 
       const [pageRows, prevPageRows] = await Promise.all([
         queryGscDimension({
+          siteId: site.id,
           startDate, endDate, dimension: "page",
           queryFilter: { expression: q, operator: "contains" },
           rowLimit: 200,
         }).catch(() => []),
         queryGscDimension({
+          siteId: site.id,
           startDate: prevStart, endDate: prevEnd, dimension: "page",
           queryFilter: { expression: q, operator: "contains" },
           rowLimit: 200,

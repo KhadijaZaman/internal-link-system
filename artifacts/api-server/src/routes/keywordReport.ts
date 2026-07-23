@@ -86,6 +86,7 @@ router.get("/keyword-report", requireAuth, requireSite, async (req, res) => {
       // One keyword call covers current + previous window, split locally.
       const [keywordDaily, pageDaily] = await Promise.all([
         queryGscDimension({
+          siteId: site.id,
           startDate: prevStartDate,
           endDate,
           dimension: "date",
@@ -97,6 +98,7 @@ router.get("/keyword-report", requireAuth, requireSite, async (req, res) => {
           countryFilter,
         }),
         queryGscDimension({
+          siteId: site.id,
           startDate,
           endDate,
           dimension: "date",

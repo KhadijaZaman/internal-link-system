@@ -27,6 +27,9 @@ _Replace the heading above with the project's name, and this line with one sente
 - `artifacts/api-server/src/lib/auth.ts` — Clerk session verification: `requireAuth` sets `req.userId` and lazily upserts the local `users` row
 - `artifacts/api-server/src/lib/site.ts` — multi-tenancy core: `requireSite` (X-Site-Id header + ownership check → `req.site`, read via `getSite`/`getSiteId`), `requireLegacySiteOwner` (gates legacy-bound spend/data surfaces: job triggers, GSC bulk queries, content writer), `getLegacySite()` for background jobs, 30s in-memory site cache invalidated on claim
 - `artifacts/api-server/src/routes/sites.ts` — `GET /api/sites` (user's sites) + `POST /api/sites/claim-legacy` (old admin password, timing-safe SHA-256 compare, rate-limited, single-claim via conditional UPDATE)
+- `lib/db/src/schema/siteIntegrations.ts` + `artifacts/api-server/src/lib/siteIntegrations.ts` — per-site data-source credentials (`site_integrations` table: provider gsc/ga4/bing, credentials+config jsonb, unique(siteId,provider)); resolvers `getGscCreds`/`getGa4Creds`/`getBingApiKey(siteId)` prefer the per-site row and fall back to env vars ONLY for legacy site id 1; 30s cache invalidated on connect/disconnect
+- `artifacts/api-server/src/routes/integrations.ts` — `/api/integrations` status + connect endpoints: GSC via shared Google OAuth app (GSC_CLIENT_ID/SECRET) with HMAC-signed state {siteId,userId,exp} (public callback, auto-matches property to site host), GA4 pasted service-account JSON (verified live before store), Bing pasted API key (verified live); credentials are never returned by any endpoint
+- `artifacts/dashboard/src/pages/settings.tsx` — `/settings` Connections page (GSC connect/property picker, GA4/Bing forms); welcome.tsx has the add-site form (POST /sites → switchSite)
 - `artifacts/dashboard/src/lib/site-context.tsx` — SiteProvider (localStorage active site, module-level `getActiveSiteId()` feeds the X-Site-Id header via the generated fetch client), SiteGate (welcome empty state / keyed remount on switch)
 - `artifacts/api-server/src/lib/urlCanon.ts` — the single URL-hygiene module: canonical path/URL normalizer, url_blocklist matching, metric re-aggregation helpers
 - `artifacts/api-server/src/services/pageCounts.ts` — the one shared "content pages" count + filter label used by Dashboard, Knowledge Graph, and Site Authority headers
@@ -85,6 +88,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 - When merging metric rows with nullable positions (Bing returns -1/unknown), exclude null-position rows from the impression-weighted average — mapping null→0 dilutes the average toward a falsely "better" rank
 - The AI-citation upload route has a path-scoped `express.json({limit:"2mb"})` in app.ts (must stay registered before the global parser); the contract caps content at 1.5M chars
 - Topical-map coverage matching uses a 0.65 embedding threshold, NOT the 0.42 on/off-core split — "this page already covers this topic" is a much stronger claim; at 0.5 nearly every topic false-matched and the gap analysis collapsed
+- `queryGsc`/`queryGscDimension`/`listSitemaps`/`inspectUrl`/`gscSiteUrl` all require an explicit `siteId` (gscSiteUrl is async now) — new call sites must thread the site through; integration creds come from `lib/siteIntegrations.ts`, never read GSC/GA4/Bing env vars directly
 - Topical-map nodes with status `published` are locked in the PATCH endpoint (only gap↔ignored) — false-positive published nodes can't be demoted by the operator yet (known follow-up)
 
 ## Pointers

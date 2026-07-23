@@ -1,7 +1,11 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useClerk, useUser } from "@clerk/react";
-import { useClaimLegacySite } from "@workspace/api-client-react";
+import {
+  useClaimLegacySite,
+  useCreateSite,
+  getListSitesQueryKey,
+} from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,10 +26,10 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useSiteContext } from "@/lib/site-context";
-import { Globe, KeyRound, LogOut } from "lucide-react";
+import { Globe, KeyRound, LogOut, Plus } from "lucide-react";
 
 export function WelcomePage() {
-  const { legacyClaimable } = useSiteContext();
+  const { legacyClaimable, switchSite } = useSiteContext();
   const { signOut } = useClerk();
   const { user } = useUser();
   const queryClient = useQueryClient();
@@ -55,6 +59,37 @@ export function WelcomePage() {
     },
   });
 
+  const [domain, setDomain] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [sitemapUrl, setSitemapUrl] = useState("");
+  const sitemapInvalid =
+    sitemapUrl.trim().length > 0 && !/^https?:\/\/.+\..+/i.test(sitemapUrl.trim());
+
+  const createSite = useCreateSite({
+    mutation: {
+      onSuccess: async (site) => {
+        toast({
+          title: "Site added",
+          description: "Now connect Search Console in Settings → Connections.",
+        });
+        await queryClient.invalidateQueries({ queryKey: getListSitesQueryKey() });
+        switchSite(site.id);
+      },
+      onError: (err: unknown) => {
+        const status = (err as { status?: number })?.status;
+        const data = (err as { data?: { error?: string } })?.data;
+        toast({
+          title:
+            data?.error ??
+            (status === 409
+              ? "A site with this domain already exists."
+              : "Could not add the site. Check the domain and try again."),
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   return (
@@ -73,7 +108,72 @@ export function WelcomePage() {
               You don't have any sites yet.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-4">
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!domain.trim() || sitemapInvalid || createSite.isPending) return;
+                createSite.mutate({
+                  data: {
+                    domain: domain.trim(),
+                    ...(displayName.trim() ? { displayName: displayName.trim() } : {}),
+                    ...(sitemapUrl.trim() ? { sitemapUrl: sitemapUrl.trim() } : {}),
+                  },
+                });
+              }}
+            >
+              <div className="space-y-2">
+                <Label htmlFor="add-site-domain">Your website</Label>
+                <Input
+                  id="add-site-domain"
+                  placeholder="example.com"
+                  value={domain}
+                  onChange={(e) => setDomain(e.target.value)}
+                  data-testid="input-add-site-domain"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-site-name">
+                  Display name{" "}
+                  <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
+                <Input
+                  id="add-site-name"
+                  placeholder="My Site"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  data-testid="input-add-site-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-site-sitemap">
+                  Sitemap URL{" "}
+                  <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
+                <Input
+                  id="add-site-sitemap"
+                  placeholder="https://example.com/sitemap.xml"
+                  value={sitemapUrl}
+                  onChange={(e) => setSitemapUrl(e.target.value)}
+                  data-testid="input-add-site-sitemap"
+                />
+                {sitemapInvalid ? (
+                  <p className="text-xs text-destructive">
+                    Enter a full URL starting with http:// or https://
+                  </p>
+                ) : null}
+              </div>
+              <Button
+                type="submit"
+                className="w-full gap-2"
+                disabled={!domain.trim() || sitemapInvalid || createSite.isPending}
+                data-testid="button-add-site"
+              >
+                <Plus className="h-4 w-4" />
+                {createSite.isPending ? "Adding…" : "Add your site"}
+              </Button>
+            </form>
             {legacyClaimable ? (
               <>
                 <p className="text-sm text-muted-foreground">
@@ -93,9 +193,8 @@ export function WelcomePage() {
             ) : (
               <p className="text-sm text-muted-foreground flex items-start gap-2">
                 <Globe className="h-4 w-4 mt-0.5 shrink-0" />
-                There are no sites linked to your account. Ask the site owner
-                for access, or contact support if you believe this is a
-                mistake.
+                Add your website above to get started — you'll connect Google
+                Search Console right after.
               </p>
             )}
             <Button

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { requireAuth } from "../lib/auth";
-import { requireLegacySiteOwner } from "../lib/site";
+import { requireLegacySiteOwner, getSiteId } from "../lib/site";
 import { queryGscDimension } from "../integrations/gsc";
 
 const router: IRouter = Router();
@@ -102,9 +102,10 @@ function isoDaysAgo(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-async function fetchForUrl(url: string, startDate: string, endDate: string): Promise<UrlResult> {
+async function fetchForUrl(siteId: number, url: string, startDate: string, endDate: string): Promise<UrlResult> {
   try {
     const rows = await queryGscDimension({
+      siteId,
       startDate,
       endDate,
       dimension: "query",
@@ -207,7 +208,7 @@ router.post("/gsc/bulk-queries", requireAuth, requireLegacySiteOwner, async (req
 
   try {
     const results = await runWithConcurrency(urls, CONCURRENCY, (u) =>
-      fetchForUrl(u, startDate, endDate),
+      fetchForUrl(getSiteId(req), u, startDate, endDate),
     );
     res.json({
       range: { startDate, endDate, days },

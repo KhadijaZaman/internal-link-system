@@ -115,8 +115,8 @@ export async function runGscInventoryAndLosers(): Promise<void> {
   logger.info({ currStart, currEnd, prevStart, prevEnd }, "GSC: pulling rows");
 
   const [currRaw, prevRaw, block] = await Promise.all([
-    queryGsc({ startDate: currStart, endDate: currEnd }),
-    queryGsc({ startDate: prevStart, endDate: prevEnd }),
+    queryGsc({ siteId: site.id, startDate: currStart, endDate: currEnd }),
+    queryGsc({ siteId: site.id, startDate: prevStart, endDate: prevEnd }),
     loadBlockRegexes(site.id),
   ]);
   const curr = collapseRows(currRaw, block, site.host);

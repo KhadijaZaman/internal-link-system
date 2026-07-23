@@ -32,8 +32,8 @@ export async function runSyncBingPages(): Promise<void> {
   // Bing sync stays legacy-site-only until per-site job scheduling (task #20).
   const site = await getLegacySite();
   const [pageRows, queryRows, blockRegexes] = await Promise.all([
-    fetchBingPageStats(site.host),
-    fetchBingQueryStats(site.host),
+    fetchBingPageStats(site.id, site.host),
+    fetchBingQueryStats(site.id, site.host),
     loadBlockRegexes(site.id),
   ]);
   const now = new Date();
