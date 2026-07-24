@@ -24,3 +24,4 @@
 - [Multi-tenant auth gates](multi-tenant-auth-gates.md) — after swapping admin-password for self-signup auth, audit every auth-only route for missing ownership gates; spend/proxy routes evade scoping sweeps.
 - [Orval inline body collision](orval-inline-body-collision.md) — inline requestBody schemas make orval emit a zod const and TS type with the same *Body name → star-export clash; always $ref a named component.
 - [Per-site background jobs](per-site-jobs.md) — crons iterate sites sequentially with isolated failures; budget-truncated crawls must skip reconcile-deletes or they mass-delete inventory.
+- [GitHub push from the workspace](github-push-technique.md) — get token via unfiltered connectors API (listConnections can miss it); verify pushes with ls-remote, the sandbox ref-lock error can fire after success.
