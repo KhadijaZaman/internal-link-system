@@ -972,30 +972,33 @@ export const DeleteTrackedSubmissionResponse = zod.object({
 
 
 /**
- * @summary GSC performance for a tracked URL and its target keyword
+ * @summary Comprehensive per-URL report — GSC daily, Bing weekly, GA4 daily, indexing, AI visibility, rule-based action plan (free APIs + stored data only)
  */
-export const GetTrackedSubmissionPerformanceParams = zod.object({
+export const GetTrackedSubmissionReportParams = zod.object({
   "id": zod.coerce.number()
 })
 
-export const getTrackedSubmissionPerformanceQueryDaysDefault = 28;
-export const getTrackedSubmissionPerformanceQueryDaysMin = 7;
-export const getTrackedSubmissionPerformanceQueryDaysMax = 180;
+export const getTrackedSubmissionReportQueryDaysDefault = 28;
+export const getTrackedSubmissionReportQueryDaysMin = 7;
+export const getTrackedSubmissionReportQueryDaysMax = 180;
 
-export const getTrackedSubmissionPerformanceQueryCountryRegExp = new RegExp('^[A-Za-z]{3}$');
+export const getTrackedSubmissionReportQueryCountryRegExp = new RegExp('^[A-Za-z]{3}$');
 
 
-export const GetTrackedSubmissionPerformanceQueryParams = zod.object({
-  "days": zod.coerce.number().min(getTrackedSubmissionPerformanceQueryDaysMin).max(getTrackedSubmissionPerformanceQueryDaysMax).default(getTrackedSubmissionPerformanceQueryDaysDefault),
-  "country": zod.coerce.string().regex(getTrackedSubmissionPerformanceQueryCountryRegExp).optional().describe('ISO 3166-1 alpha-3 country code (e.g. usa, gbr, ind); omit for worldwide')
+export const GetTrackedSubmissionReportQueryParams = zod.object({
+  "days": zod.coerce.number().min(getTrackedSubmissionReportQueryDaysMin).max(getTrackedSubmissionReportQueryDaysMax).default(getTrackedSubmissionReportQueryDaysDefault),
+  "country": zod.coerce.string().regex(getTrackedSubmissionReportQueryCountryRegExp).optional().describe('ISO 3166-1 alpha-3 country code (e.g. usa, gbr, ind); omit for worldwide. Applies to the GSC section only.')
 })
 
-export const GetTrackedSubmissionPerformanceResponse = zod.object({
+export const GetTrackedSubmissionReportResponse = zod.object({
   "id": zod.number(),
   "url": zod.string(),
   "keyword": zod.string().nullable(),
   "startDate": zod.coerce.date(),
   "endDate": zod.coerce.date(),
+  "gsc": zod.object({
+  "status": zod.enum(['ok', 'not_connected', 'error']),
+  "data": zod.union([zod.object({
   "overallSeries": zod.array(zod.object({
   "date": zod.coerce.date(),
   "clicks": zod.number(),
@@ -1041,6 +1044,100 @@ export const GetTrackedSubmissionPerformanceResponse = zod.object({
   "ctr": zod.number(),
   "position": zod.number(),
   "isTracked": zod.boolean()
+}))
+}),zod.null()])
+}),
+  "bing": zod.object({
+  "status": zod.enum(['ok', 'not_connected', 'error']),
+  "data": zod.union([zod.object({
+  "weeks": zod.array(zod.object({
+  "weekStart": zod.coerce.date(),
+  "clicks": zod.number(),
+  "impressions": zod.number(),
+  "position": zod.number().nullable()
+})),
+  "totals": zod.object({
+  "clicks": zod.number(),
+  "impressions": zod.number(),
+  "position": zod.number().nullable()
+}),
+  "lastSyncDate": zod.string().nullable()
+}),zod.null()])
+}),
+  "ga4": zod.object({
+  "status": zod.enum(['ok', 'not_connected', 'error']),
+  "data": zod.union([zod.object({
+  "series": zod.array(zod.object({
+  "date": zod.coerce.date(),
+  "sessions": zod.number(),
+  "engagedSessions": zod.number(),
+  "engagementRate": zod.number(),
+  "avgEngagementTime": zod.number(),
+  "keyEvents": zod.number(),
+  "aiSessions": zod.number()
+})),
+  "totals": zod.object({
+  "sessions": zod.number(),
+  "engagedSessions": zod.number(),
+  "engagementRate": zod.number(),
+  "avgEngagementTime": zod.number(),
+  "keyEvents": zod.number(),
+  "aiSessions": zod.number()
+}),
+  "prevTotals": zod.union([zod.object({
+  "sessions": zod.number(),
+  "engagedSessions": zod.number(),
+  "engagementRate": zod.number(),
+  "avgEngagementTime": zod.number(),
+  "keyEvents": zod.number(),
+  "aiSessions": zod.number()
+}),zod.null()])
+}),zod.null()])
+}),
+  "indexing": zod.object({
+  "status": zod.enum(['ok', 'not_connected', 'error']),
+  "data": zod.union([zod.object({
+  "verdict": zod.string().nullable(),
+  "coverageState": zod.string().nullable(),
+  "indexingState": zod.string().nullable(),
+  "robotsTxtState": zod.string().nullable(),
+  "pageFetchState": zod.string().nullable(),
+  "lastCrawlTime": zod.string().nullable(),
+  "googleCanonical": zod.string().nullable(),
+  "userCanonical": zod.string().nullable(),
+  "inspectedAt": zod.string()
+}),zod.null()])
+}),
+  "aiCitations": zod.object({
+  "status": zod.enum(['ok', 'error']),
+  "data": zod.union([zod.object({
+  "hasUpload": zod.boolean(),
+  "citations": zod.number(),
+  "uploadedAt": zod.string().nullable(),
+  "uploadLabel": zod.string().nullable(),
+  "groundingQueries": zod.array(zod.object({
+  "query": zod.string(),
+  "citations": zod.number()
+}))
+}),zod.null()])
+}),
+  "serpCompetitors": zod.union([zod.object({
+  "keyword": zod.string(),
+  "runDate": zod.string(),
+  "competitors": zod.array(zod.object({
+  "url": zod.string(),
+  "position": zod.number(),
+  "isOwn": zod.boolean()
+}))
+}),zod.null()]),
+  "actionPlan": zod.array(zod.object({
+  "id": zod.string(),
+  "priority": zod.enum(['do_first', 'next', 'later']),
+  "title": zod.string(),
+  "why": zod.string(),
+  "steps": zod.array(zod.string()),
+  "link": zod.string().nullable(),
+  "linkLabel": zod.string().nullable()
 }))
 })
 

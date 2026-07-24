@@ -24,12 +24,18 @@ would silently reintroduce the cost they rejected.
 for tracked URLs, confirm intent first — it crosses the cost boundary. Keep the
 tracked-submissions route free of fetch/crawl/A/I calls.
 
-## Keyword tracking / performance dialog (GSC-only exception)
+## Keyword tracking / report dialog (read-only-data exception)
 
-Each tracked URL may carry one optional target `keyword`. The performance
-endpoint (`GET /tracked-submissions/:id/performance`) is the ONLY processing
-allowed for tracked URLs, and it calls the Google Search Console API
-exclusively — still no page fetch, crawl, or AI.
+Each tracked URL may carry one optional target `keyword`. The per-URL report
+endpoint (`GET /tracked-submissions/:id/report` — superseded the old
+`/performance` route in Jul 2026) is the ONLY processing allowed for tracked
+URLs. It may call ONLY free/already-paid-for sources: GSC query + URL
+inspection, GA4 Data API, Bing Webmaster API rows already synced to the DB,
+uploaded AI-citation rows, and SERP rows stored by past clustering runs —
+still no page fetch, crawl, AI call, or paid SERP query. Sections load
+independently (per-section status ok/not_connected/error) so one dead
+integration never blanks the report; the action plan is rule-based
+(lib/actionPlan.ts), never LLM-generated.
 
 - One GSC call per scope spans previous+current window (dimension=date, split
   locally at the window boundary) — halves quota use vs two calls.

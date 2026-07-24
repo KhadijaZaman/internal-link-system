@@ -71,7 +71,7 @@ import type {
   GetLoserPagesParams,
   GetPagesReportParams,
   GetQueryInsightsParams,
-  GetTrackedSubmissionPerformanceParams,
+  GetTrackedSubmissionReportParams,
   GetUrlLinkBreakdownParams,
   GscBatchInspectionRequest,
   GscBatchInspectionResponse,
@@ -139,7 +139,7 @@ import type {
   TopicalMapDetail,
   TopicalMapNode,
   TopicalMapSummary,
-  TrackedPerformance,
+  TrackedReport,
   TrackedSubmission,
   TrackedSubmissionCreate,
   TrackedSubmissionUpdate,
@@ -3150,8 +3150,8 @@ export const useDeleteTrackedSubmission = <TError = ErrorType<unknown>,
       return useMutation(getDeleteTrackedSubmissionMutationOptions(options));
     }
 
-export const getGetTrackedSubmissionPerformanceUrl = (id: number,
-    params?: GetTrackedSubmissionPerformanceParams,) => {
+export const getGetTrackedSubmissionReportUrl = (id: number,
+    params?: GetTrackedSubmissionReportParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -3163,16 +3163,16 @@ export const getGetTrackedSubmissionPerformanceUrl = (id: number,
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/tracked-submissions/${id}/performance?${stringifiedParams}` : `/api/tracked-submissions/${id}/performance`
+  return stringifiedParams.length > 0 ? `/api/tracked-submissions/${id}/report?${stringifiedParams}` : `/api/tracked-submissions/${id}/report`
 }
 
 /**
- * @summary GSC performance for a tracked URL and its target keyword
+ * @summary Comprehensive per-URL report — GSC daily, Bing weekly, GA4 daily, indexing, AI visibility, rule-based action plan (free APIs + stored data only)
  */
-export const getTrackedSubmissionPerformance = async (id: number,
-    params?: GetTrackedSubmissionPerformanceParams, options?: RequestInit): Promise<TrackedPerformance> => {
+export const getTrackedSubmissionReport = async (id: number,
+    params?: GetTrackedSubmissionReportParams, options?: RequestInit): Promise<TrackedReport> => {
 
-  return customFetch<TrackedPerformance>(getGetTrackedSubmissionPerformanceUrl(id,params),
+  return customFetch<TrackedReport>(getGetTrackedSubmissionReportUrl(id,params),
   {
     ...options,
     method: 'GET'
@@ -3185,48 +3185,48 @@ export const getTrackedSubmissionPerformance = async (id: number,
 
 
 
-export const getGetTrackedSubmissionPerformanceQueryKey = (id: number,
-    params?: GetTrackedSubmissionPerformanceParams,) => {
+export const getGetTrackedSubmissionReportQueryKey = (id: number,
+    params?: GetTrackedSubmissionReportParams,) => {
     return [
-    `/api/tracked-submissions/${id}/performance`, ...(params ? [params] : [])
+    `/api/tracked-submissions/${id}/report`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetTrackedSubmissionPerformanceQueryOptions = <TData = Awaited<ReturnType<typeof getTrackedSubmissionPerformance>>, TError = ErrorType<void>>(id: number,
-    params?: GetTrackedSubmissionPerformanceParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrackedSubmissionPerformance>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetTrackedSubmissionReportQueryOptions = <TData = Awaited<ReturnType<typeof getTrackedSubmissionReport>>, TError = ErrorType<void>>(id: number,
+    params?: GetTrackedSubmissionReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrackedSubmissionReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetTrackedSubmissionPerformanceQueryKey(id,params);
+  const queryKey =  queryOptions?.queryKey ?? getGetTrackedSubmissionReportQueryKey(id,params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTrackedSubmissionPerformance>>> = ({ signal }) => getTrackedSubmissionPerformance(id,params, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTrackedSubmissionReport>>> = ({ signal }) => getTrackedSubmissionReport(id,params, { signal, ...requestOptions });
 
 
 
 
 
-   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTrackedSubmissionPerformance>>, TError, TData> & { queryKey: QueryKey }
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTrackedSubmissionReport>>, TError, TData> & { queryKey: QueryKey }
 }
 
-export type GetTrackedSubmissionPerformanceQueryResult = NonNullable<Awaited<ReturnType<typeof getTrackedSubmissionPerformance>>>
-export type GetTrackedSubmissionPerformanceQueryError = ErrorType<void>
+export type GetTrackedSubmissionReportQueryResult = NonNullable<Awaited<ReturnType<typeof getTrackedSubmissionReport>>>
+export type GetTrackedSubmissionReportQueryError = ErrorType<void>
 
 
 /**
- * @summary GSC performance for a tracked URL and its target keyword
+ * @summary Comprehensive per-URL report — GSC daily, Bing weekly, GA4 daily, indexing, AI visibility, rule-based action plan (free APIs + stored data only)
  */
 
-export function useGetTrackedSubmissionPerformance<TData = Awaited<ReturnType<typeof getTrackedSubmissionPerformance>>, TError = ErrorType<void>>(
+export function useGetTrackedSubmissionReport<TData = Awaited<ReturnType<typeof getTrackedSubmissionReport>>, TError = ErrorType<void>>(
  id: number,
-    params?: GetTrackedSubmissionPerformanceParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrackedSubmissionPerformance>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+    params?: GetTrackedSubmissionReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrackedSubmissionReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetTrackedSubmissionPerformanceQueryOptions(id,params,options)
+  const queryOptions = getGetTrackedSubmissionReportQueryOptions(id,params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

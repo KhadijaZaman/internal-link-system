@@ -6,14 +6,14 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type GetTrackedSubmissionPerformanceParams = {
+export type GetTrackedSubmissionReportParams = {
 /**
  * @minimum 7
  * @maximum 180
  */
 days?: number;
 /**
- * ISO 3166-1 alpha-3 country code (e.g. usa, gbr, ind); omit for worldwide
+ * ISO 3166-1 alpha-3 country code (e.g. usa, gbr, ind); omit for worldwide. Applies to the GSC section only.
  * @pattern ^[A-Za-z]{3}$
  */
 country?: string;

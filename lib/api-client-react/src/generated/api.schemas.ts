@@ -1211,13 +1211,7 @@ export interface GscMetricsTotals {
   position: number;
 }
 
-export interface TrackedPerformance {
-  id: number;
-  url: string;
-  /** @nullable */
-  keyword: string | null;
-  startDate: string;
-  endDate: string;
+export interface TrackedGscData {
   overallSeries: GscTimeseriesPoint[];
   overallTotals: GscMetricsTotals;
   overallPrevTotals: GscMetricsTotals | null;
@@ -1225,6 +1219,206 @@ export interface TrackedPerformance {
   keywordTotals: GscMetricsTotals | null;
   keywordPrevTotals: GscMetricsTotals | null;
   topQueries: TrackedQueryRow[];
+}
+
+export type TrackedGscSectionStatus = typeof TrackedGscSectionStatus[keyof typeof TrackedGscSectionStatus];
+
+
+export const TrackedGscSectionStatus = {
+  ok: 'ok',
+  not_connected: 'not_connected',
+  error: 'error',
+} as const;
+
+export interface TrackedGscSection {
+  status: TrackedGscSectionStatus;
+  data: TrackedGscData | null;
+}
+
+export interface BingWeekPoint {
+  weekStart: string;
+  clicks: number;
+  impressions: number;
+  /** @nullable */
+  position: number | null;
+}
+
+export interface TrackedBingTotals {
+  clicks: number;
+  impressions: number;
+  /** @nullable */
+  position: number | null;
+}
+
+export interface TrackedBingData {
+  weeks: BingWeekPoint[];
+  totals: TrackedBingTotals;
+  /** @nullable */
+  lastSyncDate: string | null;
+}
+
+export type TrackedBingSectionStatus = typeof TrackedBingSectionStatus[keyof typeof TrackedBingSectionStatus];
+
+
+export const TrackedBingSectionStatus = {
+  ok: 'ok',
+  not_connected: 'not_connected',
+  error: 'error',
+} as const;
+
+export interface TrackedBingSection {
+  status: TrackedBingSectionStatus;
+  data: TrackedBingData | null;
+}
+
+export interface Ga4DayPoint {
+  date: string;
+  sessions: number;
+  engagedSessions: number;
+  engagementRate: number;
+  avgEngagementTime: number;
+  keyEvents: number;
+  aiSessions: number;
+}
+
+export interface Ga4Totals {
+  sessions: number;
+  engagedSessions: number;
+  engagementRate: number;
+  avgEngagementTime: number;
+  keyEvents: number;
+  aiSessions: number;
+}
+
+export interface TrackedGa4Data {
+  series: Ga4DayPoint[];
+  totals: Ga4Totals;
+  prevTotals: Ga4Totals | null;
+}
+
+export type TrackedGa4SectionStatus = typeof TrackedGa4SectionStatus[keyof typeof TrackedGa4SectionStatus];
+
+
+export const TrackedGa4SectionStatus = {
+  ok: 'ok',
+  not_connected: 'not_connected',
+  error: 'error',
+} as const;
+
+export interface TrackedGa4Section {
+  status: TrackedGa4SectionStatus;
+  data: TrackedGa4Data | null;
+}
+
+export interface TrackedIndexingData {
+  /** @nullable */
+  verdict: string | null;
+  /** @nullable */
+  coverageState: string | null;
+  /** @nullable */
+  indexingState: string | null;
+  /** @nullable */
+  robotsTxtState: string | null;
+  /** @nullable */
+  pageFetchState: string | null;
+  /** @nullable */
+  lastCrawlTime: string | null;
+  /** @nullable */
+  googleCanonical: string | null;
+  /** @nullable */
+  userCanonical: string | null;
+  inspectedAt: string;
+}
+
+export type TrackedIndexingSectionStatus = typeof TrackedIndexingSectionStatus[keyof typeof TrackedIndexingSectionStatus];
+
+
+export const TrackedIndexingSectionStatus = {
+  ok: 'ok',
+  not_connected: 'not_connected',
+  error: 'error',
+} as const;
+
+export interface TrackedIndexingSection {
+  status: TrackedIndexingSectionStatus;
+  data: TrackedIndexingData | null;
+}
+
+export interface TrackedGroundingQuery {
+  query: string;
+  citations: number;
+}
+
+export interface TrackedAiCitationsData {
+  hasUpload: boolean;
+  citations: number;
+  /** @nullable */
+  uploadedAt: string | null;
+  /** @nullable */
+  uploadLabel: string | null;
+  groundingQueries: TrackedGroundingQuery[];
+}
+
+export type TrackedAiCitationsSectionStatus = typeof TrackedAiCitationsSectionStatus[keyof typeof TrackedAiCitationsSectionStatus];
+
+
+export const TrackedAiCitationsSectionStatus = {
+  ok: 'ok',
+  error: 'error',
+} as const;
+
+export interface TrackedAiCitationsSection {
+  status: TrackedAiCitationsSectionStatus;
+  data: TrackedAiCitationsData | null;
+}
+
+export interface TrackedSerpCompetitor {
+  url: string;
+  position: number;
+  isOwn: boolean;
+}
+
+export interface TrackedSerpData {
+  keyword: string;
+  runDate: string;
+  competitors: TrackedSerpCompetitor[];
+}
+
+export type TrackedActionPriority = typeof TrackedActionPriority[keyof typeof TrackedActionPriority];
+
+
+export const TrackedActionPriority = {
+  do_first: 'do_first',
+  next: 'next',
+  later: 'later',
+} as const;
+
+export interface TrackedAction {
+  id: string;
+  priority: TrackedActionPriority;
+  title: string;
+  why: string;
+  steps: string[];
+  /** @nullable */
+  link: string | null;
+  /** @nullable */
+  linkLabel: string | null;
+}
+
+export interface TrackedReport {
+  id: number;
+  url: string;
+  /** @nullable */
+  keyword: string | null;
+  startDate: string;
+  endDate: string;
+  gsc: TrackedGscSection;
+  bing: TrackedBingSection;
+  ga4: TrackedGa4Section;
+  indexing: TrackedIndexingSection;
+  aiCitations: TrackedAiCitationsSection;
+  serpCompetitors: TrackedSerpData | null;
+  actionPlan: TrackedAction[];
 }
 
 export interface KeywordReport {
@@ -1348,15 +1542,6 @@ export interface Ga4PageRow {
   engagementRate: number;
   sessions: number;
   engagedSessions: number;
-  avgEngagementTime: number;
-  keyEvents: number;
-  aiSessions: number;
-}
-
-export interface Ga4Totals {
-  sessions: number;
-  engagedSessions: number;
-  engagementRate: number;
   avgEngagementTime: number;
   keyEvents: number;
   aiSessions: number;
@@ -2803,14 +2988,14 @@ export type GetQueryInsightsParams = {
 q: string;
 };
 
-export type GetTrackedSubmissionPerformanceParams = {
+export type GetTrackedSubmissionReportParams = {
 /**
  * @minimum 7
  * @maximum 180
  */
 days?: number;
 /**
- * ISO 3166-1 alpha-3 country code (e.g. usa, gbr, ind); omit for worldwide
+ * ISO 3166-1 alpha-3 country code (e.g. usa, gbr, ind); omit for worldwide. Applies to the GSC section only.
  * @pattern ^[A-Za-z]{3}$
  */
 country?: string;

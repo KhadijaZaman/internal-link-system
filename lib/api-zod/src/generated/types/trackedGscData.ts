@@ -9,13 +9,7 @@ import type { GscMetricsTotals } from './gscMetricsTotals';
 import type { GscTimeseriesPoint } from './gscTimeseriesPoint';
 import type { TrackedQueryRow } from './trackedQueryRow';
 
-export interface TrackedPerformance {
-  id: number;
-  url: string;
-  /** @nullable */
-  keyword: string | null;
-  startDate: Date;
-  endDate: Date;
+export interface TrackedGscData {
   overallSeries: GscTimeseriesPoint[];
   overallTotals: GscMetricsTotals;
   overallPrevTotals: GscMetricsTotals | null;

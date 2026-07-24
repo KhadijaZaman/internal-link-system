@@ -2,6 +2,15 @@ import { google } from "googleapis";
 import { withCache } from "./gsc";
 import { canonicalPath, isBlockedPath, loadBlockRegexes, normalizeHost } from "../lib/urlCanon";
 import { getGa4Creds } from "../lib/siteIntegrations";
+import {
+  ORGANIC_CHANNEL_GROUP,
+  AI_CHANNEL_GROUP,
+  AI_SOURCE_RE,
+  buildGa4DailySeries,
+  type Ga4DayAgg,
+  type Ga4DailyEngagementRow,
+  type Ga4DailyKeyEventRow,
+} from "../lib/ga4Daily";
 
 /** Minimal site scope needed by GA4 fetches. */
 export interface Ga4Site {
@@ -33,14 +42,9 @@ export type Ga4Channel = "organic" | "all";
 // in GA4 the runReport 400s, so keep this list in sync with the property.
 const KEY_EVENT_METRICS = ["keyEvents:signup_success", "keyEvents:invitee_meeting_scheduled"];
 
-const ORGANIC_CHANNEL_GROUP = "Organic Search";
-// The property's default channel group already tags an "AI Assistant"
-// channel, but some AI referrals still land under plain "Referral"
-// (e.g. chatgpt.com) or "Unassigned" (e.g. bare "perplexity"), so we
-// ALSO match by source string. Observed sources: chatgpt.com, claude.ai,
-// gemini.google.com, perplexity(.ai), copilot.com.
-const AI_CHANNEL_GROUP = "AI Assistant";
-const AI_SOURCE_RE = /chatgpt|chat\.openai|perplexity|gemini\.google|copilot|claude/i;
+// ORGANIC_CHANNEL_GROUP / AI_CHANNEL_GROUP / AI_SOURCE_RE live in
+// lib/ga4Daily.ts (pure, unit-tested) so per-page daily series and the
+// pages rollup can never disagree on what counts as an AI referral.
 
 export interface Ga4PageRow {
   path: string;
@@ -265,4 +269,105 @@ export async function queryGa4Pages(opts: {
     aiSessions: acc.aiSessions,
   };
   return { rows, totals };
+}
+
+/**
+ * Per-day series for ONE landing page (all channels), cached 30 min.
+ * Two runReports per call: host-filtered engagement by date, plus key
+ * events WITHOUT the host filter (they fire on the app/Calendly hosts —
+ * same rule as fetchRawPathAggs). Both fetches narrow with a BEGINS_WITH
+ * landing-page filter to keep responses small; exact matching happens in
+ * the pure builder via canonical-path equality.
+ */
+export async function queryGa4PathDaily(opts: {
+  startDate: string;
+  endDate: string;
+  path: string;
+  site: Ga4Site;
+}): Promise<Ga4DayAgg[]> {
+  const { startDate, endDate, path, site } = opts;
+  return withCache(
+    `s${site.id}|ga4:path-daily:v1|${path}|${startDate}|${endDate}`,
+    GA4_CACHE_TTL_MS,
+    async () => {
+      const { token, propertyId: property } = await ga4Auth(site.id);
+      const dateRanges = [{ startDate, endDate }];
+      const pathFilter = {
+        filter: {
+          fieldName: "landingPage",
+          stringFilter: { matchType: "BEGINS_WITH", value: path },
+        },
+      };
+
+      const [engagement, keyEventsReport] = await Promise.all([
+        runReport(token, property, {
+          dateRanges,
+          dimensions: [
+            { name: "date" },
+            { name: "landingPage" },
+            { name: "sessionDefaultChannelGroup" },
+            { name: "sessionSource" },
+          ],
+          metrics: [
+            { name: "sessions" },
+            { name: "engagedSessions" },
+            { name: "userEngagementDuration" },
+          ],
+          dimensionFilter: {
+            andGroup: {
+              expressions: [
+                {
+                  filter: {
+                    fieldName: "hostName",
+                    stringFilter: { matchType: "EXACT", value: normalizeHost(site.host) },
+                  },
+                },
+                pathFilter,
+              ],
+            },
+          },
+          limit: "100000",
+        }),
+        // Key events: NO host filter (see fetchRawPathAggs) — landing page is
+        // session-scoped, so conversions still attribute to marketing paths.
+        runReport(token, property, {
+          dateRanges,
+          dimensions: [{ name: "date" }, { name: "landingPage" }],
+          metrics: KEY_EVENT_METRICS.map((name) => ({ name })),
+          dimensionFilter: pathFilter,
+          limit: "100000",
+        }),
+      ]);
+
+      const engagementRows: Ga4DailyEngagementRow[] = (engagement.rows ?? []).map((r) => {
+        const d = r.dimensionValues ?? [];
+        const m = r.metricValues ?? [];
+        return {
+          date: d[0]?.value ?? "",
+          landingPage: d[1]?.value ?? "",
+          channelGroup: d[2]?.value ?? "",
+          source: d[3]?.value ?? "",
+          sessions: Number(m[0]?.value ?? 0),
+          engagedSessions: Number(m[1]?.value ?? 0),
+          engagementDuration: Number(m[2]?.value ?? 0),
+        };
+      });
+
+      const keyEventRows: Ga4DailyKeyEventRow[] = (keyEventsReport.rows ?? []).map((r) => {
+        const d = r.dimensionValues ?? [];
+        const m = r.metricValues ?? [];
+        let keyEvents = 0;
+        for (let i = 0; i < KEY_EVENT_METRICS.length; i++) {
+          keyEvents += Number(m[i]?.value ?? 0);
+        }
+        return {
+          date: d[0]?.value ?? "",
+          landingPage: d[1]?.value ?? "",
+          keyEvents,
+        };
+      });
+
+      return buildGa4DailySeries({ engagementRows, keyEventRows, path, siteHost: site.host });
+    },
+  );
 }

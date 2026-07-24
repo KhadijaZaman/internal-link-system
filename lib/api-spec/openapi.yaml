@@ -775,11 +775,11 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OkResponse"
-  /tracked-submissions/{id}/performance:
+  /tracked-submissions/{id}/report:
     get:
-      operationId: getTrackedSubmissionPerformance
+      operationId: getTrackedSubmissionReport
       tags: [trackedSubmissions]
-      summary: GSC performance for a tracked URL and its target keyword
+      summary: Comprehensive per-URL report — GSC daily, Bing weekly, GA4 daily, indexing, AI visibility, rule-based action plan (free APIs + stored data only)
       parameters:
         - in: path
           name: id
@@ -792,15 +792,15 @@ paths:
         - in: query
           name: country
           required: false
-          description: ISO 3166-1 alpha-3 country code (e.g. usa, gbr, ind); omit for worldwide
+          description: ISO 3166-1 alpha-3 country code (e.g. usa, gbr, ind); omit for worldwide. Applies to the GSC section only.
           schema: { type: string, pattern: "^[A-Za-z]{3}$" }
       responses:
         "200":
-          description: Daily keyword and page performance with previous-window comparison
+          description: Multi-source report with per-section fail-soft statuses and previous-window comparisons
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TrackedPerformance"
+                $ref: "#/components/schemas/TrackedReport"
         "404":
           description: Not found
   /tracked-submissions/movement-sheet:
@@ -3221,15 +3221,10 @@ components:
         ctr: { type: number }
         position: { type: number }
         isTracked: { type: boolean }
-    TrackedPerformance:
+    TrackedGscData:
       type: object
       required:
         [
-          id,
-          url,
-          keyword,
-          startDate,
-          endDate,
           overallSeries,
           overallTotals,
           overallPrevTotals,
@@ -3239,11 +3234,6 @@ components:
           topQueries,
         ]
       properties:
-        id: { type: integer }
-        url: { type: string }
-        keyword: { type: ["string", "null"] }
-        startDate: { type: string, format: date }
-        endDate: { type: string, format: date }
         overallSeries:
           type: array
           items: { $ref: "#/components/schemas/GscTimeseriesPoint" }
@@ -3266,6 +3256,208 @@ components:
         topQueries:
           type: array
           items: { $ref: "#/components/schemas/TrackedQueryRow" }
+    TrackedGscSection:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [ok, not_connected, error] }
+        data:
+          oneOf:
+            - $ref: "#/components/schemas/TrackedGscData"
+            - type: "null"
+    BingWeekPoint:
+      type: object
+      required: [weekStart, clicks, impressions, position]
+      properties:
+        weekStart: { type: string, format: date }
+        clicks: { type: integer }
+        impressions: { type: integer }
+        # Bing reports -1 for unknown positions; stored/served as null.
+        position: { type: ["number", "null"] }
+    TrackedBingTotals:
+      type: object
+      required: [clicks, impressions, position]
+      properties:
+        clicks: { type: integer }
+        impressions: { type: integer }
+        position: { type: ["number", "null"] }
+    TrackedBingData:
+      type: object
+      required: [weeks, totals, lastSyncDate]
+      properties:
+        # Bing's API only reports weekly buckets over a fixed rolling ~6-month window.
+        weeks:
+          type: array
+          items: { $ref: "#/components/schemas/BingWeekPoint" }
+        totals: { $ref: "#/components/schemas/TrackedBingTotals" }
+        lastSyncDate: { type: ["string", "null"] }
+    TrackedBingSection:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [ok, not_connected, error] }
+        data:
+          oneOf:
+            - $ref: "#/components/schemas/TrackedBingData"
+            - type: "null"
+    Ga4DayPoint:
+      type: object
+      required: [date, sessions, engagedSessions, engagementRate, avgEngagementTime, keyEvents, aiSessions]
+      properties:
+        date: { type: string, format: date }
+        sessions: { type: integer }
+        engagedSessions: { type: integer }
+        engagementRate: { type: number }
+        avgEngagementTime: { type: number }
+        keyEvents: { type: integer }
+        aiSessions: { type: integer }
+    TrackedGa4Data:
+      type: object
+      required: [series, totals, prevTotals]
+      properties:
+        series:
+          type: array
+          items: { $ref: "#/components/schemas/Ga4DayPoint" }
+        totals: { $ref: "#/components/schemas/Ga4Totals" }
+        prevTotals:
+          oneOf:
+            - $ref: "#/components/schemas/Ga4Totals"
+            - type: "null"
+    TrackedGa4Section:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [ok, not_connected, error] }
+        data:
+          oneOf:
+            - $ref: "#/components/schemas/TrackedGa4Data"
+            - type: "null"
+    TrackedIndexingData:
+      type: object
+      required:
+        [
+          verdict,
+          coverageState,
+          indexingState,
+          robotsTxtState,
+          pageFetchState,
+          lastCrawlTime,
+          googleCanonical,
+          userCanonical,
+          inspectedAt,
+        ]
+      properties:
+        verdict: { type: ["string", "null"] }
+        coverageState: { type: ["string", "null"] }
+        indexingState: { type: ["string", "null"] }
+        robotsTxtState: { type: ["string", "null"] }
+        pageFetchState: { type: ["string", "null"] }
+        lastCrawlTime: { type: ["string", "null"] }
+        googleCanonical: { type: ["string", "null"] }
+        userCanonical: { type: ["string", "null"] }
+        inspectedAt: { type: string }
+    TrackedIndexingSection:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [ok, not_connected, error] }
+        data:
+          oneOf:
+            - $ref: "#/components/schemas/TrackedIndexingData"
+            - type: "null"
+    TrackedGroundingQuery:
+      type: object
+      required: [query, citations]
+      properties:
+        query: { type: string }
+        citations: { type: integer }
+    TrackedAiCitationsData:
+      type: object
+      required: [hasUpload, citations, uploadedAt, uploadLabel, groundingQueries]
+      properties:
+        hasUpload: { type: boolean }
+        # Citations for this page in the newest "pages" upload (0 when the page isn't listed).
+        citations: { type: integer }
+        uploadedAt: { type: ["string", "null"] }
+        uploadLabel: { type: ["string", "null"] }
+        groundingQueries:
+          type: array
+          items: { $ref: "#/components/schemas/TrackedGroundingQuery" }
+    TrackedAiCitationsSection:
+      type: object
+      required: [status, data]
+      properties:
+        status: { type: string, enum: [ok, error] }
+        data:
+          oneOf:
+            - $ref: "#/components/schemas/TrackedAiCitationsData"
+            - type: "null"
+    TrackedSerpCompetitor:
+      type: object
+      required: [url, position, isOwn]
+      properties:
+        url: { type: string }
+        position: { type: number }
+        isOwn: { type: boolean }
+    TrackedSerpData:
+      type: object
+      required: [keyword, runDate, competitors]
+      properties:
+        keyword: { type: string }
+        # When the stored SERP snapshot was captured (staleness label).
+        runDate: { type: string }
+        competitors:
+          type: array
+          items: { $ref: "#/components/schemas/TrackedSerpCompetitor" }
+    TrackedAction:
+      type: object
+      required: [id, priority, title, why, steps, link, linkLabel]
+      properties:
+        id: { type: string }
+        priority: { type: string, enum: [do_first, next, later] }
+        title: { type: string }
+        # Plain-English rationale including the actual numbers behind the rule.
+        why: { type: string }
+        steps:
+          type: array
+          items: { type: string }
+        link: { type: ["string", "null"] }
+        linkLabel: { type: ["string", "null"] }
+    TrackedReport:
+      type: object
+      required:
+        [
+          id,
+          url,
+          keyword,
+          startDate,
+          endDate,
+          gsc,
+          bing,
+          ga4,
+          indexing,
+          aiCitations,
+          serpCompetitors,
+          actionPlan,
+        ]
+      properties:
+        id: { type: integer }
+        url: { type: string }
+        keyword: { type: ["string", "null"] }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        gsc: { $ref: "#/components/schemas/TrackedGscSection" }
+        bing: { $ref: "#/components/schemas/TrackedBingSection" }
+        ga4: { $ref: "#/components/schemas/TrackedGa4Section" }
+        indexing: { $ref: "#/components/schemas/TrackedIndexingSection" }
+        aiCitations: { $ref: "#/components/schemas/TrackedAiCitationsSection" }
+        serpCompetitors:
+          oneOf:
+            - $ref: "#/components/schemas/TrackedSerpData"
+            - type: "null"
+        actionPlan:
+          type: array
+          items: { $ref: "#/components/schemas/TrackedAction" }
     KeywordReport:
       type: object
       required: [url, keyword, startDate, endDate, series, totals, prevTotals, pageTotals]

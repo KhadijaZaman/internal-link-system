@@ -30,7 +30,7 @@ const router: IRouter = Router();
  * joins only exist there — live GSC calls per range would burn quota).
  * Mirrors the action queue's fix_cannibalization rules via insights.ts.
  */
-async function loadCannibalizedQueries(siteId: number): Promise<{
+export async function loadCannibalizedQueries(siteId: number): Promise<{
   snapshotDate: string | null;
   byQuery: Map<string, string[]>;
 }> {
