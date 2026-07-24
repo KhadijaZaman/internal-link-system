@@ -217,6 +217,29 @@ function SiteGate({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Signed-out redirect that remembers the originally requested page.
+ * The destination is passed to /sign-in via the `redirect_url` query param,
+ * which Clerk's <SignIn> reads and navigates to after authentication
+ * (through routerPush → stripBase, so we include the base path here).
+ * Plain "/" visits go to /sign-in with no param, preserving today's behavior.
+ */
+function RedirectToSignIn() {
+  const [location] = useLocation();
+  const search = window.location.search;
+  const dest = `${basePath}${location}${search}`;
+  const isPlainHome = location === "/" && !search;
+  return (
+    <Redirect
+      to={
+        isPlainHome
+          ? "/sign-in"
+          : `/sign-in?redirect_url=${encodeURIComponent(dest)}`
+      }
+    />
+  );
+}
+
 function ProtectedRoute({
   component: Component,
 }: {
@@ -234,7 +257,7 @@ function ProtectedRoute({
         </SiteProvider>
       </Show>
       <Show when="signed-out">
-        <Redirect to="/sign-in" />
+        <RedirectToSignIn />
       </Show>
     </>
   );
@@ -247,7 +270,7 @@ function HomeRedirect() {
         <ProtectedRoute component={Dashboard} />
       </Show>
       <Show when="signed-out">
-        <Redirect to="/sign-in" />
+        <RedirectToSignIn />
       </Show>
     </>
   );
