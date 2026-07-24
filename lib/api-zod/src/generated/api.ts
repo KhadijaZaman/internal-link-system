@@ -2053,6 +2053,52 @@ export const GetPagesReportResponse = zod.object({
 
 
 /**
+ * @summary Site-level cross-source SEO insights — GSC + Bing + GA4 + AI citations from stored rollups only (zero external API calls)
+ */
+export const GetSeoInsightsResponse = zod.object({
+  "freshness": zod.object({
+  "gscSyncedAt": zod.coerce.date().nullable(),
+  "ga4SyncedAt": zod.coerce.date().nullable(),
+  "bingSyncedAt": zod.coerce.date().nullable(),
+  "aiCitationsAt": zod.coerce.date().nullable()
+}),
+  "kpis": zod.object({
+  "pages": zod.number(),
+  "gscClicks": zod.number(),
+  "gscImpressions": zod.number(),
+  "bingClicks": zod.number(),
+  "bingImpressions": zod.number(),
+  "aiCitations": zod.number(),
+  "aiSessions": zod.number(),
+  "keyEvents": zod.number(),
+  "missedClicks": zod.number()
+}),
+  "insights": zod.array(zod.object({
+  "id": zod.enum(['low_ctr', 'bing_blind_spot', 'ai_visibility_gap', 'bing_upside', 'declining_queries']),
+  "severity": zod.enum(['issue', 'opportunity', 'watch']),
+  "title": zod.string(),
+  "plainEnglish": zod.string(),
+  "action": zod.string(),
+  "affectedCount": zod.number(),
+  "topPages": zod.array(zod.object({
+  "path": zod.string(),
+  "title": zod.string().nullable(),
+  "gscClicks": zod.number(),
+  "gscImpressions": zod.number(),
+  "gscPosition": zod.number().nullable(),
+  "bingClicks": zod.number(),
+  "bingImpressions": zod.number(),
+  "bingPosition": zod.number().nullable(),
+  "aiCitations": zod.number(),
+  "aiSessions": zod.number(),
+  "keyEvents": zod.number(),
+  "detail": zod.string().nullable()
+}))
+}))
+})
+
+
+/**
  * @summary Country and device breakdown
  */
 export const GetGscGeoQueryParams = zod.object({

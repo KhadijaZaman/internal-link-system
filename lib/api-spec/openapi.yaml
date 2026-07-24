@@ -1347,6 +1347,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PageReportResponse"
+  /insights/overview:
+    get:
+      operationId: getSeoInsights
+      tags: [report]
+      summary: Site-level cross-source SEO insights — GSC + Bing + GA4 + AI citations from stored rollups only (zero external API calls)
+      responses:
+        "200":
+          description: KPI totals, per-source freshness, and computed insight buckets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeoInsightsResponse"
   /gsc/geo:
     get:
       operationId: getGscGeo
@@ -3682,6 +3694,74 @@ components:
           type: array
           items: { $ref: "#/components/schemas/PageReportRow" }
         totals: { $ref: "#/components/schemas/ReportTotals" }
+    SeoInsightPage:
+      type: object
+      required: [path, title, gscClicks, gscImpressions, gscPosition, bingClicks, bingImpressions, bingPosition, aiCitations, aiSessions, keyEvents, detail]
+      properties:
+        path: { type: string }
+        title: { type: ["string", "null"] }
+        gscClicks: { type: integer }
+        gscImpressions: { type: integer }
+        gscPosition: { type: ["number", "null"] }
+        bingClicks: { type: integer }
+        bingImpressions: { type: integer }
+        bingPosition: { type: ["number", "null"] }
+        aiCitations: { type: integer }
+        aiSessions: { type: integer }
+        keyEvents: { type: integer }
+        # One-line insight-specific context (e.g. "~120 clicks/mo missed" or the dropped query).
+        detail: { type: ["string", "null"] }
+    SeoInsight:
+      type: object
+      required: [id, severity, title, plainEnglish, action, affectedCount, topPages]
+      properties:
+        id:
+          type: string
+          enum: [low_ctr, bing_blind_spot, ai_visibility_gap, bing_upside, declining_queries]
+        severity:
+          type: string
+          enum: [issue, opportunity, watch]
+        title: { type: string }
+        # Plain-English one-paragraph explanation of what this means for the site.
+        plainEnglish: { type: string }
+        # Recommended next step, phrased for a non-technical operator.
+        action: { type: string }
+        affectedCount: { type: integer }
+        topPages:
+          type: array
+          items: { $ref: "#/components/schemas/SeoInsightPage" }
+    SeoInsightsFreshness:
+      type: object
+      required: [gscSyncedAt, ga4SyncedAt, bingSyncedAt, aiCitationsAt]
+      properties:
+        gscSyncedAt: { type: ["string", "null"], format: date-time }
+        ga4SyncedAt: { type: ["string", "null"], format: date-time }
+        bingSyncedAt: { type: ["string", "null"], format: date-time }
+        aiCitationsAt: { type: ["string", "null"], format: date-time }
+    SeoInsightsKpis:
+      type: object
+      required: [pages, gscClicks, gscImpressions, bingClicks, bingImpressions, aiCitations, aiSessions, keyEvents, missedClicks]
+      properties:
+        # Pages with visibility in at least one source (blocklist-filtered).
+        pages: { type: integer }
+        gscClicks: { type: integer }
+        gscImpressions: { type: integer }
+        bingClicks: { type: integer }
+        bingImpressions: { type: integer }
+        aiCitations: { type: integer }
+        aiSessions: { type: integer }
+        keyEvents: { type: integer }
+        # Estimated clicks lost to below-benchmark CTR across flagged pages (GSC window).
+        missedClicks: { type: integer }
+    SeoInsightsResponse:
+      type: object
+      required: [freshness, kpis, insights]
+      properties:
+        freshness: { $ref: "#/components/schemas/SeoInsightsFreshness" }
+        kpis: { $ref: "#/components/schemas/SeoInsightsKpis" }
+        insights:
+          type: array
+          items: { $ref: "#/components/schemas/SeoInsight" }
     GscDimensionRow:
       type: object
       required: [key, clicks, impressions, ctr, position]

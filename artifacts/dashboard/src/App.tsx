@@ -54,6 +54,7 @@ import KeywordReport from "@/pages/keyword-report";
 import Clustering from "@/pages/clustering";
 import SimilarityExplorer from "@/pages/similarity-explorer";
 import BingPage from "@/pages/bing";
+import InsightsPage from "@/pages/insights";
 import TopicalMap from "@/pages/topical-map";
 import SettingsPage from "@/pages/settings";
 import AdminPage from "@/pages/admin";
@@ -335,6 +336,7 @@ function Router() {
       <Route path="/clustering" component={() => <ProtectedRoute component={Clustering} />} />
       <Route path="/similarity" component={() => <ProtectedRoute component={SimilarityExplorer} />} />
       <Route path="/bing" component={() => <ProtectedRoute component={BingPage} />} />
+      <Route path="/insights" component={() => <ProtectedRoute component={InsightsPage} />} />
       <Route path="/topical-map" component={() => <ProtectedRoute component={TopicalMap} />} />
       <Route path="/settings" component={() => <ProtectedRoute component={SettingsPage} />} />
       <Route path="/admin" component={() => <ProtectedRoute component={AdminPage} />} />

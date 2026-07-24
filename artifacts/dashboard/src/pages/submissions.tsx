@@ -452,9 +452,20 @@ export default function Submissions() {
     [allItems, typeFilter],
   );
 
+  // Still-open tracked URLs are a persistent checklist, not day-bound
+  // activity — pin them in their own card above the timeline.
+  const trackedOpen = useMemo(
+    () => filteredItems.filter((it) => it.status === "tracking"),
+    [filteredItems],
+  );
+  const timelineItems = useMemo(
+    () => filteredItems.filter((it) => it.status !== "tracking"),
+    [filteredItems],
+  );
+
   const groups: DayGroup[] = useMemo(() => {
     const map = new Map<string, DayGroup>();
-    for (const item of filteredItems) {
+    for (const item of timelineItems) {
       const key = dayKey(item.timestamp);
       let g = map.get(key);
       if (!g) {
@@ -473,7 +484,7 @@ export default function Submissions() {
       else g.trackedCount += 1;
     }
     return Array.from(map.values()).sort((a, b) => b.key.localeCompare(a.key));
-  }, [filteredItems]);
+  }, [timelineItems]);
 
   // KPIs span every type in the window so the totals stay stable as the
   // type filter changes the timeline below.
@@ -482,10 +493,7 @@ export default function Submissions() {
     (it) => dayKey(it.timestamp) === todayKey(),
   ).length;
   const activeCount = allItems.filter(
-    (it) =>
-      it.status === "pending" ||
-      it.status === "processing" ||
-      it.status === "tracking",
+    (it) => it.status === "pending" || it.status === "processing",
   ).length;
   const failedCount = allItems.filter((it) => it.status === "failed").length;
 
@@ -676,10 +684,10 @@ export default function Submissions() {
           <KpiCard label="Total" value={total} />
           <KpiCard label="Today" value={todayCount} accent="primary" />
           <KpiCard
-            label="Active"
+            label="In progress"
             value={activeCount}
             accent="amber"
-            hint="Anything still in motion: submitted work that's queued or processing, plus the URLs you're tracking."
+            hint="Submitted work that's still queued or processing — Suggest Links lookups and Optimizer briefs. Your tracked URLs live in their own card below."
           />
           <KpiCard label="Failed" value={failedCount} accent="red" />
         </div>
@@ -724,7 +732,7 @@ export default function Submissions() {
           <div className="flex items-center justify-center py-24">
             <Spinner className="h-8 w-8" />
           </div>
-        ) : groups.length === 0 ? (
+        ) : groups.length === 0 && trackedOpen.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center gap-2">
             <Inbox className="h-10 w-10 text-muted-foreground" />
             <div className="font-medium">No submissions in this window</div>
@@ -736,6 +744,44 @@ export default function Submissions() {
           </div>
         ) : (
           <div className="space-y-6">
+            {trackedOpen.length > 0 && (
+              <div data-testid="section-tracked-urls">
+                <div className="flex items-center gap-3 mb-2">
+                  <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <Target className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+                    Your tracked URLs
+                  </h3>
+                  <Badge variant="secondary">{trackedOpen.length}</Badge>
+                  <span className="text-xs text-muted-foreground hidden sm:inline">
+                    A standing watchlist — always shown here regardless of the
+                    time window
+                  </span>
+                </div>
+                <Card className="border-border/50">
+                  <CardContent className="p-0 divide-y divide-border/60">
+                    {trackedOpen.map((item) => (
+                      <SubmissionRow
+                        key={item.key}
+                        item={item}
+                        onDeleteTracked={handleDeleteTracked}
+                        onOpenPerformance={setPerfItem}
+                        deleteBusy={deleteMutation.isPending}
+                      />
+                    ))}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+            {groups.length > 0 && trackedOpen.length > 0 && (
+              <div className="flex items-center gap-3 pt-1">
+                <h3 className="text-lg font-semibold text-foreground">
+                  Activity log
+                </h3>
+                <span className="text-xs text-muted-foreground hidden sm:inline">
+                  What you submitted, day by day
+                </span>
+              </div>
+            )}
             {groups.map((g) => (
               <div key={g.key}>
                 <div className="flex items-center gap-3 mb-2 sticky top-0 bg-background/95 backdrop-blur py-1 z-10">

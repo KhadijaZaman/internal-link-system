@@ -123,6 +123,7 @@ import type {
   PageTargetKeyword,
   PruningReport,
   QueryInsights,
+  SeoInsightsResponse,
   SetGscPropertyInput,
   SimilarityRun,
   Site,
@@ -5511,6 +5512,83 @@ export function useGetPagesReport<TData = Awaited<ReturnType<typeof getPagesRepo
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetPagesReportQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetSeoInsightsUrl = () => {
+
+
+
+
+  return `/api/insights/overview`
+}
+
+/**
+ * @summary Site-level cross-source SEO insights — GSC + Bing + GA4 + AI citations from stored rollups only (zero external API calls)
+ */
+export const getSeoInsights = async ( options?: RequestInit): Promise<SeoInsightsResponse> => {
+
+  return customFetch<SeoInsightsResponse>(getGetSeoInsightsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSeoInsightsQueryKey = () => {
+    return [
+    `/api/insights/overview`
+    ] as const;
+    }
+
+
+export const getGetSeoInsightsQueryOptions = <TData = Awaited<ReturnType<typeof getSeoInsights>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSeoInsights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSeoInsightsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSeoInsights>>> = ({ signal }) => getSeoInsights({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSeoInsights>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSeoInsightsQueryResult = NonNullable<Awaited<ReturnType<typeof getSeoInsights>>>
+export type GetSeoInsightsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Site-level cross-source SEO insights — GSC + Bing + GA4 + AI citations from stored rollups only (zero external API calls)
+ */
+
+export function useGetSeoInsights<TData = Awaited<ReturnType<typeof getSeoInsights>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSeoInsights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSeoInsightsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

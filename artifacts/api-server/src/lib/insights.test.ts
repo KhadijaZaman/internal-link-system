@@ -6,12 +6,19 @@ import {
   CANNIBAL_MIN_QUERY_IMPRESSIONS,
   ENGAGEMENT_MIN_SESSIONS,
   LINK_OFF_TOPIC_SIMILARITY,
+  BING_GAP_MIN_GSC_IMPRESSIONS,
+  BING_GAP_MAX_BING_IMPRESSIONS,
+  BING_UPSIDE_MIN_IMPRESSIONS,
+  BING_UPSIDE_MIN_POSITION,
   expectedCtrFor,
   scoreOf,
   ctrInsight,
   pickCannibalContenders,
   pageVerdicts,
   linkQualityFlags,
+  searchEngineGap,
+  bingUpside,
+  aiVisibilityGap,
 } from "./insights";
 
 describe("expectedCtrFor", () => {
@@ -132,6 +139,89 @@ describe("linkQualityFlags", () => {
     expect(
       linkQualityFlags({ similarity: 0.1, tierViolation: true, anchorBanned: true }),
     ).toEqual(["off_topic", "tier_violation", "generic_anchor"]);
+  });
+});
+
+describe("searchEngineGap", () => {
+  it("flags a page with real Google demand but no Bing visibility", () => {
+    expect(
+      searchEngineGap({ gscImpressions: BING_GAP_MIN_GSC_IMPRESSIONS, bingImpressions: 0 }),
+    ).toBe("bing_blind_spot");
+    expect(
+      searchEngineGap({
+        gscImpressions: 5000,
+        bingImpressions: BING_GAP_MAX_BING_IMPRESSIONS,
+      }),
+    ).toBe("bing_blind_spot");
+  });
+
+  it("treats null metrics as zero (never synced = never seen)", () => {
+    expect(searchEngineGap({ gscImpressions: 5000, bingImpressions: null })).toBe(
+      "bing_blind_spot",
+    );
+    expect(searchEngineGap({ gscImpressions: null, bingImpressions: 0 })).toBeNull();
+  });
+
+  it("does not flag on thin Google demand or real Bing visibility", () => {
+    expect(
+      searchEngineGap({
+        gscImpressions: BING_GAP_MIN_GSC_IMPRESSIONS - 1,
+        bingImpressions: 0,
+      }),
+    ).toBeNull();
+    expect(
+      searchEngineGap({
+        gscImpressions: 5000,
+        bingImpressions: BING_GAP_MAX_BING_IMPRESSIONS + 1,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("bingUpside", () => {
+  it("flags real Bing demand with a poor known rank", () => {
+    expect(
+      bingUpside({
+        bingImpressions: BING_UPSIDE_MIN_IMPRESSIONS,
+        bingPosition: BING_UPSIDE_MIN_POSITION + 0.1,
+      }),
+    ).toBe("bing_upside");
+  });
+
+  it("never flags an unknown position (Bing reports -1/unknown as null)", () => {
+    expect(bingUpside({ bingImpressions: 5000, bingPosition: null })).toBeNull();
+  });
+
+  it("does not flag thin demand or a good rank", () => {
+    expect(
+      bingUpside({
+        bingImpressions: BING_UPSIDE_MIN_IMPRESSIONS - 1,
+        bingPosition: 30,
+      }),
+    ).toBeNull();
+    expect(
+      bingUpside({
+        bingImpressions: 5000,
+        bingPosition: BING_UPSIDE_MIN_POSITION,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("aiVisibilityGap", () => {
+  it("flags AI-cited pages with zero Google clicks", () => {
+    expect(aiVisibilityGap({ aiCitations: 3, aiSessions: 0, gscClicks: 0 })).toBe(
+      "ai_visibility_gap",
+    );
+    expect(aiVisibilityGap({ aiCitations: 0, aiSessions: 7, gscClicks: null })).toBe(
+      "ai_visibility_gap",
+    );
+  });
+
+  it("does not flag when Google sends clicks or AI never surfaces it", () => {
+    expect(aiVisibilityGap({ aiCitations: 3, aiSessions: 7, gscClicks: 1 })).toBeNull();
+    expect(aiVisibilityGap({ aiCitations: 0, aiSessions: 0, gscClicks: 0 })).toBeNull();
+    expect(aiVisibilityGap({ aiCitations: null, aiSessions: null, gscClicks: null })).toBeNull();
   });
 });
 

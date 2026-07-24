@@ -1614,6 +1614,84 @@ export interface PageReportResponse {
   totals: ReportTotals;
 }
 
+export interface SeoInsightPage {
+  path: string;
+  /** @nullable */
+  title: string | null;
+  gscClicks: number;
+  gscImpressions: number;
+  /** @nullable */
+  gscPosition: number | null;
+  bingClicks: number;
+  bingImpressions: number;
+  /** @nullable */
+  bingPosition: number | null;
+  aiCitations: number;
+  aiSessions: number;
+  keyEvents: number;
+  /** @nullable */
+  detail: string | null;
+}
+
+export type SeoInsightId = typeof SeoInsightId[keyof typeof SeoInsightId];
+
+
+export const SeoInsightId = {
+  low_ctr: 'low_ctr',
+  bing_blind_spot: 'bing_blind_spot',
+  ai_visibility_gap: 'ai_visibility_gap',
+  bing_upside: 'bing_upside',
+  declining_queries: 'declining_queries',
+} as const;
+
+export type SeoInsightSeverity = typeof SeoInsightSeverity[keyof typeof SeoInsightSeverity];
+
+
+export const SeoInsightSeverity = {
+  issue: 'issue',
+  opportunity: 'opportunity',
+  watch: 'watch',
+} as const;
+
+export interface SeoInsight {
+  id: SeoInsightId;
+  severity: SeoInsightSeverity;
+  title: string;
+  plainEnglish: string;
+  action: string;
+  affectedCount: number;
+  topPages: SeoInsightPage[];
+}
+
+export interface SeoInsightsFreshness {
+  /** @nullable */
+  gscSyncedAt: string | null;
+  /** @nullable */
+  ga4SyncedAt: string | null;
+  /** @nullable */
+  bingSyncedAt: string | null;
+  /** @nullable */
+  aiCitationsAt: string | null;
+}
+
+export interface SeoInsightsKpis {
+  pages: number;
+  gscClicks: number;
+  gscImpressions: number;
+  bingClicks: number;
+  bingImpressions: number;
+  aiCitations: number;
+  aiSessions: number;
+  keyEvents: number;
+  missedClicks: number;
+}
+
+export interface SeoInsightsResponse {
+  freshness: SeoInsightsFreshness;
+  kpis: SeoInsightsKpis;
+  insights: SeoInsight[];
+}
+
 export interface GscDimensionRow {
   key: string;
   clicks: number;

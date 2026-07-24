@@ -4,7 +4,7 @@ import { useClerk, useUser } from "@clerk/react";
 import { useGetSession } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { SiteSwitcher } from "@/components/site-switcher";
-import { LayoutDashboard, Network, TrendingDown, Settings2, LogOut, LineChart, FileText, Ban, PenLine, Link2, Compass, BookOpen, ClipboardList, Bot, Gauge, Table2, ListTodo, Newspaper, Waypoints, SearchCheck, Boxes, GitCompareArrows, Sparkles, Map, Plug, ChevronDown, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, Network, TrendingDown, Settings2, LogOut, LineChart, FileText, Ban, PenLine, Link2, Compass, BookOpen, ClipboardList, Bot, Gauge, Table2, ListTodo, Newspaper, Waypoints, SearchCheck, Boxes, GitCompareArrows, Sparkles, Map, Plug, ChevronDown, ShieldCheck, Lightbulb } from "lucide-react";
 
 interface NavItem {
   href: string;
@@ -28,6 +28,7 @@ const navSections: NavSection[] = [
   {
     label: "Track performance",
     items: [
+      { href: "/insights", label: "SEO Insights", icon: Lightbulb },
       { href: "/gsc/overview", label: "Google Search", icon: LineChart },
       { href: "/ga4", label: "Visitor Engagement", icon: Gauge },
       { href: "/bing", label: "Bing & AI Citations", icon: Sparkles },

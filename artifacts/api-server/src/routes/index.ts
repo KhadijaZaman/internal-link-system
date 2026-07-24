@@ -39,6 +39,7 @@ import clusteringRouter from "./clustering";
 import similarityRouter from "./similarity";
 import bingRouter from "./bing";
 import topicalMapRouter from "./topicalMap";
+import insightsRouter from "./insights";
 
 const router: IRouter = Router();
 
@@ -82,5 +83,6 @@ router.use(clusteringRouter);
 router.use(similarityRouter);
 router.use(bingRouter);
 router.use(topicalMapRouter);
+router.use(insightsRouter);
 
 export default router;
