@@ -2,7 +2,41 @@ import { useGetAdminOverview } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
-import { Users, Globe, ShieldCheck } from "lucide-react";
+import { Users, Globe, ShieldCheck, Check, X, Database } from "lucide-react";
+import type { AdminSite } from "@workspace/api-client-react";
+
+function IntegrationBadge({ label, connected }: { label: string; connected: boolean }) {
+  return (
+    <Badge
+      variant={connected ? "secondary" : "outline"}
+      className={`gap-1 text-[10px] px-1.5 py-0 ${connected ? "" : "text-muted-foreground"}`}
+      data-testid={`badge-${label.toLowerCase()}-${connected ? "connected" : "not-connected"}`}
+    >
+      {connected ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+      {label}
+    </Badge>
+  );
+}
+
+function SiteStatusBadges({ site }: { site: AdminSite }) {
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      <IntegrationBadge label="GSC" connected={site.integrations.gsc} />
+      <IntegrationBadge label="GA4" connected={site.integrations.ga4} />
+      <IntegrationBadge label="Bing" connected={site.integrations.bing} />
+      <Badge
+        variant={site.pagesCount > 0 ? "secondary" : "outline"}
+        className={`gap-1 text-[10px] px-1.5 py-0 ${site.pagesCount > 0 ? "" : "text-muted-foreground"}`}
+        data-testid={`badge-pages-${site.id}`}
+      >
+        <Database className="h-3 w-3" />
+        {site.pagesCount > 0
+          ? `${site.pagesCount.toLocaleString()} pages synced`
+          : "No data yet"}
+      </Badge>
+    </span>
+  );
+}
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {
@@ -111,6 +145,7 @@ export default function AdminPage() {
                       <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       <span className="font-medium">{s.displayName}</span>
                       <span className="text-muted-foreground font-mono text-xs">{s.host}</span>
+                      <SiteStatusBadges site={s} />
                       <span className="text-xs text-muted-foreground ml-auto">
                         Added {formatDate(s.createdAt)}
                       </span>
@@ -130,10 +165,11 @@ export default function AdminPage() {
           </CardHeader>
           <CardContent className="space-y-1">
             {data.unclaimedSites.map((s) => (
-              <div key={s.id} className="flex items-center gap-2 text-sm">
+              <div key={s.id} className="flex flex-wrap items-center gap-2 text-sm">
                 <Globe className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="font-medium">{s.displayName}</span>
                 <span className="text-muted-foreground font-mono text-xs">{s.host}</span>
+                <SiteStatusBadges site={s} />
               </div>
             ))}
           </CardContent>

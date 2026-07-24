@@ -16,12 +16,20 @@ export interface AuthSession {
   isAdmin?: boolean;
 }
 
+export interface AdminSiteIntegrations {
+  gsc: boolean;
+  ga4: boolean;
+  bing: boolean;
+}
+
 export interface AdminSite {
   id: number;
   domain: string;
   host: string;
   displayName: string;
   createdAt: string;
+  integrations: AdminSiteIntegrations;
+  pagesCount: number;
 }
 
 export interface AdminUser {

@@ -18,6 +18,7 @@ export * from './actionStatusInputStatus';
 export * from './adminOverview';
 export * from './adminOverviewTotals';
 export * from './adminSite';
+export * from './adminSiteIntegrations';
 export * from './adminUser';
 export * from './aiCitationUpload';
 export * from './aiCitationUploadInput';

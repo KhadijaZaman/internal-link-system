@@ -5,6 +5,7 @@
  * Wellows internal linking system API
  * OpenAPI spec version: 0.1.0
  */
+import type { AdminSiteIntegrations } from './adminSiteIntegrations';
 
 export interface AdminSite {
   id: number;
@@ -12,4 +13,6 @@ export interface AdminSite {
   host: string;
   displayName: string;
   createdAt: string;
+  integrations: AdminSiteIntegrations;
+  pagesCount: number;
 }

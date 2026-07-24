@@ -2064,15 +2064,25 @@ components:
         authenticated: { type: boolean }
         username: { type: ["string", "null"] }
         isAdmin: { type: boolean }
+    AdminSiteIntegrations:
+      type: object
+      required: [gsc, ga4, bing]
+      properties:
+        gsc: { type: boolean }
+        ga4: { type: boolean }
+        bing: { type: boolean }
     AdminSite:
       type: object
-      required: [id, domain, host, displayName, createdAt]
+      required: [id, domain, host, displayName, createdAt, integrations, pagesCount]
       properties:
         id: { type: integer }
         domain: { type: string }
         host: { type: string }
         displayName: { type: string }
         createdAt: { type: string }
+        integrations:
+          $ref: "#/components/schemas/AdminSiteIntegrations"
+        pagesCount: { type: integer }
     AdminUser:
       type: object
       required: [id, email, isAdmin, createdAt, sites]

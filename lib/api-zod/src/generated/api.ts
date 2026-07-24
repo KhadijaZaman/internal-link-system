@@ -44,7 +44,13 @@ export const GetAdminOverviewResponse = zod.object({
   "domain": zod.string(),
   "host": zod.string(),
   "displayName": zod.string(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "integrations": zod.object({
+  "gsc": zod.boolean(),
+  "ga4": zod.boolean(),
+  "bing": zod.boolean()
+}),
+  "pagesCount": zod.number()
 }))
 })),
   "unclaimedSites": zod.array(zod.object({
@@ -52,7 +58,13 @@ export const GetAdminOverviewResponse = zod.object({
   "domain": zod.string(),
   "host": zod.string(),
   "displayName": zod.string(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "integrations": zod.object({
+  "gsc": zod.boolean(),
+  "ga4": zod.boolean(),
+  "bing": zod.boolean()
+}),
+  "pagesCount": zod.number()
 }))
 })
 
