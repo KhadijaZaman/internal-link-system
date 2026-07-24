@@ -5,15 +5,21 @@ import {
   Router as WouterRouter,
   Redirect,
   useLocation,
-  Link,
 } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
-import { ClerkProvider, SignIn, SignUp, Show, useClerk } from "@clerk/react";
+import {
+  ClerkProvider,
+  ClerkLoading,
+  ClerkLoaded,
+  SignIn,
+  SignUp,
+  Show,
+  useClerk,
+} from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import NotFound from "@/pages/not-found";
 import { Layout } from "@/components/layout";
@@ -137,6 +143,22 @@ const clerkAppearance = {
   },
 };
 
+function AuthLoadingSplash() {
+  return (
+    <div
+      className="flex min-h-[100dvh] flex-col items-center justify-center gap-4 bg-background px-4"
+      data-testid="auth-loading-splash"
+    >
+      <img
+        src={`${basePath}/logo.svg`}
+        alt="Wellows"
+        className="h-10 w-auto"
+      />
+      <Spinner className="h-6 w-6 text-muted-foreground" />
+    </div>
+  );
+}
+
 function SignInPage() {
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4">
@@ -157,37 +179,6 @@ function SignUpPage() {
         path={`${basePath}/sign-up`}
         signInUrl={`${basePath}/sign-in`}
       />
-    </div>
-  );
-}
-
-function LandingPage() {
-  return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4">
-      <div className="w-full max-w-md text-center space-y-6">
-        <div className="flex justify-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-primary-foreground font-display text-2xl font-bold">
-            W
-          </div>
-        </div>
-        <div className="space-y-2">
-          <h1 className="font-display text-3xl font-semibold tracking-tight">
-            Wellows SEO Operations
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            Search performance, internal linking, and content optimization —
-            one operations dashboard for your site.
-          </p>
-        </div>
-        <div className="flex items-center justify-center gap-3">
-          <Button asChild data-testid="button-landing-signin">
-            <Link href="/sign-in">Sign in</Link>
-          </Button>
-          <Button asChild variant="outline" data-testid="button-landing-signup">
-            <Link href="/sign-up">Create account</Link>
-          </Button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -243,7 +234,7 @@ function ProtectedRoute({
         </SiteProvider>
       </Show>
       <Show when="signed-out">
-        <Redirect to="/" />
+        <Redirect to="/sign-in" />
       </Show>
     </>
   );
@@ -256,7 +247,7 @@ function HomeRedirect() {
         <ProtectedRoute component={Dashboard} />
       </Show>
       <Show when="signed-out">
-        <LandingPage />
+        <Redirect to="/sign-in" />
       </Show>
     </>
   );
@@ -378,7 +369,12 @@ function ClerkProviderWithRoutes() {
       <QueryClientProvider client={queryClient}>
         <ClerkQueryClientCacheInvalidator />
         <TooltipProvider>
-          <Router />
+          <ClerkLoading>
+            <AuthLoadingSplash />
+          </ClerkLoading>
+          <ClerkLoaded>
+            <Router />
+          </ClerkLoaded>
           <Toaster />
         </TooltipProvider>
       </QueryClientProvider>
