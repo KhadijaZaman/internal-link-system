@@ -8,7 +8,6 @@ import {
   useListTrackedSubmissions,
   getListTrackedSubmissionsQueryKey,
   useCreateTrackedSubmissions,
-  useUpdateTrackedSubmission,
   useDeleteTrackedSubmission,
   useExportSubmissionsSheet,
   useGetMovementSheetInfo,
@@ -39,9 +38,7 @@ import {
   ChevronRight,
   Inbox,
   Plus,
-  Check,
-  RotateCcw,
-  Trash2,
+  X,
   Search,
   LineChart,
   FileSpreadsheet,
@@ -312,7 +309,6 @@ export default function Submissions() {
   const movementSheetShared = sheetInfoQ.data?.shared ?? false;
 
   const createMutation = useCreateTrackedSubmissions();
-  const updateMutation = useUpdateTrackedSubmission();
   const deleteMutation = useDeleteTrackedSubmission();
   const exportMutation = useExportSubmissionsSheet();
 
@@ -403,23 +399,6 @@ export default function Submissions() {
         },
         onError: () =>
           toast({ variant: "destructive", title: "Couldn't add URLs" }),
-      },
-    );
-  };
-
-  const handleToggleTracked = (item: SubmissionItem) => {
-    if (item.trackedId == null) return;
-    const next = item.status === "done" ? "tracking" : "done";
-    updateMutation.mutate(
-      { id: item.trackedId, data: { status: next } },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({
-            queryKey: getListTrackedSubmissionsQueryKey(),
-          });
-        },
-        onError: () =>
-          toast({ variant: "destructive", title: "Couldn't update status" }),
       },
     );
   };
@@ -700,7 +679,7 @@ export default function Submissions() {
             label="Active"
             value={activeCount}
             accent="amber"
-            hint="Anything still in motion: submitted work that's queued or processing, plus tracked URLs you haven't marked done yet."
+            hint="Anything still in motion: submitted work that's queued or processing, plus the URLs you're tracking."
           />
           <KpiCard label="Failed" value={failedCount} accent="red" />
         </div>
@@ -715,17 +694,17 @@ export default function Submissions() {
               },
               {
                 title: "Track any URL manually",
-                body: "Use “Track URLs” to paste your own list of pages to keep an eye on. These are a plain checklist — nothing is fetched, crawled, or sent to AI — so there's no cost. “Mark done” is your own checkmark: it means you're finished watching that URL. Nothing is deleted, and you can reopen it anytime.",
+                body: "Use “Track URLs” to paste your own list of pages to keep an eye on. These are a plain checklist — nothing is fetched, crawled, or sent to AI — so there's no cost. When you're finished watching a URL, click the ✕ at the end of its row to remove it from the list.",
               },
               {
                 title: "Track status day by day",
-                body: "Each day groups your submissions with a live status: Queued, Processing, Done, or Failed for work you submitted, and Tracking or Finished for your own tracked URLs. The list auto-refreshes while anything is still running.",
+                body: "Each day groups your submissions with a live status: Queued, Processing, Done, or Failed for work you submitted, and Tracking for your own tracked URLs. The list auto-refreshes while anything is still running.",
               },
             ]}
             faqs={[
               {
-                title: "What does “Mark done” do on a tracked URL?",
-                body: "It's just a checkmark for yourself — it means you're finished keeping an eye on that page. The URL stays in your history with a “Finished” badge, nothing is deleted, and the Reopen button puts it back on your active watchlist anytime. It doesn't change anything on your website.",
+                title: "How do I stop tracking a URL?",
+                body: "Click the ✕ at the end of its row. That only removes it from your watchlist here — it doesn't change anything on your website. You can always add it back later with “Track URLs”.",
               },
               {
                 title: "Does tracking a URL run Suggest Links or the Optimizer?",
@@ -788,10 +767,8 @@ export default function Submissions() {
                       <SubmissionRow
                         key={item.key}
                         item={item}
-                        onToggleTracked={handleToggleTracked}
                         onDeleteTracked={handleDeleteTracked}
                         onOpenPerformance={setPerfItem}
-                        toggleBusy={updateMutation.isPending}
                         deleteBusy={deleteMutation.isPending}
                       />
                     ))}
@@ -855,17 +832,13 @@ function KpiCard({
 
 function SubmissionRow({
   item,
-  onToggleTracked,
   onDeleteTracked,
   onOpenPerformance,
-  toggleBusy,
   deleteBusy,
 }: {
   item: SubmissionItem;
-  onToggleTracked: (item: SubmissionItem) => void;
   onDeleteTracked: (item: SubmissionItem) => void;
   onOpenPerformance: (item: SubmissionItem) => void;
-  toggleBusy: boolean;
   deleteBusy: boolean;
 }) {
   const isTracked = item.type === "tracked";
@@ -933,35 +906,13 @@ function SubmissionRow({
           </Button>
           <Button
             variant="ghost"
-            size="sm"
-            className="h-8 px-2 text-xs"
-            disabled={toggleBusy}
-            onClick={() => onToggleTracked(item)}
-            title={
-              item.status === "done"
-                ? "Put this URL back on your active watchlist"
-                : "Check this URL off your watchlist — it just marks it finished for you; nothing is deleted, and you can reopen it anytime"
-            }
-          >
-            {item.status === "done" ? (
-              <>
-                <RotateCcw className="h-3.5 w-3.5" /> Reopen
-              </>
-            ) : (
-              <>
-                <Check className="h-3.5 w-3.5" /> Mark done
-              </>
-            )}
-          </Button>
-          <Button
-            variant="ghost"
             size="icon"
             className="h-8 w-8 text-muted-foreground hover:text-red-600"
             disabled={deleteBusy}
             onClick={() => onDeleteTracked(item)}
             title="Remove from tracking"
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <X className="h-4 w-4" />
           </Button>
         </div>
       ) : (
