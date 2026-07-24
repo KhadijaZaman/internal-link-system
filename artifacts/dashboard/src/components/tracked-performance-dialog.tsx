@@ -30,6 +30,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   ArrowRight,
   Bot,
   CheckCircle2,
@@ -37,7 +42,6 @@ import {
   ChevronUp,
   FileSearch,
   Globe,
-  ListChecks,
   Search,
   Swords,
   Target,
@@ -80,16 +84,6 @@ function fmtWhen(iso: string | null | undefined): string | null {
   if (Number.isNaN(d.getTime())) return null;
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
-
-const SECTIONS = [
-  { id: "plan", label: "Action plan", icon: ListChecks },
-  { id: "google", label: "Google Search", icon: Search },
-  { id: "indexing", label: "Indexing", icon: FileSearch },
-  { id: "bing", label: "Bing", icon: TrendingUp },
-  { id: "ga4", label: "Visitors", icon: Globe },
-  { id: "ai", label: "AI visibility", icon: Bot },
-  { id: "competitors", label: "Competitors", icon: Swords },
-] as const;
 
 const PRIORITY_META: Record<
   TrackedAction["priority"],
@@ -182,6 +176,256 @@ function StatCard({
   );
 }
 
+function ReportSection({
+  id,
+  icon: Icon,
+  title,
+  summary,
+  about,
+  open,
+  onToggle,
+  children,
+}: {
+  id: string;
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  summary: string;
+  about: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Collapsible open={open} onOpenChange={onToggle}>
+      <div id={`report-${id}`} className="rounded-lg border border-border/60 scroll-mt-2">
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-muted/40 transition-colors rounded-lg"
+            data-testid={`section-toggle-${id}`}
+          >
+            <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+            <span className="text-sm font-medium whitespace-nowrap">{title}</span>
+            <span className="ml-auto text-xs text-muted-foreground truncate">
+              {summary}
+            </span>
+            <ChevronDown
+              className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform ${
+                open ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="px-3 pb-3 pt-2 space-y-3 border-t border-border/60">
+            <p className="text-xs text-muted-foreground">{about}</p>
+            {children}
+          </div>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
+  );
+}
+
+function FunnelStep({ label, value }: { label: string; value: number | null }) {
+  return (
+    <div className="rounded-md bg-muted/50 px-3 py-2 min-w-[6.5rem]">
+      <div className="text-lg font-semibold tabular-nums leading-tight">
+        {value != null ? value.toLocaleString() : "—"}
+      </div>
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+    </div>
+  );
+}
+
+function SnapshotOverview({
+  d,
+  days,
+  onOpenSection,
+}: {
+  d: TrackedReport;
+  days: string;
+  onOpenSection: (id: string) => void;
+}) {
+  const gsc = d.gsc.status === "ok" ? d.gsc.data : null;
+  const bing =
+    d.bing.status === "ok" && d.bing.data && d.bing.data.weeks.length > 0
+      ? d.bing.data
+      : null;
+  const ga4 = d.ga4.status === "ok" ? d.ga4.data : null;
+  const idx = d.indexing.status === "ok" ? d.indexing.data : null;
+  const ai =
+    d.aiCitations.status === "ok" && d.aiCitations.data?.hasUpload
+      ? d.aiCitations.data
+      : null;
+
+  const gClicks = gsc ? gsc.overallTotals.clicks : null;
+  const visits = ga4 ? ga4.totals.sessions : null;
+  const conversions = ga4 ? ga4.totals.keyEvents : null;
+  const aiVisits = ga4 ? ga4.totals.aiSessions : null;
+  const sharePct =
+    gClicks != null && visits != null && visits > 0
+      ? Math.min(100, Math.round((gClicks / visits) * 100))
+      : null;
+
+  const num = (v: number | null | undefined, fmt?: (n: number) => string) => (
+    <td className="px-2 py-1 text-right tabular-nums">
+      {v != null ? (fmt ? fmt(v) : v.toLocaleString()) : "—"}
+    </td>
+  );
+
+  return (
+    <div className="grid gap-3 lg:grid-cols-2" data-testid="report-snapshot">
+      <div className="rounded-lg border border-border/60 p-3 space-y-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-xs font-semibold inline-flex items-center gap-1">
+            Search engines at a glance
+            <InfoTip>
+              The same three numbers from Google and Bing, side by side. Being
+              visible on both is the overlap that matters — Bing also powers
+              ChatGPT's and Copilot's web results.
+            </InfoTip>
+          </span>
+          {idx &&
+            (idx.verdict === "PASS" ? (
+              <Badge
+                variant="outline"
+                className="gap-1 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
+              >
+                <CheckCircle2 className="h-3 w-3" /> Indexed on Google
+              </Badge>
+            ) : idx.verdict === "FAIL" ? (
+              <Badge
+                variant="outline"
+                className="gap-1 bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30"
+              >
+                <XCircle className="h-3 w-3" /> Not indexed on Google
+              </Badge>
+            ) : (
+              <Badge variant="outline">Indexing unclear</Badge>
+            ))}
+        </div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-[11px] text-muted-foreground">
+              <th className="text-left font-medium py-1"></th>
+              <th className="text-right font-medium px-2 py-1">Google</th>
+              <th className="text-right font-medium px-2 py-1">Bing</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/40">
+            <tr>
+              <td className="py-1 text-xs text-muted-foreground">Times shown</td>
+              {num(gsc?.overallTotals.impressions)}
+              {num(bing?.totals.impressions)}
+            </tr>
+            <tr>
+              <td className="py-1 text-xs text-muted-foreground">Clicks</td>
+              {num(gsc?.overallTotals.clicks)}
+              {num(bing?.totals.clicks)}
+            </tr>
+            <tr>
+              <td className="py-1 text-xs text-muted-foreground">Avg position</td>
+              {num(gsc ? gsc.overallTotals.position : null, fmtPos)}
+              {num(bing ? bing.totals.position : null, fmtPos)}
+            </tr>
+          </tbody>
+        </table>
+        <p className="text-[11px] text-muted-foreground">
+          Google = last {days} days · Bing = its own ~6-month window, so the
+          columns aren't directly comparable.
+        </p>
+        <div className="flex items-center gap-1 -ml-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-[11px] text-muted-foreground"
+            onClick={() => onOpenSection("google")}
+          >
+            Google details <ArrowRight className="h-3 w-3" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-[11px] text-muted-foreground"
+            onClick={() => onOpenSection("bing")}
+          >
+            Bing details <ArrowRight className="h-3 w-3" />
+          </Button>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-border/60 p-3 space-y-2">
+        <span className="text-xs font-semibold inline-flex items-center gap-1">
+          How search turns into visitors
+          <InfoTip>
+            Google clicks and Analytics visits cover the same {days}-day window,
+            so they connect: most Google clicks show up inside the visits count,
+            alongside visits from AI tools, social, links, and direct traffic.
+            (Analytics misses some visitors — ad blockers and cookie banners —
+            so the numbers won't match exactly.) Bing is left out here because
+            it reports a different time window.
+          </InfoTip>
+        </span>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <FunnelStep label="Google clicks" value={gClicks} />
+          <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <FunnelStep label="Visits (all sources)" value={visits} />
+          <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <FunnelStep label="Conversions" value={conversions} />
+        </div>
+        {sharePct != null ? (
+          <p className="text-[11px] text-muted-foreground">
+            The overlap: Google search accounts for roughly {sharePct}% of this
+            page's visits. The rest arrive from AI tools, social, other sites,
+            or people typing the address.
+          </p>
+        ) : d.gsc.status === "ok" && d.ga4.status === "ok" ? (
+          <p className="text-[11px] text-muted-foreground">
+            No visits recorded in this range yet, so there's no search-to-visits
+            overlap to show. Try a longer date range.
+          </p>
+        ) : (
+          <p className="text-[11px] text-muted-foreground">
+            Connect both Google Search Console and Analytics to see how much of
+            this page's traffic comes from search.
+          </p>
+        )}
+        <div className="border-t border-border/60 pt-2 flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+            <Bot className="h-3.5 w-3.5" />
+            AI: {ai ? `${ai.citations.toLocaleString()} citations` : "no upload yet"}
+            {" · "}
+            {aiVisits != null ? `${aiVisits.toLocaleString()} AI visits` : "AI visits —"}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-[11px] text-muted-foreground"
+              onClick={() => onOpenSection("ga4")}
+            >
+              Visitor details <ArrowRight className="h-3 w-3" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-[11px] text-muted-foreground"
+              onClick={() => onOpenSection("ai")}
+            >
+              AI details <ArrowRight className="h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function TrackedPerformanceDialog({
   trackedId,
   url,
@@ -248,9 +492,16 @@ export function TrackedPerformanceDialog({
     );
   };
 
-  const scrollToSection = (id: string) => {
-    const el = document.getElementById(`report-${id}`);
-    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  const toggleSection = (id: string) =>
+    setOpenSections((s) => ({ ...s, [id]: !s[id] }));
+  const openSection = (id: string) => {
+    setOpenSections((s) => ({ ...s, [id]: true }));
+    setTimeout(() => {
+      document
+        .getElementById(`report-${id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
   };
 
   const d: TrackedReport | undefined = reportQ.data;
@@ -259,6 +510,72 @@ export function TrackedPerformanceDialog({
     gsc && gsc.keywordTotals && gsc.overallTotals.impressions > 0
       ? (gsc.keywordTotals.impressions / gsc.overallTotals.impressions) * 100
       : null;
+
+  // One-line summaries shown on the collapsed section headers.
+  const srcSummary = (
+    status: "ok" | "not_connected" | "error" | undefined,
+    ok: string | null,
+  ) =>
+    status === "not_connected"
+      ? "Not connected"
+      : status === "error"
+        ? "Unavailable"
+        : (ok ?? "No data yet");
+
+  const idxData = d?.indexing.status === "ok" ? d.indexing.data : null;
+  const bingData = d?.bing.status === "ok" ? d.bing.data : null;
+  const ga4Data = d?.ga4.status === "ok" ? d.ga4.data : null;
+  const aiData = d?.aiCitations.status === "ok" ? d.aiCitations.data : null;
+
+  const googleSummary = srcSummary(
+    d?.gsc.status,
+    gsc
+      ? `${gsc.overallTotals.impressions.toLocaleString()} shown · ${gsc.overallTotals.clicks.toLocaleString()} clicks · pos ${fmtPos(gsc.overallTotals.position)}`
+      : null,
+  );
+  const indexingSummary = srcSummary(
+    d?.indexing.status,
+    idxData
+      ? idxData.verdict === "PASS"
+        ? "Yes — indexed"
+        : idxData.verdict === "FAIL"
+          ? "No — not indexed"
+          : "Unclear"
+      : null,
+  );
+  const bingSummary = srcSummary(
+    d?.bing.status,
+    bingData
+      ? bingData.weeks.length === 0
+        ? "No Bing data yet"
+        : `${bingData.totals.impressions.toLocaleString()} shown · ${bingData.totals.clicks.toLocaleString()} clicks${
+            bingData.totals.position != null
+              ? ` · pos ${fmtPos(bingData.totals.position)}`
+              : ""
+          }`
+      : null,
+  );
+  const ga4Summary = srcSummary(
+    d?.ga4.status,
+    ga4Data
+      ? `${ga4Data.totals.sessions.toLocaleString()} visits · ${ga4Data.totals.keyEvents.toLocaleString()} conversions`
+      : null,
+  );
+  const aiSummary =
+    d?.aiCitations.status !== "ok"
+      ? "Unavailable"
+      : aiData?.hasUpload
+        ? `${aiData.citations.toLocaleString()} citations`
+        : "No upload yet";
+  const ownRank =
+    d?.serpCompetitors?.competitors.find((c) => c.isOwn)?.position ?? null;
+  const compSummary = !d?.keyword
+    ? "Set a keyword first"
+    : d.serpCompetitors == null
+      ? "No stored results yet"
+      : ownRank != null
+        ? `You're #${ownRank}`
+        : `You're not in the top ${d.serpCompetitors.competitors.length}`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -381,24 +698,9 @@ export function TrackedPerformanceDialog({
             Couldn't load the report. Try again in a moment.
           </div>
         ) : d ? (
-          <div className="space-y-6">
-            {/* Sticky section nav */}
-            <div className="sticky top-0 z-10 -mx-1 bg-background/95 backdrop-blur px-1 py-2 border-b border-border/60">
-              <div className="flex items-center gap-1 flex-wrap">
-                {SECTIONS.map((s) => (
-                  <Button
-                    key={s.id}
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs text-muted-foreground"
-                    onClick={() => scrollToSection(s.id)}
-                  >
-                    <s.icon className="h-3.5 w-3.5" /> {s.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
+          <div className="space-y-4">
+            {/* ---------- 0. At a glance ---------- */}
+            <SnapshotOverview d={d} days={days} onOpenSection={openSection} />
 
             {/* ---------- 1. Action plan ---------- */}
             <section className="space-y-2">
@@ -454,12 +756,15 @@ export function TrackedPerformanceDialog({
             </section>
 
             {/* ---------- 2. Google Search ---------- */}
-            <section className="space-y-3">
-              <SectionHeading
-                id="google"
-                title="Google Search"
-                tip="Live numbers from Google Search Console. Impressions = how often the page appeared in results; clicks = how often it was chosen; position = average ranking spot (lower is better). Data lags ~2 days."
-              />
+            <ReportSection
+              id="google"
+              icon={Search}
+              title="Google Search"
+              summary={googleSummary}
+              about="Live numbers from Google Search Console. Impressions = how often the page appeared in results; clicks = how often it was chosen; position = average ranking spot (lower is better). Data lags ~2 days."
+              open={!!openSections.google}
+              onToggle={() => toggleSection("google")}
+            >
               {d.gsc.status !== "ok" ? (
                 <SectionProblem provider="Google Search Console" status={d.gsc.status} />
               ) : gsc ? (
@@ -647,15 +952,18 @@ export function TrackedPerformanceDialog({
                   )}
                 </>
               ) : null}
-            </section>
+            </ReportSection>
 
             {/* ---------- 3. Indexing ---------- */}
-            <section className="space-y-2">
-              <SectionHeading
-                id="indexing"
-                title="Can Google show this page?"
-                tip="Google's own URL Inspection verdict. If a page isn't indexed, it can't appear in results no matter how good it is. Checked at most once a day to protect your quota."
-              />
+            <ReportSection
+              id="indexing"
+              icon={FileSearch}
+              title="Can Google show this page?"
+              summary={indexingSummary}
+              about="Google's own URL Inspection verdict. If a page isn't indexed, it can't appear in results no matter how good it is. Checked at most once a day to protect your quota."
+              open={!!openSections.indexing}
+              onToggle={() => toggleSection("indexing")}
+            >
               {d.indexing.status !== "ok" ? (
                 <SectionProblem provider="Google Search Console" status={d.indexing.status} />
               ) : d.indexing.data ? (
@@ -736,15 +1044,18 @@ export function TrackedPerformanceDialog({
                   </div>
                 </div>
               ) : null}
-            </section>
+            </ReportSection>
 
             {/* ---------- 4. Bing ---------- */}
-            <section className="space-y-2">
-              <SectionHeading
-                id="bing"
-                title="Bing search"
-                tip="Numbers from Bing Webmaster Tools — Bing also powers ChatGPT's and Copilot's web results, so showing up here helps AI visibility too. Bing only reports weekly totals over roughly the last 6 months, so the date range above doesn't apply."
-              />
+            <ReportSection
+              id="bing"
+              icon={TrendingUp}
+              title="Bing search"
+              summary={bingSummary}
+              about="Numbers from Bing Webmaster Tools — Bing also powers ChatGPT's and Copilot's web results, so showing up here helps AI visibility too. Bing only reports weekly totals over roughly the last 6 months, so the date range above doesn't apply."
+              open={!!openSections.bing}
+              onToggle={() => toggleSection("bing")}
+            >
               {d.bing.status !== "ok" ? (
                 <SectionProblem provider="Bing Webmaster Tools" status={d.bing.status} />
               ) : d.bing.data ? (
@@ -819,15 +1130,18 @@ export function TrackedPerformanceDialog({
                   </>
                 )
               ) : null}
-            </section>
+            </ReportSection>
 
             {/* ---------- 5. Visitors (GA4) ---------- */}
-            <section className="space-y-2">
-              <SectionHeading
-                id="ga4"
-                title="What visitors do on this page"
-                tip="From Google Analytics: real people who landed on this page from any channel (search, AI tools, social, direct). Search Console counts what happens on Google; Analytics counts what happens on your site."
-              />
+            <ReportSection
+              id="ga4"
+              icon={Globe}
+              title="What visitors do on this page"
+              summary={ga4Summary}
+              about="From Google Analytics: real people who landed on this page from any channel (search, AI tools, social, direct). Search Console counts what happens on Google; Analytics counts what happens on your site."
+              open={!!openSections.ga4}
+              onToggle={() => toggleSection("ga4")}
+            >
               {d.ga4.status !== "ok" ? (
                 <SectionProblem provider="Google Analytics 4" status={d.ga4.status} />
               ) : d.ga4.data ? (
@@ -926,15 +1240,18 @@ export function TrackedPerformanceDialog({
                   )}
                 </>
               ) : null}
-            </section>
+            </ReportSection>
 
             {/* ---------- 6. AI visibility ---------- */}
-            <section className="space-y-2">
-              <SectionHeading
-                id="ai"
-                title="AI visibility"
-                tip="How often Copilot / Bing AI cited this page as a source, from your latest Bing 'AI Performance' upload. Microsoft doesn't offer an API for this report, so it only updates when you upload a fresh export on the Bing page."
-              />
+            <ReportSection
+              id="ai"
+              icon={Bot}
+              title="AI visibility"
+              summary={aiSummary}
+              about="How often Copilot / Bing AI cited this page as a source, from your latest Bing 'AI Performance' upload. Microsoft doesn't offer an API for this report, so it only updates when you upload a fresh export on the Bing page."
+              open={!!openSections.ai}
+              onToggle={() => toggleSection("ai")}
+            >
               {d.aiCitations.status !== "ok" ? (
                 <SectionProblem provider="AI citation data" status="error" />
               ) : d.aiCitations.data ? (
@@ -1010,15 +1327,18 @@ export function TrackedPerformanceDialog({
                   </>
                 )
               ) : null}
-            </section>
+            </ReportSection>
 
             {/* ---------- 7. Competitors ---------- */}
-            <section className="space-y-2">
-              <SectionHeading
-                id="competitors"
-                title="Who ranks around you"
-                tip="The Google results page captured for your tracked keyword the last time keyword clustering ran. Reading stored results is free — nothing is re-fetched here."
-              />
+            <ReportSection
+              id="competitors"
+              icon={Swords}
+              title="Who ranks around you"
+              summary={compSummary}
+              about="The Google results page captured for your tracked keyword the last time keyword clustering ran. Reading stored results is free — nothing is re-fetched here."
+              open={!!openSections.competitors}
+              onToggle={() => toggleSection("competitors")}
+            >
               {!d.keyword ? (
                 <div className="rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
                   Set a tracked keyword above to see who ranks for it.
@@ -1087,7 +1407,7 @@ export function TrackedPerformanceDialog({
                   </div>
                 </>
               )}
-            </section>
+            </ReportSection>
 
             <div className="text-[11px] text-muted-foreground border-t border-border/60 pt-3">
               Google &amp; Analytics range: {d.startDate} → {d.endDate}
