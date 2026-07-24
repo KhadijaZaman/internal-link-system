@@ -43,6 +43,16 @@ transient failure spawns duplicates.
 - The sheet is created in the connected user's Drive; they own it. The returned URL carries an
   account-specific `ouid` param — hand the user the clean `/edit` URL.
 
+**Gotcha — the persistent sheet id can silently rotate:** the export treats any `failed (403|404)`
+on the stored spreadsheet id as "deleted from Drive" and creates a REPLACEMENT spreadsheet, storing
+the new id. A transient 403 (e.g. token hiccup) therefore orphans the user's bookmarked sheet: prod
+keeps updating the new copy while the old link goes stale. When the user reports "my sheet isn't
+updating", first compare their link's spreadsheet id against `app_state.keyword_movement_sheet_id`
+(check PROD, not dev — prod runs the daily cron). One-off refresh of an orphaned sheet: temporarily
+point dev `app_state` at the old id, run `exportKeywordMovementSheet(90, {id:1,...})` via a one-off
+esbuild bundle (mirror build.mjs config; no tsx in the repo), then restore dev app_state. Dev works
+because site 1 falls back to env GSC creds and the connectors proxy works from bash.
+
 **Recovery when `listConnections('google-sheet')` returns 0 but the connection exists:**
 - The sandbox binding can go stale even while `searchIntegrations` shows the connection as `added`
   and the platform reports it healthy. `addIntegration` alone does NOT fix it (it returns
