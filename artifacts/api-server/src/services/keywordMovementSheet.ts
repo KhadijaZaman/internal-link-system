@@ -26,6 +26,14 @@ import {
   sheetsRequest,
   shareSheetWithAnyone,
 } from "../integrations/googleSheets";
+import {
+  computeDaily,
+  keywordTabColorMatrix,
+  bestWeekFlags,
+  changeColor,
+  type CellColor,
+  type DailyComputed,
+} from "./keywordMovementColors";
 
 interface KeywordSeries {
   keyword: string;
@@ -154,50 +162,49 @@ type Cell = string | number;
 function keywordTabValues(
   series: KeywordSeries,
   dates: string[],
+  daily: DailyComputed,
 ): Cell[][] {
-  const impressions: Cell[] = ["Impressions"];
-  const imprChange: Cell[] = ["Impr change"];
-  const clicks: Cell[] = ["Clicks"];
-  const clicksChange: Cell[] = ["Clicks change"];
-  const position: Cell[] = ["Position"];
-  const positionChange: Cell[] = ["Position change (+ = moved up)"];
-
-  let prevImpr: number | null = null;
-  let prevClicks: number | null = null;
-  let prevPos: number | null = null;
-  for (const date of dates) {
-    const row = series.byDate.get(date);
-    const impr = Math.round(row?.impressions ?? 0);
-    const clk = Math.round(row?.clicks ?? 0);
-    const pos = row && row.impressions > 0 ? round1(row.position) : null;
-
-    impressions.push(impr);
-    imprChange.push(prevImpr == null ? "" : impr - prevImpr);
-    clicks.push(clk);
-    clicksChange.push(prevClicks == null ? "" : clk - prevClicks);
-    position.push(pos == null ? "" : pos);
-    positionChange.push(
-      pos != null && prevPos != null ? round1(prevPos - pos) : "",
-    );
-
-    prevImpr = impr;
-    prevClicks = clk;
-    if (pos != null) prevPos = pos;
-  }
-
+  const blank = (v: number | null): Cell => (v == null ? "" : v);
   return [
     ["Target keyword", series.keyword],
     ["Page", series.url],
     [],
     ["Date", ...dates],
-    impressions,
-    imprChange,
-    clicks,
-    clicksChange,
-    position,
-    positionChange,
+    ["Impressions", ...daily.impr],
+    ["Impr change", ...daily.imprChange.map(blank)],
+    ["Clicks", ...daily.clicks],
+    ["Clicks change", ...daily.clicksChange.map(blank)],
+    ["Position", ...daily.pos.map(blank)],
+    ["Position change (+ = moved up)", ...daily.posChange.map(blank)],
   ];
 }
+
+// Light backgrounds readable under black text; picked to match the standard
+// Sheets palette (light red/green/orange 3).
+const COLOR_RGB: Record<Exclude<CellColor, null>, {
+  red: number;
+  green: number;
+  blue: number;
+}> = {
+  green: { red: 0.851, green: 0.918, blue: 0.827 },
+  red: { red: 0.957, green: 0.8, blue: 0.8 },
+  orange: { red: 0.976, green: 0.796, blue: 0.612 },
+};
+const WHITE = { red: 1, green: 1, blue: 1 };
+
+function bgCell(c: CellColor): {
+  userEnteredFormat: { backgroundColor: { red: number; green: number; blue: number } };
+} {
+  return {
+    userEnteredFormat: { backgroundColor: c == null ? WHITE : COLOR_RGB[c] },
+  };
+}
+
+const LEGEND_ROWS: Array<{ color: Exclude<CellColor, null>; text: string }> = [
+  { color: "green", text: "Green = improved (vs the day before on keyword tabs; vs the prior 7 days on this tab)" },
+  { color: "red", text: "Red = declined" },
+  { color: "orange", text: "Orange = best ever in this tracking period (new record high for impressions/clicks, or best position yet)" },
+];
 
 function summaryValues(rows: SummaryRow[], rangeLabel: string): Cell[][] {
   const header: Cell[] = [
@@ -436,6 +443,9 @@ export async function exportKeywordMovementSheet(
     .sort((a, b) => b.s.totalImpressions - a.s.totalImpressions);
   const sortedSeries = order.map((o) => series[o.i]!);
   const sortedSummaries = order.map((o) => o.s);
+  const sortedDaily = sortedSeries.map((s) =>
+    computeDaily(dates.map((d) => s.byDate.get(d))),
+  );
 
   const rangeLabel = days === 90 ? "3mo" : `${days}d`;
   // Legacy site keeps the exact historical title the operator bookmarked.
@@ -566,7 +576,7 @@ export async function exportKeywordMovementSheet(
         },
         ...sortedSeries.map((s, i) => ({
           range: `'${tabTitles[i]!.replace(/'/g, "''")}'!A1`,
-          values: keywordTabValues(s, dates),
+          values: keywordTabValues(s, dates, sortedDaily[i]!),
         })),
       ],
     },
@@ -605,9 +615,68 @@ export async function exportKeywordMovementSheet(
             fields: "userEnteredFormat.textFormat.bold",
           },
         })),
+        // Color coding — keyword tabs: rows Impressions..Position change
+        // (row indexes 4-9), one background per day column. Orange marks a
+        // new record on the value rows; green/red mark the change rows.
+        ...keywordSheetIds.map((sheetId, i) => ({
+          updateCells: {
+            start: { sheetId, rowIndex: 4, columnIndex: 1 },
+            rows: keywordTabColorMatrix(sortedDaily[i]!).map((row) => ({
+              values: row.map(bgCell),
+            })),
+            fields: "userEnteredFormat.backgroundColor",
+          },
+        })),
+        // Color coding — summary tab: columns F..K (last-7d values + their
+        // change vs prior 7d) per keyword row.
+        {
+          updateCells: {
+            start: { sheetId: summarySheetId, rowIndex: 1, columnIndex: 5 },
+            rows: sortedSummaries.map((s, i) => {
+              const best = bestWeekFlags(sortedDaily[i]!);
+              return {
+                values: [
+                  bgCell(best.impr ? "orange" : null),
+                  bgCell(changeColor(s.imprChange)),
+                  bgCell(best.clicks ? "orange" : null),
+                  bgCell(changeColor(s.clicksChange)),
+                  bgCell(best.pos ? "orange" : null),
+                  bgCell(changeColor(s.positionChange)),
+                ],
+              };
+            }),
+            fields: "userEnteredFormat.backgroundColor",
+          },
+        },
+        // Legend swatches under the summary table (text written below,
+        // after autoResize, so long legend lines don't stretch column A).
+        {
+          updateCells: {
+            start: {
+              sheetId: summarySheetId,
+              rowIndex: sortedSummaries.length + 2,
+              columnIndex: 0,
+            },
+            rows: LEGEND_ROWS.map((l) => ({ values: [bgCell(l.color)] })),
+            fields: "userEnteredFormat.backgroundColor",
+          },
+        },
       ],
     },
   });
+
+  // Legend text — written AFTER the autoResize above so the long labels
+  // (which overflow into the empty cells to their right) don't inflate the
+  // width of column A.
+  await sheetsRequest(
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
+      `'Keyword summary'!A${sortedSummaries.length + 3}`,
+    )}?valueInputOption=RAW`,
+    {
+      method: "PUT",
+      body: { values: LEGEND_ROWS.map((l) => [l.text]) },
+    },
+  );
 
   // Make the sheet openable by the site owner (not just the operator's
   // Google account). Best-effort — export still succeeds if Drive isn't
