@@ -91,7 +91,7 @@ function sectionContainsActive(section: NavSection, location: string): boolean {
   return section.items.some((item) => isItemActive(item.href, location));
 }
 
-const OPEN_SECTIONS_KEY = "wellows-nav-open-sections";
+const OPEN_SECTIONS_KEY = "linkweave-nav-open-sections";
 
 function loadStoredOpenSections(): Record<string, boolean> | null {
   try {
@@ -165,11 +165,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="px-4 pt-5 pb-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground font-display text-sm font-bold">
-              W
+              L
             </div>
             <div className="min-w-0">
               <div className="font-display text-sm font-semibold leading-tight truncate">
-                Wellows
+                Linkweave
               </div>
               <div className="text-[11px] text-muted-foreground leading-tight truncate">
                 SEO Operations

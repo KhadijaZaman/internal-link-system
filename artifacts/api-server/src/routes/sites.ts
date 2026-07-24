@@ -400,7 +400,7 @@ router.delete("/site", requireAuth, requireSite, async (req, res, next) => {
     if (site.id === LEGACY_SITE_ID) {
       res.status(409).json({
         error:
-          "The original Wellows site can't be deleted — it holds the full historical dataset.",
+          "The original wellows.com site can't be deleted — it holds the full historical dataset.",
       });
       return;
     }

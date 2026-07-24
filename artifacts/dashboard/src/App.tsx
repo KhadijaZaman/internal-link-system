@@ -152,7 +152,7 @@ function AuthLoadingSplash() {
     >
       <img
         src={`${basePath}/logo.svg`}
-        alt="Wellows"
+        alt="Linkweave"
         className="h-10 w-auto"
       />
       <Spinner className="h-6 w-6 text-muted-foreground" />
@@ -378,7 +378,7 @@ function ClerkProviderWithRoutes() {
         signIn: {
           start: {
             title: "Welcome back",
-            subtitle: "Sign in to your Wellows dashboard",
+            subtitle: "Sign in to your Linkweave dashboard",
           },
         },
         signUp: {

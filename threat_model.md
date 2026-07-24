@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Wellows is a single-admin internal SEO operations dashboard with a React frontend and an Express 5 API backed by PostgreSQL. It ingests Search Console data, crawls a configured site, generates internal-link suggestions and optimization briefs with Anthropic, and lets an authenticated operator review results and trigger background jobs.
+Linkweave (formerly Wellows) is a single-admin internal SEO operations dashboard with a React frontend and an Express 5 API backed by PostgreSQL. It ingests Search Console data, crawls a configured site, generates internal-link suggestions and optimization briefs with Anthropic, and lets an authenticated operator review results and trigger background jobs.
 
 ## Assets
 

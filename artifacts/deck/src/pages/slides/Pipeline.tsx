@@ -59,7 +59,7 @@ export default function Pipeline() {
 
         <div className="flex justify-between items-end">
           <div className="text-[1.5vw] font-medium uppercase tracking-[0.18em] text-label">
-            Wellows Internal Linking
+            Linkweave
           </div>
           <div className="text-[6vw] font-thin text-num leading-none">05</div>
         </div>

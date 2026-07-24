@@ -1,6 +1,6 @@
-# [Project name]
+# Linkweave
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Linkweave (formerly "Wellows Internal Linking") is a multi-tenant SEO operations dashboard that turns Search Console/GA4/Bing data and a full site crawl into ranked, AI-assisted internal-link suggestions, content briefs, and cross-engine visibility reports. "Wellows"/wellows.com still appears in code where it refers to the original analyzed site (legacy site id 1): LLM prompts, GSC brand terms, test fixtures — do not rename those.
 
 ## Run & Operate
 
@@ -32,7 +32,7 @@ _Replace the heading above with the project's name, and this line with one sente
 - `artifacts/api-server/src/routes/integrations.ts` — `/api/integrations` status + connect endpoints: GSC via shared Google OAuth app (GSC_CLIENT_ID/SECRET) with HMAC-signed state {siteId,userId,exp} (public callback, auto-matches property to site host), GA4 pasted service-account JSON (verified live before store), Bing pasted API key (verified live); credentials are never returned by any endpoint
 - `artifacts/dashboard/src/pages/settings.tsx` — `/settings` Connections page (GSC connect/property picker, GA4/Bing forms); welcome.tsx has the add-site form (POST /sites → switchSite)
 - `artifacts/dashboard/src/lib/site-context.tsx` — SiteProvider (localStorage active site, module-level `getActiveSiteId()` feeds the X-Site-Id header via the generated fetch client), SiteGate (welcome empty state / keyed remount on switch), `clearStoredSite()` for post-delete cleanup
-- `artifacts/dashboard/src/components/layout.tsx` — sidebar nav: 3 always-visible primary items (Home `/`, To-Do List `/actions`, Weekly Digest `/digest`) + 4 collapsible sections (Track performance / Improve linking / Improve content / Setup) with plain-language labels; open/closed state persists in localStorage `wellows-nav-open-sections`, the section containing the active route is forced open on mount; Admin link injected into Setup only when `isAdmin`
+- `artifacts/dashboard/src/components/layout.tsx` — sidebar nav: 3 always-visible primary items (Home `/`, To-Do List `/actions`, Weekly Digest `/digest`) + 4 collapsible sections (Track performance / Improve linking / Improve content / Setup) with plain-language labels; open/closed state persists in localStorage `linkweave-nav-open-sections`, the section containing the active route is forced open on mount; Admin link injected into Setup only when `isAdmin`
 - `artifacts/dashboard/src/pages/link-map.tsx` — global force-graph caps SVG-rendered edges at `EDGE_RENDER_CAP` (2000): flagged/audit edges always kept, remainder ranked by combined endpoint pagerank; banner `data-testid="banner-edge-cap"` when capped; nodes/edges are copied before d3 so the simulation can't mutate the react-query cache; tables/flagged views still use the full uncapped data
 - `artifacts/api-server/src/lib/deleteSiteData.ts` — one-transaction full site deletion (all site-scoped parent tables; children cascade via ON DELETE CASCADE; clears the per-site `keyword_movement_sheet_id` app_state key, then invalidates site+integration caches); used by DELETE /api/site in routes/sites.ts (legacy site 1 blocked, 409 while a job is running)
 - `artifacts/dashboard/src/components/not-connected-notice.tsx` — friendly "connect it in Settings" empty state; the API's global error middleware (app.ts) maps IntegrationNotConnectedError → 409 {code:"integration_not_connected", provider}; wired into gsc/overview, ga4/pages, bing

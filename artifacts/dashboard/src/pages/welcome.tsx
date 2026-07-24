@@ -192,9 +192,9 @@ export function WelcomePage() {
         <Card>
           <CardHeader>
             <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground font-display text-lg font-bold">
-              W
+              L
             </div>
-            <CardTitle className="pt-2">Welcome to Wellows</CardTitle>
+            <CardTitle className="pt-2">Welcome to Linkweave</CardTitle>
             <CardDescription>
               {user?.primaryEmailAddress?.emailAddress
                 ? `Signed in as ${user.primaryEmailAddress.emailAddress}. `
@@ -272,7 +272,7 @@ export function WelcomePage() {
               <>
                 <p className="text-sm text-muted-foreground">
                   If you previously used the admin password to access this
-                  dashboard, you can claim the existing Wellows site and all of
+                  dashboard, you can claim the existing wellows.com site and all of
                   its data.
                 </p>
                 <Button
@@ -281,7 +281,7 @@ export function WelcomePage() {
                   data-testid="button-open-claim"
                 >
                   <KeyRound className="h-4 w-4" />
-                  Claim the Wellows site
+                  Claim the wellows.com site
                 </Button>
               </>
             ) : (
@@ -307,7 +307,7 @@ export function WelcomePage() {
       <Dialog open={claimOpen} onOpenChange={setClaimOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Claim the Wellows site</DialogTitle>
+            <DialogTitle>Claim the wellows.com site</DialogTitle>
             <DialogDescription>
               Enter the previous admin password to verify you're the operator.
             </DialogDescription>

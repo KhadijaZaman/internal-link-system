@@ -617,7 +617,7 @@ export default function Submissions() {
                     value={urlsText}
                     onChange={(e) => setUrlsText(e.target.value)}
                     placeholder={
-                      "https://wellows.com/blog/ai-visibility-tools/, best ai visibility tools\nhttps://wellows.com/features/prompt-tracking/, prompt tracking\nhttps://wellows.com/tools/ai-overviews-tracker/"
+                      "https://example.com/blog/ai-visibility-tools/, best ai visibility tools\nhttps://example.com/features/prompt-tracking/, prompt tracking\nhttps://example.com/tools/ai-overviews-tracker/"
                     }
                     rows={6}
                     className="font-mono text-sm"

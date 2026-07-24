@@ -155,7 +155,7 @@ function SiteSettingsCard() {
 
         {isLegacy ? (
           <p className="text-sm text-muted-foreground">
-            This is the original Wellows site — it can't be deleted.
+            This is the original wellows.com site — it can't be deleted.
           </p>
         ) : (
           <div className="flex items-center justify-between rounded-md border border-destructive/30 p-3">

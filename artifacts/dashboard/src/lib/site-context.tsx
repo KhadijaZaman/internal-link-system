@@ -7,7 +7,7 @@ import {
   type Site,
 } from "@workspace/api-client-react";
 
-const STORAGE_KEY = "wellows.activeSiteId";
+const STORAGE_KEY = "linkweave.activeSiteId";
 
 let activeSiteIdStore: number | null = null;
 

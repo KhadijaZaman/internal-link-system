@@ -11,7 +11,7 @@ export default function Closing() {
             In Production
           </div>
           <div className="text-[1.5vw] font-medium uppercase tracking-[0.18em] text-label">
-            Wellows / 2026
+            Linkweave / 2026
           </div>
         </div>
 

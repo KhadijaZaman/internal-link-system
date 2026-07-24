@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "Wellows Internal Linking"
+title = "Linkweave"
 version = "1.0.0"
 id = "artifacts/dashboard"
 router = "path"

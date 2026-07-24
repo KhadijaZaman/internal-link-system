@@ -247,7 +247,7 @@ function IndexingBody() {
             className="flex gap-2 items-center"
           >
             <Input
-              placeholder="https://wellows.com/page-to-inspect"
+              placeholder="https://example.com/page-to-inspect"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               className="flex-1"

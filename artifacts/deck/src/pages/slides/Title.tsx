@@ -20,7 +20,7 @@ export default function Title() {
 
         <div>
           <h1 className="text-[8vw] font-extrabold leading-[0.9] tracking-[-0.045em] text-text">
-            Wellows
+            Linkweave
           </h1>
           <h1 className="text-[8vw] font-light leading-[0.9] tracking-[-0.045em] text-text">
             Internal Linking

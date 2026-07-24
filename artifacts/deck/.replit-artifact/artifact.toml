@@ -1,6 +1,6 @@
 kind = "slides"
 previewPath = "/deck/"
-title = "Wellows Internal Linking — Overview"
+title = "Linkweave — Overview"
 version = "1.0.0"
 id = "artifacts/deck"
 router = "path"

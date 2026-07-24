@@ -258,7 +258,7 @@ function BulkQueriesBody() {
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={`https://wellows.com/blog/ai-overviews-optimization/\nhttps://wellows.com/blog/what-is-content-cannibalization/\n...`}
+            placeholder={`https://example.com/blog/ai-overviews-optimization/\nhttps://example.com/blog/what-is-content-cannibalization/\n...`}
             rows={10}
             className="font-mono text-xs"
           />

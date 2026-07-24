@@ -80,7 +80,7 @@ export default function KeywordReport() {
     const url = normalizeUrl(urlDraft);
     const keyword = keywordDraft.trim();
     if (!url || !isValidHttpUrl(url)) {
-      setFormError("Enter a valid page URL, e.g. https://wellows.com/features/prompt-tracking/");
+      setFormError("Enter a valid page URL, e.g. https://example.com/features/prompt-tracking/");
       return;
     }
     if (!keyword) {
@@ -162,13 +162,13 @@ export default function KeywordReport() {
               htmlFor="kr-url"
             >
               Page URL
-              <InfoTip>The exact web address of the page you want to check, e.g. https://wellows.com/features/prompt-tracking/.</InfoTip>
+              <InfoTip>The exact web address of the page you want to check, e.g. https://example.com/features/prompt-tracking/.</InfoTip>
             </label>
             <Input
               id="kr-url"
               value={urlDraft}
               onChange={(e) => setUrlDraft(e.target.value)}
-              placeholder="https://wellows.com/features/prompt-tracking/"
+              placeholder="https://example.com/features/prompt-tracking/"
               className="mt-1"
             />
           </div>

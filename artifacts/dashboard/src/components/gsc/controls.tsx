@@ -92,7 +92,7 @@ export function GscControls({ showUrlFilter = true }: { showUrlFilter?: boolean 
         <div className="flex-1 min-w-[200px]">
           <Label className="text-xs text-muted-foreground">URL filter (optional)</Label>
           <Input
-            placeholder="https://wellows.com/blog/..."
+            placeholder="https://example.com/blog/..."
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
             onKeyDown={(e) => {
