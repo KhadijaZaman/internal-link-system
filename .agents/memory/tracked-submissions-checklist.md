@@ -27,9 +27,8 @@ tracked-submissions route free of fetch/crawl/A/I calls.
 ## Keyword tracking / report dialog (read-only-data exception)
 
 Each tracked URL may carry one optional target `keyword`. The per-URL report
-endpoint (`GET /tracked-submissions/:id/report` — superseded the old
-`/performance` route in Jul 2026) is the ONLY processing allowed for tracked
-URLs. It may call ONLY free/already-paid-for sources: GSC query + URL
+endpoint (`GET /tracked-submissions/:id/report`) is the ONLY processing
+allowed for tracked URLs. It may call ONLY free/already-paid-for sources: GSC query + URL
 inspection, GA4 Data API, Bing Webmaster API rows already synced to the DB,
 uploaded AI-citation rows, and SERP rows stored by past clustering runs —
 still no page fetch, crawl, AI call, or paid SERP query. Sections load
