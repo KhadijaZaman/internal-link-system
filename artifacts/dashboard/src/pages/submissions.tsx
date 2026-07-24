@@ -696,7 +696,12 @@ export default function Submissions() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
           <KpiCard label="Total" value={total} />
           <KpiCard label="Today" value={todayCount} accent="primary" />
-          <KpiCard label="Active" value={activeCount} accent="amber" />
+          <KpiCard
+            label="Active"
+            value={activeCount}
+            accent="amber"
+            hint="Anything still in motion: submitted work that's queued or processing, plus tracked URLs you haven't marked done yet."
+          />
           <KpiCard label="Failed" value={failedCount} accent="red" />
         </div>
 
@@ -710,14 +715,18 @@ export default function Submissions() {
               },
               {
                 title: "Track any URL manually",
-                body: "Use “Track URLs” to paste your own list of pages to keep an eye on. These are a plain checklist — nothing is fetched, crawled, or sent to AI — so there's no cost. Mark them done or remove them anytime.",
+                body: "Use “Track URLs” to paste your own list of pages to keep an eye on. These are a plain checklist — nothing is fetched, crawled, or sent to AI — so there's no cost. “Mark done” is your own checkmark: it means you're finished watching that URL. Nothing is deleted, and you can reopen it anytime.",
               },
               {
                 title: "Track status day by day",
-                body: "Each day groups your submissions with a live status: Queued, Processing, Done, Failed, or Tracking. The list auto-refreshes while anything is still running.",
+                body: "Each day groups your submissions with a live status: Queued, Processing, Done, or Failed for work you submitted, and Tracking or Finished for your own tracked URLs. The list auto-refreshes while anything is still running.",
               },
             ]}
             faqs={[
+              {
+                title: "What does “Mark done” do on a tracked URL?",
+                body: "It's just a checkmark for yourself — it means you're finished keeping an eye on that page. The URL stays in your history with a “Finished” badge, nothing is deleted, and the Reopen button puts it back on your active watchlist anytime. It doesn't change anything on your website.",
+              },
               {
                 title: "Does tracking a URL run Suggest Links or the Optimizer?",
                 body: "No. Tracked URLs are a manual checklist only. Nothing is fetched, crawled, or sent to AI, so adding them costs nothing. Use Suggest Links or the Optimizer directly when you want to process a page.",
@@ -814,10 +823,12 @@ function KpiCard({
   label,
   value,
   accent,
+  hint,
 }: {
   label: string;
   value: number;
   accent?: "primary" | "amber" | "red";
+  hint?: string;
 }) {
   const accentClass =
     accent === "primary"
@@ -830,8 +841,9 @@ function KpiCard({
   return (
     <Card className="border-border/50">
       <CardContent className="p-4">
-        <div className="text-xs text-muted-foreground uppercase tracking-wide">
+        <div className="flex items-center gap-1 text-xs text-muted-foreground uppercase tracking-wide">
           {label}
+          {hint && <InfoTip iconClassName="h-3 w-3">{hint}</InfoTip>}
         </div>
         <div className={`text-2xl font-semibold tabular-nums mt-1 ${accentClass}`}>
           {value}
@@ -857,7 +869,10 @@ function SubmissionRow({
   deleteBusy: boolean;
 }) {
   const isTracked = item.type === "tracked";
-  const meta = STATUS_META[item.status];
+  const meta =
+    isTracked && item.status === "done"
+      ? { ...STATUS_META.done, label: "Finished" }
+      : STATUS_META[item.status];
   const style = TYPE_STYLE[item.type];
   const Icon = style.icon;
   return (
@@ -922,7 +937,11 @@ function SubmissionRow({
             className="h-8 px-2 text-xs"
             disabled={toggleBusy}
             onClick={() => onToggleTracked(item)}
-            title={item.status === "done" ? "Reopen tracking" : "Mark as done"}
+            title={
+              item.status === "done"
+                ? "Put this URL back on your active watchlist"
+                : "Check this URL off your watchlist — it just marks it finished for you; nothing is deleted, and you can reopen it anytime"
+            }
           >
             {item.status === "done" ? (
               <>
@@ -930,7 +949,7 @@ function SubmissionRow({
               </>
             ) : (
               <>
-                <Check className="h-3.5 w-3.5" /> Done
+                <Check className="h-3.5 w-3.5" /> Mark done
               </>
             )}
           </Button>
