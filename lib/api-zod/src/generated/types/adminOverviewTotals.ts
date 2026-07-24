@@ -6,9 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface AuthSession {
-  authenticated: boolean;
-  /** @nullable */
-  username?: string | null;
-  isAdmin?: boolean;
+export interface AdminOverviewTotals {
+  users: number;
+  sites: number;
 }

@@ -262,6 +262,21 @@ router.post("/sites/claim-legacy", requireAuth, async (req, res, next) => {
     legacyClaimed = true;
     invalidateSiteCache(LEGACY_SITE_ID);
     req.log.info({ userId }, "legacy site claimed");
+
+    // The legacy-site claimant is the platform operator: promote to admin
+    // immediately (same guard as the startup bootstrap — only if no admin
+    // exists yet). Fail-soft: the claim itself already succeeded.
+    try {
+      const { sql } = await import("drizzle-orm");
+      await db.execute(sql`
+        UPDATE users SET is_admin = true
+        WHERE id = ${userId}
+          AND NOT EXISTS (SELECT 1 FROM users WHERE is_admin = true)
+      `);
+    } catch (err) {
+      req.log.warn({ err }, "admin promotion after legacy claim failed (startup bootstrap will retry)");
+    }
+
     res.json(toSiteDto(updated[0]));
   } catch (err) {
     next(err);

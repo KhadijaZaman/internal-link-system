@@ -13,6 +13,35 @@ export interface AuthSession {
   authenticated: boolean;
   /** @nullable */
   username?: string | null;
+  isAdmin?: boolean;
+}
+
+export interface AdminSite {
+  id: number;
+  domain: string;
+  host: string;
+  displayName: string;
+  createdAt: string;
+}
+
+export interface AdminUser {
+  id: string;
+  /** @nullable */
+  email: string | null;
+  isAdmin: boolean;
+  createdAt: string;
+  sites: AdminSite[];
+}
+
+export interface AdminOverviewTotals {
+  users: number;
+  sites: number;
+}
+
+export interface AdminOverview {
+  totals: AdminOverviewTotals;
+  users: AdminUser[];
+  unclaimedSites: AdminSite[];
 }
 
 export interface Site {

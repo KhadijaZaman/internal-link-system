@@ -21,7 +21,39 @@ export const HealthCheckResponse = zod.object({
  */
 export const GetSessionResponse = zod.object({
   "authenticated": zod.boolean(),
-  "username": zod.string().nullish()
+  "username": zod.string().nullish(),
+  "isAdmin": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Cross-tenant overview of all users and their sites (admin only)
+ */
+export const GetAdminOverviewResponse = zod.object({
+  "totals": zod.object({
+  "users": zod.number(),
+  "sites": zod.number()
+}),
+  "users": zod.array(zod.object({
+  "id": zod.string(),
+  "email": zod.string().nullable(),
+  "isAdmin": zod.boolean(),
+  "createdAt": zod.string(),
+  "sites": zod.array(zod.object({
+  "id": zod.number(),
+  "domain": zod.string(),
+  "host": zod.string(),
+  "displayName": zod.string(),
+  "createdAt": zod.string()
+}))
+})),
+  "unclaimedSites": zod.array(zod.object({
+  "id": zod.number(),
+  "domain": zod.string(),
+  "host": zod.string(),
+  "displayName": zod.string(),
+  "createdAt": zod.string()
+}))
 })
 
 

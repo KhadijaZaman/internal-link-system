@@ -45,3 +45,29 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     .then(() => next())
     .catch((err) => next(err));
 }
+
+/**
+ * Platform-admin gate. Mount AFTER requireAuth. Checks the `users.is_admin`
+ * flag (bootstrapped at startup to the legacy-site owner). Global scope —
+ * do NOT combine with requireSite; admin endpoints are cross-tenant by design.
+ */
+export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+  const userId = (req as AuthedRequest).userId ?? getUserId(req);
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  (async () => {
+    const { db, usersTable } = await import("@workspace/db");
+    const { eq } = await import("drizzle-orm");
+    const [row] = await db
+      .select({ isAdmin: usersTable.isAdmin })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId));
+    if (!row?.isAdmin) {
+      res.status(403).json({ error: "Admin access required" });
+      return;
+    }
+    next();
+  })().catch((err) => next(err));
+}

@@ -154,21 +154,51 @@ export default function LinkMap() {
     { query: { enabled: !!selectedNodeId, queryKey: getGetInventoryPageQueryKey({ url: selectedNodeId || "" }) } },
   );
 
-  // Global force graph — only when NOT in focus mode
-  useEffect(() => {
-    if (focusUrl) return;
-    if (!graph || !svgRef.current) return;
-
+  // The full graph can hold tens of thousands of links; rendering them all as
+  // SVG lines inside a force simulation freezes the browser. Cap the DRAWN
+  // edges (flagged links first, then links between the highest-authority
+  // pages) — tables and audit summaries below always use the full data.
+  const EDGE_RENDER_CAP = 2000;
+  const globalGraph = useMemo(() => {
+    if (!graph) return null;
     let filteredNodes = graph.nodes;
     if (orphansOnly) filteredNodes = filteredNodes.filter((n) => n.isOrphan);
     if (deadEndsOnly) filteredNodes = filteredNodes.filter((n) => n.isDeadEnd);
     if (sectionFilter !== "all") filteredNodes = filteredNodes.filter((n) => n.section === sectionFilter);
-    if (searchQuery && !isFullUrl(searchQuery)) {
-      filteredNodes = filteredNodes.filter((n) => n.id.toLowerCase().includes(searchQuery.toLowerCase()));
+    if (debouncedSearch && !isFullUrl(debouncedSearch)) {
+      filteredNodes = filteredNodes.filter((n) => n.id.toLowerCase().includes(debouncedSearch.toLowerCase()));
     }
 
     const nodeIds = new Set(filteredNodes.map((n) => n.id));
-    const filteredEdges = graph.edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
+    const allEdges = graph.edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
+
+    let renderEdges = allEdges;
+    if (allEdges.length > EDGE_RENDER_CAP) {
+      const rank = new Map(filteredNodes.map((n) => [n.id, n.pagerank ?? 0]));
+      renderEdges = [...allEdges]
+        .sort((a, b) => {
+          const aFlagged = (a.auditFlags?.length ?? 0) > 0 ? 1 : 0;
+          const bFlagged = (b.auditFlags?.length ?? 0) > 0 ? 1 : 0;
+          if (aFlagged !== bFlagged) return bFlagged - aFlagged;
+          const aScore = (rank.get(a.source) ?? 0) + (rank.get(a.target) ?? 0);
+          const bScore = (rank.get(b.source) ?? 0) + (rank.get(b.target) ?? 0);
+          return bScore - aScore;
+        })
+        .slice(0, EDGE_RENDER_CAP);
+    }
+    return { filteredNodes, renderEdges, totalEdges: allEdges.length };
+  }, [graph, orphansOnly, deadEndsOnly, sectionFilter, debouncedSearch]);
+
+  // Global force graph — only when NOT in focus mode
+  useEffect(() => {
+    if (focusUrl) return;
+    if (!globalGraph || !svgRef.current) return;
+
+    // Copy nodes/edges so d3's force simulation mutates throwaway objects,
+    // never the cached query data (forceLink replaces source/target strings
+    // with node references in place).
+    const filteredNodes = globalGraph.filteredNodes.map((n) => ({ ...n }));
+    const filteredEdges = globalGraph.renderEdges.map((e) => ({ ...e }));
 
     const width = svgRef.current.clientWidth;
     const height = svgRef.current.clientHeight;
@@ -239,7 +269,7 @@ export default function LinkMap() {
     return () => {
       simulation.stop();
     };
-  }, [graph, orphansOnly, deadEndsOnly, sectionFilter, searchQuery, focusUrl]);
+  }, [globalGraph, focusUrl]);
 
   // Focused hub-and-spoke render
   useEffect(() => {
@@ -595,7 +625,16 @@ export default function LinkMap() {
               <Spinner className="h-8 w-8" />
             </div>
           ) : (
-            <svg ref={svgRef} className="w-full h-full" />
+            <>
+              {globalGraph && globalGraph.totalEdges > globalGraph.renderEdges.length && (
+                <div className="absolute top-3 left-3 right-3 z-10 rounded-md border bg-background/95 px-3 py-2 text-xs text-muted-foreground shadow-sm" data-testid="banner-edge-cap">
+                  Showing the {globalGraph.renderEdges.length.toLocaleString()} most important of{" "}
+                  {globalGraph.totalEdges.toLocaleString()} links so the map stays fast. Flagged links are
+                  always shown. Use the filters, or paste a page URL above to see everything around one page.
+                </div>
+              )}
+              <svg ref={svgRef} className="w-full h-full" />
+            </>
           )}
         </Card>
       </div>

@@ -50,6 +50,7 @@ import SimilarityExplorer from "@/pages/similarity-explorer";
 import BingPage from "@/pages/bing";
 import TopicalMap from "@/pages/topical-map";
 import SettingsPage from "@/pages/settings";
+import AdminPage from "@/pages/admin";
 import { GscRangeProvider } from "@/components/gsc/range-context";
 
 const queryClient = new QueryClient({
@@ -322,6 +323,7 @@ function Router() {
       <Route path="/bing" component={() => <ProtectedRoute component={BingPage} />} />
       <Route path="/topical-map" component={() => <ProtectedRoute component={TopicalMap} />} />
       <Route path="/settings" component={() => <ProtectedRoute component={SettingsPage} />} />
+      <Route path="/admin" component={() => <ProtectedRoute component={AdminPage} />} />
       <Route path="/gsc/:rest*">
         {() => (
           <GscRangeProvider>

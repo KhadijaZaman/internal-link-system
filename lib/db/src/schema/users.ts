@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core";
 
 /**
  * Local mirror of Clerk users. Rows are provisioned just-in-time on the
@@ -8,6 +8,9 @@ import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
  */
 export const usersTable = pgTable("users", {
   id: text("id").primaryKey(), // Clerk user id, e.g. "user_2..."
+  // Platform admin (operator). Bootstrapped at server startup: if no admin
+  // exists yet, the owner of the legacy site (id 1) becomes admin.
+  isAdmin: boolean("is_admin").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
