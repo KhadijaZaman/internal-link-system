@@ -102,6 +102,10 @@ export default function TopicalMapPage() {
   const queryClient = useQueryClient();
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
+  const [statusFilter, setStatusFilter] = useState<
+    Record<TopicalMapNode["status"], boolean>
+  >({ published: true, gap: true, ignored: true });
+  const [showBridges, setShowBridges] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
 
@@ -290,13 +294,17 @@ export default function TopicalMapPage() {
   const transformRef = useRef<d3.ZoomTransform>(d3.zoomIdentity);
   const hoverRef = useRef<number | null>(null);
   const selectedNodeRef = useRef<number | null>(null);
+  const statusFilterRef = useRef(statusFilter);
+  const showBridgesRef = useRef(showBridges);
   const drawRef = useRef<() => void>(() => {});
 
   selectedNodeRef.current = selectedNodeId;
+  statusFilterRef.current = statusFilter;
+  showBridgesRef.current = showBridges;
 
   useEffect(() => {
     drawRef.current();
-  }, [selectedNodeId]);
+  }, [selectedNodeId, statusFilter, showBridges]);
 
   useEffect(() => {
     if (!layout || !canvasRef.current || !containerRef.current) return;
@@ -324,10 +332,13 @@ export default function TopicalMapPage() {
 
       const sel = selectedNodeRef.current;
       const hov = hoverRef.current;
+      const filt = statusFilterRef.current;
+      const showBr = showBridgesRef.current;
 
       // Tree edges
       ctx.setLineDash([]);
       for (const e of edges) {
+        if (!filt[e.to.status]) continue;
         ctx.beginPath();
         ctx.moveTo(e.from.x, e.from.y);
         ctx.lineTo(e.to.x, e.to.y);
@@ -338,19 +349,21 @@ export default function TopicalMapPage() {
       }
 
       // Bridges (dotted purple arcs)
-      ctx.setLineDash([5 / t.k, 4 / t.k]);
-      for (const b of bridges) {
-        ctx.beginPath();
-        const mx = (b.from.x + b.to.x) / 2;
-        const my = (b.from.y + b.to.y) / 2;
-        // Bow the line toward the center so bridges read as cross-links.
-        ctx.moveTo(b.from.x, b.from.y);
-        ctx.quadraticCurveTo(mx * 0.35, my * 0.35, b.to.x, b.to.y);
-        ctx.strokeStyle = "rgba(124, 58, 237, 0.5)";
-        ctx.lineWidth = 1 / t.k;
-        ctx.stroke();
+      if (showBr) {
+        ctx.setLineDash([5 / t.k, 4 / t.k]);
+        for (const b of bridges) {
+          ctx.beginPath();
+          const mx = (b.from.x + b.to.x) / 2;
+          const my = (b.from.y + b.to.y) / 2;
+          // Bow the line toward the center so bridges read as cross-links.
+          ctx.moveTo(b.from.x, b.from.y);
+          ctx.quadraticCurveTo(mx * 0.35, my * 0.35, b.to.x, b.to.y);
+          ctx.strokeStyle = "rgba(124, 58, 237, 0.5)";
+          ctx.lineWidth = 1 / t.k;
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
       }
-      ctx.setLineDash([]);
 
       // Central entity
       ctx.beginPath();
@@ -358,16 +371,18 @@ export default function TopicalMapPage() {
       ctx.fillStyle = "#0f172a";
       ctx.fill();
 
-      // Nodes
+      // Nodes (hidden statuses stay as faint ghosts so the tree shape is readable)
       for (const n of nodes) {
-        const isSel = n.id === sel;
-        const isHov = n.id === hov;
+        const hidden = !filt[n.status];
+        const isSel = !hidden && n.id === sel;
+        const isHov = !hidden && n.id === hov;
         ctx.beginPath();
         ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-        ctx.globalAlpha = n.status === "ignored" ? 0.55 : 1;
+        ctx.globalAlpha = hidden ? 0.08 : n.status === "ignored" ? 0.55 : 1;
         ctx.fillStyle = STATUS_COLOR[n.status];
         ctx.fill();
         ctx.globalAlpha = 1;
+        if (hidden) continue;
         if (n.section === "outer") {
           ctx.strokeStyle = "#475569";
           ctx.lineWidth = 1.2 / t.k;
@@ -388,6 +403,7 @@ export default function TopicalMapPage() {
       ctx.textAlign = "left";
       ctx.font = `${11 / t.k}px Inter, system-ui, sans-serif`;
       for (const n of nodes) {
+        if (!filt[n.status]) continue;
         const always = n.level === "pillar" || n.level === "core_topic";
         const zoomedIn = t.k >= 2.2;
         if (!always && !zoomedIn && n.id !== sel && n.id !== hov) continue;
@@ -412,10 +428,12 @@ export default function TopicalMapPage() {
 
     const findNode = (mx: number, my: number): LaidOutNode | undefined => {
       const t = transformRef.current;
+      const filt = statusFilterRef.current;
       const [x, y] = t.invert([mx, my]);
       let best: LaidOutNode | undefined;
       let bestDist = Infinity;
       for (const n of nodes) {
+        if (!filt[n.status]) continue;
         const dist = Math.hypot(n.x - x, n.y - y);
         if (dist <= n.r + 6 / t.k && dist < bestDist) {
           best = n;
@@ -759,28 +777,63 @@ export default function TopicalMapPage() {
                     covered it yet.
                   </InfoTip>
                 </CardTitle>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 inline-block" />
-                    Covered
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="h-2.5 w-2.5 rounded-full bg-amber-500 inline-block" />
-                    Gap
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="h-2.5 w-2.5 rounded-full bg-slate-400 inline-block" />
-                    Dismissed
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="w-4 border-t border-dashed border-purple-500 inline-block" />
+                <div className="flex items-center gap-1.5 text-xs">
+                  {(
+                    [
+                      { key: "published" as const, label: "Covered", dot: "bg-emerald-500" },
+                      { key: "gap" as const, label: "Gap", dot: "bg-amber-500" },
+                      { key: "ignored" as const, label: "Dismissed", dot: "bg-slate-400" },
+                    ]
+                  ).map(({ key, label, dot }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() =>
+                        setStatusFilter((f) => ({ ...f, [key]: !f[key] }))
+                      }
+                      className={`flex items-center gap-1 rounded-full border px-2 py-0.5 transition-colors ${
+                        statusFilter[key]
+                          ? "border-border bg-muted/60 text-foreground"
+                          : "border-transparent text-muted-foreground/50 line-through"
+                      }`}
+                      title={
+                        statusFilter[key]
+                          ? `Hide ${label.toLowerCase()} topics`
+                          : `Show ${label.toLowerCase()} topics`
+                      }
+                      data-testid={`button-filter-${key}`}
+                    >
+                      <span
+                        className={`h-2.5 w-2.5 rounded-full inline-block ${dot} ${
+                          statusFilter[key] ? "" : "opacity-30"
+                        }`}
+                      />
+                      {label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setShowBridges((v) => !v)}
+                    className={`flex items-center gap-1 rounded-full border px-2 py-0.5 transition-colors ${
+                      showBridges
+                        ? "border-border bg-muted/60 text-foreground"
+                        : "border-transparent text-muted-foreground/50 line-through"
+                    }`}
+                    title={showBridges ? "Hide bridge lines" : "Show bridge lines"}
+                    data-testid="button-filter-bridges"
+                  >
+                    <span
+                      className={`w-4 border-t border-dashed border-purple-500 inline-block ${
+                        showBridges ? "" : "opacity-30"
+                      }`}
+                    />
                     Bridge
-                  </span>
+                  </button>
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                Scroll to zoom, drag to pan, click a topic for details. Outer-section topics
-                have a dark ring.
+                Scroll to zoom, drag to pan, click a topic for details. Click a legend chip
+                to show or hide those topics. Outer-section topics have a dark ring.
               </p>
             </CardHeader>
             <CardContent>
