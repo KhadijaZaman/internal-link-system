@@ -30,19 +30,22 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 import {
   AlertTriangle,
   ChevronDown,
-  ExternalLink,
   EyeOff,
   Map as MapIcon,
   Play,
   RotateCcw,
+  Search,
+  Sparkles,
   X,
 } from "lucide-react";
 import { HowThisWorks } from "@/components/how-this-works";
 import { JobSpendCapNotice } from "@/components/spend-cap-badge";
 import { InfoTip } from "@/components/info-tip";
+import { DataNarrative, Num } from "@/components/data-narrative";
 import * as d3 from "d3";
 
 const STATUS_COLOR: Record<TopicalMapNode["status"], string> = {
@@ -97,9 +100,24 @@ function splitLines(text: string): string[] {
 
 type LaidOutNode = TopicalMapNode & { x: number; y: number; r: number };
 
+/** Compose a ready-made editorial brief for the content writer from a map node. */
+function writerNotesFor(node: TopicalMapNode): string {
+  const lines = [
+    `From the Topical Authority Map — gap topic "${node.title}".`,
+    `Suggested title: ${node.suggestedTitle}`,
+    `Angle to own: ${node.attributeOwned}`,
+  ];
+  if (node.informationGain) lines.push(`Information gain angle: ${node.informationGain}`);
+  lines.push(
+    `Search intent: ${node.intent} (${node.predicate}) · funnel stage: ${node.funnelStage} · page type: ${node.pageType}`,
+  );
+  return lines.join("\n");
+}
+
 export default function TopicalMapPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<
@@ -108,6 +126,15 @@ export default function TopicalMapPage() {
   const [showBridges, setShowBridges] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
+  const [topicSearch, setTopicSearch] = useState("");
+
+  const sendToWriter = (node: TopicalMapNode) => {
+    const params = new URLSearchParams({
+      keyword: node.canonicalQuery,
+      notes: writerNotesFor(node),
+    });
+    navigate(`/content/writer?${params.toString()}`);
+  };
 
   const [centralEntity, setCentralEntity] = useState("");
   const [synonyms, setSynonyms] = useState("");
@@ -288,6 +315,24 @@ export default function TopicalMapPage() {
   }, [detail]);
   const selectedNode = selectedNodeId !== null ? (nodeById.get(selectedNodeId) ?? null) : null;
 
+  const topicMatches = useMemo(() => {
+    const q = topicSearch.trim().toLowerCase();
+    if (q.length < 2 || !detail) return [];
+    return detail.nodes
+      .filter(
+        (n) =>
+          n.title.toLowerCase().includes(q) ||
+          n.canonicalQuery.toLowerCase().includes(q),
+      )
+      .slice(0, 8);
+  }, [topicSearch, detail]);
+
+  const jumpToNode = (id: number) => {
+    setSelectedNodeId(id);
+    setTopicSearch("");
+    focusNodeRef.current(id);
+  };
+
   // ---- Canvas rendering ----
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -297,6 +342,9 @@ export default function TopicalMapPage() {
   const statusFilterRef = useRef(statusFilter);
   const showBridgesRef = useRef(showBridges);
   const drawRef = useRef<() => void>(() => {});
+  // Pans/zooms the canvas so the given node lands in the center (set up in the
+  // canvas effect below; used by the topic search box and gap-list rows).
+  const focusNodeRef = useRef<(id: number) => void>(() => {});
 
   selectedNodeRef.current = selectedNodeId;
   statusFilterRef.current = statusFilter;
@@ -426,6 +474,19 @@ export default function TopicalMapPage() {
     // Start centered.
     selCanvas.call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2).scale(0.85));
 
+    focusNodeRef.current = (id: number) => {
+      const n = nodes.find((node) => node.id === id);
+      if (!n) return;
+      const k = Math.max(transformRef.current.k, 2.4);
+      const target = d3.zoomIdentity
+        .translate(width / 2 - n.x * k, height / 2 - n.y * k)
+        .scale(k);
+      selCanvas
+        .transition()
+        .duration(450)
+        .call(zoom.transform, target);
+    };
+
     const findNode = (mx: number, my: number): LaidOutNode | undefined => {
       const t = transformRef.current;
       const filt = statusFilterRef.current;
@@ -470,6 +531,19 @@ export default function TopicalMapPage() {
   }, [layout]);
 
   const coverage = detail?.coverage ?? null;
+
+  const narrative = useMemo(() => {
+    if (!detail || !coverage) return null;
+    const gaps = detail.nodes.filter((n) => n.status === "gap");
+    const highGaps = gaps.filter((n) => n.priority === "high");
+    const rankedPillars = coverage.perPillar
+      .filter((p) => p.total > 0)
+      .sort((a, b) => a.coveragePct - b.coveragePct);
+    const weakest = rankedPillars[0] ?? null;
+    const strongest =
+      rankedPillars.length > 1 ? rankedPillars[rankedPillars.length - 1]! : null;
+    return { gaps, highGaps, weakest, strongest };
+  }, [detail, coverage]);
 
   return (
     <div className="space-y-6" data-testid="page-topical-map">
@@ -764,6 +838,54 @@ export default function TopicalMapPage() {
         </div>
       )}
 
+      {coverage && detail && narrative && (
+        <DataNarrative
+          paragraphs={[
+            <>
+              This map lays out <Num>{detail.nodes.length} topics</Num> your site should
+              cover around "{detail.map.centralEntity}". You've already published pages
+              for <Num>{coverage.publishedNodes}</Num> of them —{" "}
+              <Num>{coverage.coveragePct}% coverage</Num> — leaving{" "}
+              <Num>{narrative.gaps.length} gaps</Num> still to write
+              {narrative.highGaps.length > 0 ? (
+                <>
+                  , including <Num>{narrative.highGaps.length} high-priority</Num> ones
+                </>
+              ) : null}
+              .
+            </>,
+            ...(narrative.weakest
+              ? [
+                  <>
+                    Your thinnest theme is <Num>"{narrative.weakest.title}"</Num> at{" "}
+                    <Num>{narrative.weakest.coveragePct}%</Num> covered
+                    {narrative.strongest &&
+                    narrative.strongest.nodeId !== narrative.weakest.nodeId ? (
+                      <>
+                        , while <Num>"{narrative.strongest.title}"</Num> is your strongest
+                        at <Num>{narrative.strongest.coveragePct}%</Num>
+                      </>
+                    ) : null}
+                    . Filling the thin themes first sends the strongest authority signal.
+                  </>,
+                ]
+              : []),
+          ]}
+          insights={[
+            {
+              tone: "warn" as const,
+              text: (
+                <>
+                  Start with the high-priority gaps in the list below — each one has a
+                  "Write" button that opens the Content Writer with the brief already
+                  filled in.
+                </>
+              ),
+            },
+          ]}
+        />
+      )}
+
       {detail && layout && (
         <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
           <Card data-testid="card-map-canvas">
@@ -835,6 +957,50 @@ export default function TopicalMapPage() {
                 Scroll to zoom, drag to pan, click a topic for details. Click a legend chip
                 to show or hide those topics. Outer-section topics have a dark ring.
               </p>
+              <div className="relative mt-1">
+                <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <Input
+                  value={topicSearch}
+                  onChange={(e) => setTopicSearch(e.target.value)}
+                  placeholder="Find a topic by name… (e.g. anchor text)"
+                  className="h-8 pl-8 text-sm max-w-sm"
+                  data-testid="input-topic-search"
+                />
+                {topicMatches.length > 0 && (
+                  <div
+                    className="absolute z-20 mt-1 w-full max-w-sm rounded-md border bg-popover shadow-md overflow-hidden"
+                    data-testid="list-topic-search-results"
+                  >
+                    {topicMatches.map((n) => (
+                      <button
+                        key={n.id}
+                        type="button"
+                        className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-sm hover:bg-muted/60"
+                        onClick={() => jumpToNode(n.id)}
+                        data-testid={`topic-search-result-${n.id}`}
+                      >
+                        <span
+                          className="h-2 w-2 rounded-full shrink-0"
+                          style={{ backgroundColor: STATUS_COLOR[n.status] }}
+                        />
+                        <span className="truncate flex-1">{n.title}</span>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {n.status === "published"
+                            ? "covered"
+                            : n.status === "gap"
+                              ? "gap"
+                              : "dismissed"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {topicSearch.trim().length >= 2 && topicMatches.length === 0 && (
+                  <div className="absolute z-20 mt-1 w-full max-w-sm rounded-md border bg-popover shadow-md px-2.5 py-1.5 text-sm text-muted-foreground">
+                    No topics match "{topicSearch.trim()}".
+                  </div>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               <div ref={containerRef} className="relative w-full">
@@ -965,6 +1131,17 @@ export default function TopicalMapPage() {
                       </p>
                     </div>
                   )}
+                  {selectedNode.status === "gap" && (
+                    <Button
+                      size="sm"
+                      className="w-full"
+                      onClick={() => sendToWriter(selectedNode)}
+                      data-testid="button-send-to-writer"
+                    >
+                      <Sparkles className="h-3.5 w-3.5 mr-2" />
+                      Write this article
+                    </Button>
+                  )}
                   {selectedNode.status !== "published" && (
                     <Button
                       variant="outline"
@@ -1074,10 +1251,18 @@ export default function TopicalMapPage() {
                     return rank[a.priority] - rank[b.priority] || a.sortOrder - b.sortOrder;
                   })
                   .map((n) => (
-                    <button
+                    <div
                       key={n.id}
-                      className="w-full flex items-center gap-3 rounded-md border px-3 py-2 text-left hover:bg-muted/50 transition-colors"
-                      onClick={() => setSelectedNodeId(n.id)}
+                      role="button"
+                      tabIndex={0}
+                      className="w-full flex items-center gap-3 rounded-md border px-3 py-2 text-left hover:bg-muted/50 transition-colors cursor-pointer"
+                      onClick={() => jumpToNode(n.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          jumpToNode(n.id);
+                        }
+                      }}
                       data-testid={`gap-row-${n.id}`}
                     >
                       <Badge
@@ -1099,8 +1284,20 @@ export default function TopicalMapPage() {
                       <Badge variant="secondary" className="text-xs font-normal shrink-0">
                         {n.funnelStage}
                       </Badge>
-                      <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    </button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0 h-7"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          sendToWriter(n);
+                        }}
+                        data-testid={`button-write-gap-${n.id}`}
+                      >
+                        <Sparkles className="h-3 w-3 mr-1.5" />
+                        Write
+                      </Button>
+                    </div>
                   ))}
               </div>
             )}

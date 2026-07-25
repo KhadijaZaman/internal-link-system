@@ -3,19 +3,33 @@
 // Reproduces the workbook layout the operator approved as the template:
 //   - Tab "Keyword summary" (frozen header row): one row per tracked keyword
 //     with full-range totals plus last-7d vs prior-7d movement.
+//   - Tab "Tracked pages — Bing & AI" (frozen header row): one row per
+//     tracked page with Bing clicks/impressions/position over the range,
+//     latest-vs-prior weekly movement, and AI citations from the newest
+//     uploaded Bing AI Performance report (with change vs the prior upload).
 //   - One tab per keyword (frozen first column): Target keyword / Page /
 //     blank / Date / Impressions / Impr change / Clicks / Clicks change /
 //     Position / Position change (+ = moved up), with one column per day.
 //
-// Data source is Search Console only — no crawling, no paid fetches, no AI.
+// Data sources are Search Console plus already-synced Bing/AI-citation rows
+// from our own database — no crawling, no paid fetches, no AI calls.
 //
 // The spreadsheet is PERSISTENT: the first export creates it and stores its id
 // in app_state; every later export (and the daily sync_keyword_sheet job)
 // rewrites the SAME spreadsheet in place, so the operator's bookmarked sheet
 // rolls forward every day instead of going stale.
-import { db, trackedSubmissionsTable, appStateTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import {
+  db,
+  trackedSubmissionsTable,
+  appStateTable,
+  bingPageStatsTable,
+  aiCitationUploadsTable,
+  aiCitationRowsTable,
+  type BingPageStat,
+} from "@workspace/db";
+import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { LEGACY_SITE_ID, type SiteContext } from "../lib/site";
+import { canonicalPath } from "../lib/urlCanon";
 import {
   queryGscDimension,
   pageVariantsRegex,
@@ -236,6 +250,235 @@ function summaryValues(rows: SummaryRow[], rangeLabel: string): Cell[][] {
   return [header, ...body];
 }
 
+// ---------- Tracked pages — Bing & AI citations tab ----------
+
+const TRACKED_TAB_TITLE = "Tracked pages — Bing & AI";
+
+interface TrackedPageStats {
+  url: string;
+  keyword: string;
+  bingClicks: number;
+  bingImpressions: number;
+  bingPosition: number | null;
+  bingLatestWeekClicks: number;
+  bingClicksChange: number | null;
+  aiCitations: number | null;
+  aiCitationsChange: number | null;
+}
+
+interface TrackedPagesData {
+  rows: TrackedPageStats[];
+  bingSynced: boolean;
+  latestUploadLabel: string | null;
+  hasPriorUpload: boolean;
+}
+
+/**
+ * Bing weekly stats + AI-citation counts for every tracked page, read purely
+ * from rows the sync_bing_pages job / AI-report uploads already stored — no
+ * external API calls, so this adds zero spend to the sheet export.
+ */
+async function loadTrackedPagesData(
+  siteId: number,
+  siteHost: string,
+  subs: Array<{ url: string; keyword: string | null }>,
+  startDate: string,
+): Promise<TrackedPagesData> {
+  const pages = subs
+    .map((s) => ({
+      url: s.url,
+      keyword: (s.keyword ?? "").trim(),
+      path: canonicalPath(s.url, siteHost),
+    }))
+    .filter(
+      (p): p is { url: string; keyword: string; path: string } =>
+        p.path != null,
+    );
+  const paths = Array.from(new Set(pages.map((p) => p.path)));
+
+  const [anyBing, bingRows, latestBuckets, uploads] = await Promise.all([
+    db
+      .select({ id: bingPageStatsTable.id })
+      .from(bingPageStatsTable)
+      .where(eq(bingPageStatsTable.siteId, siteId))
+      .limit(1),
+    paths.length > 0
+      ? db
+          .select()
+          .from(bingPageStatsTable)
+          .where(
+            and(
+              eq(bingPageStatsTable.siteId, siteId),
+              inArray(bingPageStatsTable.path, paths),
+              gte(bingPageStatsTable.bucketDate, startDate),
+            ),
+          )
+      : Promise.resolve<BingPageStat[]>([]),
+    db
+      .selectDistinct({ bucketDate: bingPageStatsTable.bucketDate })
+      .from(bingPageStatsTable)
+      .where(eq(bingPageStatsTable.siteId, siteId))
+      .orderBy(desc(bingPageStatsTable.bucketDate))
+      .limit(2),
+    db
+      .select()
+      .from(aiCitationUploadsTable)
+      .where(
+        and(
+          eq(aiCitationUploadsTable.siteId, siteId),
+          eq(aiCitationUploadsTable.kind, "pages"),
+        ),
+      )
+      .orderBy(desc(aiCitationUploadsTable.uploadedAt))
+      .limit(2),
+  ]);
+
+  const citationRows =
+    uploads.length > 0 && paths.length > 0
+      ? await db
+          .select()
+          .from(aiCitationRowsTable)
+          .where(
+            and(
+              eq(aiCitationRowsTable.siteId, siteId),
+              inArray(
+                aiCitationRowsTable.uploadId,
+                uploads.map((u) => u.id),
+              ),
+              inArray(aiCitationRowsTable.path, paths),
+            ),
+          )
+      : [];
+
+  const bingByPath = new Map<string, BingPageStat[]>();
+  for (const r of bingRows) {
+    const list = bingByPath.get(r.path);
+    if (list) list.push(r);
+    else bingByPath.set(r.path, [r]);
+  }
+  // Bing reports weekly buckets; "latest week" movement compares the two most
+  // recent bucket dates the sync has stored for this site. The prior bucket
+  // must fall inside the export range (bingRows is filtered gte startDate) or
+  // its clicks would sum to 0 and fake a big "change" on short ranges.
+  const bucket0 = latestBuckets[0]?.bucketDate ?? null;
+  const rawBucket1 = latestBuckets[1]?.bucketDate ?? null;
+  const bucket1 = rawBucket1 != null && rawBucket1 >= startDate ? rawBucket1 : null;
+
+  const latestUploadId = uploads[0]?.id ?? null;
+  const priorUploadId = uploads[1]?.id ?? null;
+  const citationsFor = (uploadId: number | null, path: string): number => {
+    if (uploadId == null) return 0;
+    let sum = 0;
+    for (const r of citationRows) {
+      if (r.uploadId === uploadId && r.path === path) sum += r.citations;
+    }
+    return sum;
+  };
+
+  const rows = pages.map((p): TrackedPageStats => {
+    const prows = bingByPath.get(p.path) ?? [];
+    let clicks = 0;
+    let impressions = 0;
+    let posSum = 0;
+    let posWeight = 0;
+    let latestWeek = 0;
+    let priorWeek = 0;
+    for (const r of prows) {
+      clicks += r.clicks;
+      impressions += r.impressions;
+      // Null positions (Bing "-1"/unknown) are excluded from the weighted
+      // average — mapping them to 0 would fake a better rank.
+      if (r.position != null && r.impressions > 0) {
+        posSum += r.position * r.impressions;
+        posWeight += r.impressions;
+      }
+      if (bucket0 != null && r.bucketDate === bucket0) latestWeek += r.clicks;
+      else if (bucket1 != null && r.bucketDate === bucket1) priorWeek += r.clicks;
+    }
+    const latestCitations = citationsFor(latestUploadId, p.path);
+    const priorCitations = citationsFor(priorUploadId, p.path);
+    return {
+      url: p.url,
+      keyword: p.keyword,
+      bingClicks: clicks,
+      bingImpressions: impressions,
+      bingPosition: posWeight > 0 ? posSum / posWeight : null,
+      bingLatestWeekClicks: latestWeek,
+      bingClicksChange: bucket1 != null ? latestWeek - priorWeek : null,
+      aiCitations: latestUploadId != null ? latestCitations : null,
+      aiCitationsChange:
+        priorUploadId != null ? latestCitations - priorCitations : null,
+    };
+  });
+  rows.sort(
+    (a, b) =>
+      b.bingClicks - a.bingClicks ||
+      (b.aiCitations ?? 0) - (a.aiCitations ?? 0) ||
+      b.bingImpressions - a.bingImpressions,
+  );
+
+  return {
+    rows,
+    bingSynced: anyBing.length > 0,
+    latestUploadLabel: uploads[0]?.label ?? null,
+    hasPriorUpload: uploads.length > 1,
+  };
+}
+
+function trackedPagesValues(
+  data: TrackedPagesData,
+  rangeLabel: string,
+): Cell[][] {
+  const header: Cell[] = [
+    "Page",
+    "Target keyword",
+    `Bing clicks (${rangeLabel})`,
+    `Bing impressions (${rangeLabel})`,
+    `Bing avg position (${rangeLabel})`,
+    "Bing clicks (latest week)",
+    "Clicks change vs prior week",
+    "AI citations (latest report)",
+    "Citations change vs prior report",
+  ];
+  const body = data.rows.map((r): Cell[] => [
+    pagePath(r.url),
+    r.keyword,
+    data.bingSynced ? r.bingClicks : "",
+    data.bingSynced ? r.bingImpressions : "",
+    data.bingSynced && r.bingPosition != null ? round1(r.bingPosition) : "",
+    data.bingSynced ? r.bingLatestWeekClicks : "",
+    data.bingSynced && r.bingClicksChange != null ? r.bingClicksChange : "",
+    r.aiCitations == null ? "" : r.aiCitations,
+    r.aiCitationsChange == null ? "" : r.aiCitationsChange,
+  ]);
+  return [header, ...body];
+}
+
+function trackedPagesNotes(data: TrackedPagesData): string[] {
+  const notes: string[] = [];
+  if (data.bingSynced) {
+    notes.push(
+      "Bing reports weekly totals; the 'latest week' columns compare Bing's two most recent weekly buckets.",
+    );
+  } else {
+    notes.push(
+      "Bing hasn't synced yet — connect Bing Webmaster in Settings to fill the Bing columns.",
+    );
+  }
+  if (data.latestUploadLabel != null) {
+    notes.push(
+      `AI citations count how often Bing's AI (Copilot) cited each page — from your latest uploaded AI Performance report (${data.latestUploadLabel}).${
+        data.hasPriorUpload ? "" : " Change columns fill in after your next upload."
+      }`,
+    );
+  } else {
+    notes.push(
+      "No AI citation report uploaded yet — the AI columns fill in after you upload Bing's AI Performance export on the Bing page.",
+    );
+  }
+  return notes;
+}
+
 async function mapWithConcurrency<T, R>(
   items: T[],
   limit: number,
@@ -384,7 +627,7 @@ async function fetchExistingSheet(id: string): Promise<ExistingSheetMeta | null>
 
 export async function exportKeywordMovementSheet(
   days: number,
-  site: Pick<SiteContext, "id" | "displayName">,
+  site: Pick<SiteContext, "id" | "displayName" | "host">,
 ): Promise<{
   url: string;
   title: string;
@@ -416,6 +659,15 @@ export async function exportKeywordMovementSheet(
   prior7StartD.setUTCDate(prior7StartD.getUTCDate() - 13);
   const last7Start = isoDay(last7StartD);
   const prior7Start = isoDay(prior7StartD);
+
+  // Bing + AI-citation stats for ALL tracked pages (keyword or not) — pure
+  // DB reads of already-synced rows, kicked off alongside the GSC calls.
+  const trackedDataPromise = loadTrackedPagesData(
+    siteId,
+    site.host,
+    subs,
+    startDate,
+  );
 
   // One GSC call per keyword: daily series for page (incl. #fragment/?query
   // variants) filtered to the exact keyword (case-insensitive).
@@ -466,6 +718,13 @@ export async function exportKeywordMovementSheet(
     columnCount: dates.length + 2,
     frozenColumnCount: 1,
   };
+  const trackedData = await trackedDataPromise;
+  const trackedNotes = trackedPagesNotes(trackedData);
+  const trackedGrid = {
+    rowCount: trackedData.rows.length + trackedNotes.length + 4,
+    columnCount: 9,
+    frozenRowCount: 1,
+  };
 
   // ---- Create the spreadsheet, or rewrite the stored one in place ----
   const storedId = await loadStoredSheetId(siteId);
@@ -474,6 +733,7 @@ export async function exportKeywordMovementSheet(
   let spreadsheetId: string;
   let spreadsheetUrl: string | undefined;
   let summarySheetId: number;
+  let trackedSheetId: number;
   let keywordSheetIds: number[];
 
   if (storedId && existing) {
@@ -488,7 +748,8 @@ export async function exportKeywordMovementSheet(
       .filter((id): id is number => typeof id === "number");
     const maxOldId = oldSheets.reduce((m, id) => Math.max(m, id), 0);
     summarySheetId = maxOldId + 1;
-    keywordSheetIds = tabTitles.map((_, i) => maxOldId + 2 + i);
+    trackedSheetId = maxOldId + 2;
+    keywordSheetIds = tabTitles.map((_, i) => maxOldId + 3 + i);
 
     await sheetsRequest(`/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
       method: "POST",
@@ -510,12 +771,22 @@ export async function exportKeywordMovementSheet(
               },
             },
           },
+          {
+            addSheet: {
+              properties: {
+                sheetId: trackedSheetId,
+                title: TRACKED_TAB_TITLE,
+                index: 1,
+                gridProperties: trackedGrid,
+              },
+            },
+          },
           ...tabTitles.map((tabTitle, i) => ({
             addSheet: {
               properties: {
                 sheetId: keywordSheetIds[i]!,
                 title: tabTitle,
-                index: i + 1,
+                index: i + 2,
                 gridProperties: keywordGrid,
               },
             },
@@ -534,6 +805,7 @@ export async function exportKeywordMovementSheet(
     // First export ever, or the stored sheet was deleted from Drive.
     // Size grids up front — writing beyond a tab's grid 400s.
     summarySheetId = 0;
+    trackedSheetId = 500;
     keywordSheetIds = tabTitles.map((_, i) => 1000 + i);
     const created = await sheetsRequest<{
       spreadsheetId: string;
@@ -548,6 +820,13 @@ export async function exportKeywordMovementSheet(
               sheetId: summarySheetId,
               title: "Keyword summary",
               gridProperties: summaryGrid,
+            },
+          },
+          {
+            properties: {
+              sheetId: trackedSheetId,
+              title: TRACKED_TAB_TITLE,
+              gridProperties: trackedGrid,
             },
           },
           ...tabTitles.map((tabTitle, i) => ({
@@ -573,6 +852,10 @@ export async function exportKeywordMovementSheet(
         {
           range: "'Keyword summary'!A1",
           values: summaryValues(sortedSummaries, rangeLabel),
+        },
+        {
+          range: `'${TRACKED_TAB_TITLE}'!A1`,
+          values: trackedPagesValues(trackedData, rangeLabel),
         },
         ...sortedSeries.map((s, i) => ({
           range: `'${tabTitles[i]!.replace(/'/g, "''")}'!A1`,
@@ -601,6 +884,23 @@ export async function exportKeywordMovementSheet(
               dimension: "COLUMNS",
               startIndex: 0,
               endIndex: 11,
+            },
+          },
+        },
+        {
+          repeatCell: {
+            range: { sheetId: trackedSheetId, startRowIndex: 0, endRowIndex: 1 },
+            cell: { userEnteredFormat: { textFormat: { bold: true } } },
+            fields: "userEnteredFormat.textFormat.bold",
+          },
+        },
+        {
+          autoResizeDimensions: {
+            dimensions: {
+              sheetId: trackedSheetId,
+              dimension: "COLUMNS",
+              startIndex: 0,
+              endIndex: 9,
             },
           },
         },
@@ -675,6 +975,18 @@ export async function exportKeywordMovementSheet(
     {
       method: "PUT",
       body: { values: LEGEND_ROWS.map((l) => [l.text]) },
+    },
+  );
+
+  // Tracked-pages footnotes — same pattern: written after autoResize so the
+  // long explainer lines don't stretch the Page column.
+  await sheetsRequest(
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
+      `'${TRACKED_TAB_TITLE}'!A${trackedData.rows.length + 3}`,
+    )}?valueInputOption=RAW`,
+    {
+      method: "PUT",
+      body: { values: trackedNotes.map((n) => [n]) },
     },
   );
 

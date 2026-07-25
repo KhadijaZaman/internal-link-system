@@ -55,11 +55,20 @@ function BadgeCloud({ items, tone }: { items: string[]; tone: "primary" | "muted
 export default function ContentWriter() {
   const { toast } = useToast();
   const writeMutation = useContentWrite();
-  const [keyword, setKeyword] = useState("");
+  // Prefill from query params so other pages (e.g. the Topical Authority Map's
+  // "Write this article" button) can hand over a ready-made brief.
+  const [prefill] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      keyword: params.get("keyword") ?? "",
+      notes: params.get("notes") ?? "",
+    };
+  });
+  const [keyword, setKeyword] = useState(prefill.keyword);
   const [mode, setMode] = useState<ContentWriteInputMode>("express");
   const [wordCount, setWordCount] = useState<number>(2400);
   const [competitorUrlsRaw, setCompetitorUrlsRaw] = useState("");
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(prefill.notes);
   const [result, setResult] = useState<ContentWriteResult | null>(null);
 
   const handleGenerate = (e: React.FormEvent) => {
