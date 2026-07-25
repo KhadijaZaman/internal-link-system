@@ -43,6 +43,9 @@ const DIR_LABEL: Record<LinkGraphFocusNeighbor["direction"], string> = {
   recommended: "Recommended (missing)",
 };
 
+/** Cap the flagged-links drawer DOM size; the list is sorted worst-first. */
+const FLAGGED_RENDER_CAP = 300;
+
 const FLAG_META: Record<string, { label: string; className: string; tip: string }> = {
   off_topic: {
     label: "Off-topic",
@@ -81,6 +84,7 @@ export default function LinkMap() {
   const runJobMutation = useRunJob();
   const [auditPending, setAuditPending] = useState(false);
   const [showFlagged, setShowFlagged] = useState(false);
+  const [flagFilter, setFlagFilter] = useState<"all" | "off_topic" | "tier_violation" | "generic_anchor">("all");
   const auditStartedAtRef = useRef<number | null>(null);
 
   // While an audit is running, poll the graph until auditedAt moves past the
@@ -121,6 +125,23 @@ export default function LinkMap() {
         .sort((a, b) => (a.auditSimilarity ?? 1) - (b.auditSimilarity ?? 1)),
     [graph],
   );
+
+  // Drawer list, narrowed to one flag type when a count row was clicked.
+  const visibleFlagged = useMemo(
+    () =>
+      flagFilter === "all"
+        ? flaggedEdges
+        : flaggedEdges.filter((e) => e.auditFlags?.includes(flagFilter)),
+    [flaggedEdges, flagFilter],
+  );
+
+  const flagCount = (flag: "off_topic" | "tier_violation" | "generic_anchor") =>
+    flaggedEdges.filter((e) => e.auditFlags?.includes(flag)).length;
+
+  const openFlagged = (filter: typeof flagFilter) => {
+    setFlagFilter(filter);
+    setShowFlagged(true);
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery), 400);
@@ -507,20 +528,44 @@ export default function LinkMap() {
                       <span className="text-muted-foreground">Links audited</span>
                       <span className="font-medium">{graph.audit.auditedEdges.toLocaleString()} / {graph.audit.contentEdges.toLocaleString()}</span>
                     </div>
-                    <div className="flex justify-between">
+                    <button
+                      type="button"
+                      className="flex justify-between w-full rounded px-1 -mx-1 py-0.5 text-left transition-colors enabled:hover:bg-accent/60 enabled:cursor-pointer disabled:cursor-default"
+                      disabled={graph.audit.offTopic === 0}
+                      onClick={() => openFlagged("off_topic")}
+                      title={graph.audit.offTopic > 0 ? "Click to see the off-topic links" : undefined}
+                      data-testid="row-quality-off-topic"
+                    >
                       <span className="text-muted-foreground">Off-topic</span>
-                      <span className={`font-medium ${graph.audit.offTopic > 0 ? "text-red-600 dark:text-red-400" : ""}`}>{graph.audit.offTopic.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between">
+                      <span className={`font-medium ${graph.audit.offTopic > 0 ? "text-red-600 dark:text-red-400 underline decoration-dotted underline-offset-2" : ""}`}>{graph.audit.offTopic.toLocaleString()}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="flex justify-between w-full rounded px-1 -mx-1 py-0.5 text-left transition-colors enabled:hover:bg-accent/60 enabled:cursor-pointer disabled:cursor-default"
+                      disabled={graph.audit.tierViolations === 0}
+                      onClick={() => openFlagged("tier_violation")}
+                      title={graph.audit.tierViolations > 0 ? "Click to see the tier-violation links" : undefined}
+                      data-testid="row-quality-tier"
+                    >
                       <span className="text-muted-foreground">Tier violations</span>
-                      <span className={`font-medium ${graph.audit.tierViolations > 0 ? "text-amber-600 dark:text-amber-400" : ""}`}>{graph.audit.tierViolations.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between">
+                      <span className={`font-medium ${graph.audit.tierViolations > 0 ? "text-amber-600 dark:text-amber-400 underline decoration-dotted underline-offset-2" : ""}`}>{graph.audit.tierViolations.toLocaleString()}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="flex justify-between w-full rounded px-1 -mx-1 py-0.5 text-left transition-colors enabled:hover:bg-accent/60 enabled:cursor-pointer disabled:cursor-default"
+                      disabled={graph.audit.genericAnchors === 0}
+                      onClick={() => openFlagged("generic_anchor")}
+                      title={graph.audit.genericAnchors > 0 ? "Click to see the generic-anchor links" : undefined}
+                      data-testid="row-quality-generic"
+                    >
                       <span className="text-muted-foreground">Generic anchors</span>
-                      <span className={`font-medium ${graph.audit.genericAnchors > 0 ? "text-blue-600 dark:text-blue-400" : ""}`}>{graph.audit.genericAnchors.toLocaleString()}</span>
-                    </div>
+                      <span className={`font-medium ${graph.audit.genericAnchors > 0 ? "text-blue-600 dark:text-blue-400 underline decoration-dotted underline-offset-2" : ""}`}>{graph.audit.genericAnchors.toLocaleString()}</span>
+                    </button>
                     <p className="text-xs text-muted-foreground pt-1">
                       Last audit {new Date(graph.audit.auditedAt).toLocaleString()}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Click a count to see those links and their anchor text.
                     </p>
                   </div>
                 ) : (
@@ -530,7 +575,7 @@ export default function LinkMap() {
                 )}
                 <div className="flex flex-col gap-2">
                   {flaggedEdges.length > 0 && (
-                    <Button size="sm" variant="secondary" onClick={() => setShowFlagged(true)}>
+                    <Button size="sm" variant="secondary" onClick={() => openFlagged("all")}>
                       View {flaggedEdges.length.toLocaleString()} flagged link{flaggedEdges.length === 1 ? "" : "s"}
                     </Button>
                   )}
@@ -840,16 +885,48 @@ export default function LinkMap() {
           <DrawerHeader>
             <DrawerTitle className="flex items-center gap-2">
               <ShieldAlert className="h-4 w-4 text-red-600" />
-              Flagged links ({flaggedEdges.length.toLocaleString()})
+              {flagFilter === "all"
+                ? `Flagged links (${visibleFlagged.length.toLocaleString()})`
+                : `${FLAG_META[flagFilter]?.label ?? "Flagged"} links (${visibleFlagged.length.toLocaleString()})`}
             </DrawerTitle>
             <DrawerDescription>
               Existing content links the quality audit flagged — sorted worst-first by topical
               similarity. Fix by rewriting the anchor, moving the link, or removing it.
             </DrawerDescription>
+            <div className="flex items-center gap-2 flex-wrap pt-2">
+              {([
+                ["all", `All (${flaggedEdges.length.toLocaleString()})`],
+                ["off_topic", `Off-topic (${flagCount("off_topic").toLocaleString()})`],
+                ["tier_violation", `Tier violations (${flagCount("tier_violation").toLocaleString()})`],
+                ["generic_anchor", `Generic anchors (${flagCount("generic_anchor").toLocaleString()})`],
+              ] as const).map(([key, label]) => (
+                <Button
+                  key={key}
+                  size="sm"
+                  variant={flagFilter === key ? "default" : "outline"}
+                  className="h-7 px-2.5 text-xs"
+                  onClick={() => setFlagFilter(key)}
+                  data-testid={`filter-flag-${key}`}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
           </DrawerHeader>
           <div className="px-4 pb-6 overflow-y-auto">
             <div className="space-y-3 max-w-4xl mx-auto">
-              {flaggedEdges.map((e, i) => (
+              {visibleFlagged.length === 0 && (
+                <div className="border rounded-lg border-dashed p-8 text-center text-sm text-muted-foreground">
+                  No links with this flag.
+                </div>
+              )}
+              {visibleFlagged.length > FLAGGED_RENDER_CAP && (
+                <div className="text-xs text-muted-foreground">
+                  Showing the {FLAGGED_RENDER_CAP.toLocaleString()} worst of{" "}
+                  {visibleFlagged.length.toLocaleString()} links so the list stays fast.
+                </div>
+              )}
+              {visibleFlagged.slice(0, FLAGGED_RENDER_CAP).map((e, i) => (
                 <div key={i} className="border border-border/60 rounded-lg p-3 text-sm space-y-2">
                   <div className="flex items-center gap-2 flex-wrap">
                     {(e.auditFlags ?? []).map((f) => {

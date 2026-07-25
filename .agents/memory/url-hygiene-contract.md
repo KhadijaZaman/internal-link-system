@@ -11,3 +11,6 @@ description: Rules every future phase must respect around the canonical URL laye
 **Why:** prefix-matching an exact 404 path (e.g. `/pricing-old`) silently blocklisted every page sharing that prefix across ALL ingestion and reads — an invisible data-loss failure mode.
 
 **Pages registry only grows:** nothing un-registers a page, so any "content pages" count must apply the blocklist at read time (in JS — patterns aren't SQL-friendly) and crawls must write 404 status onto existing rows; otherwise counts drift upward from reality.
+
+## Read-time node building from link_stats
+Any route that builds graph nodes straight from link_stats rows must dedupe by canonical path first: leftover non-canonical rows (trailing slash etc.) become edge-less ghost nodes because edges attach to one form via first-wins norm mapping. In the Knowledge Graph these ghosts all folded into "Miscellaneous". Fixed in knowledgeGraph.ts (keep row with most link signal); routes/linkGraph.ts (Link Map) still builds nodes un-deduped — same fix applies if ghost duplicates show up there.

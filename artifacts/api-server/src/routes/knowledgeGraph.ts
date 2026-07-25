@@ -179,7 +179,29 @@ router.get("/knowledge-graph", requireAuth, requireSite, async (req, res) => {
   ]);
 
   const invMap = new Map(inv.map((i) => [i.url, i]));
-  const nodes = stats.map((s) => {
+
+  // Merge duplicate URL forms (trailing slash, case…) onto ONE node per
+  // canonical path. link_stats can hold leftover non-canonical rows; edges
+  // attach to a single form via normToId below, so without this dedup the
+  // other form becomes an edge-less ghost node that folds into
+  // "Miscellaneous" even though the real page sits in a proper cluster.
+  // Keep the row with the most link signal.
+  const statsByNorm = new Map<string, (typeof stats)[number]>();
+  for (const s of stats) {
+    const k = norm(s.url, site.host);
+    const prev = statsByNorm.get(k);
+    if (
+      !prev ||
+      s.internalPagerank > prev.internalPagerank ||
+      (s.internalPagerank === prev.internalPagerank &&
+        s.inboundCount + s.outboundCount > prev.inboundCount + prev.outboundCount)
+    ) {
+      statsByNorm.set(k, s);
+    }
+  }
+  const dedupedStats = [...statsByNorm.values()];
+
+  const nodes = dedupedStats.map((s) => {
     const i = invMap.get(s.url);
     return {
       id: s.url,

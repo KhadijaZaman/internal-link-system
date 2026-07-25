@@ -20,6 +20,23 @@ function urlJoinKey(url: string, siteHost: string): string {
 }
 
 /**
+ * Author-archive URLs (…/author/<name>). Byline links to/from these pages are
+ * navigational (credit the writer), not topical endorsements — an author page
+ * naturally shares little topical ground with any single article, so scoring
+ * it "off-topic" is a false positive. Mirrors the Site Authority snapshot,
+ * which also drops author archives from the central-entity centroid.
+ */
+export function isAuthorArchive(url: string): boolean {
+  let path = url;
+  try {
+    path = new URL(url).pathname;
+  } catch {
+    // already a path (or unparseable) — test as-is
+  }
+  return /(^|\/)author(\/|$)/i.test(path);
+}
+
+/**
  * audit_link_quality — scores every EXISTING content link in link_graph with
  * the same primitives the suggestion engine uses for NEW links:
  *  - off_topic: source→target embedding cosine below LINK_OFF_TOPIC_SIMILARITY
@@ -84,11 +101,19 @@ export async function runAuditLinkQuality(site: SiteContext): Promise<void> {
     const tierViolation =
       donorTier !== null && receiverTier !== null && !tierAllowed(donorTier, receiverTier);
 
-    const flags = linkQualityFlags({
+    let flags = linkQualityFlags({
       similarity,
       tierViolation,
       anchorBanned: e.anchorText ? isBannedAnchor(e.anchorText) : false,
     });
+    // Byline/author-archive edges: keep anchor & tier checks, but the
+    // off-topic similarity rule doesn't apply to navigational credit links.
+    if (
+      flags.includes("off_topic") &&
+      (isAuthorArchive(e.sourceUrl) || isAuthorArchive(e.targetUrl))
+    ) {
+      flags = flags.filter((f) => f !== "off_topic");
+    }
     for (const f of flags) flagCounts[f] = (flagCounts[f] ?? 0) + 1;
     updates.push({ id: e.id, similarity, flags });
   }

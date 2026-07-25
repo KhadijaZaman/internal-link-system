@@ -261,10 +261,43 @@ export default function AuthoritySnapshot() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Anchor page</TableHead>
-                  <TableHead className="text-right">In</TableHead>
-                  <TableHead className="text-right">Tier</TableHead>
-                  <TableHead className="text-right">PageRank</TableHead>
+                  <TableHead>
+                    <span className="inline-flex items-center gap-1">
+                      Anchor page
+                      <InfoTip>
+                        One of your highest-authority pages. Together these pages
+                        define what your site is "about" — the central entity.
+                      </InfoTip>
+                    </span>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <span className="inline-flex items-center gap-1 justify-end">
+                      In
+                      <InfoTip>
+                        Inbound internal links — how many other pages on your site
+                        link to this page from within their content.
+                      </InfoTip>
+                    </span>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <span className="inline-flex items-center gap-1 justify-end">
+                      Tier
+                      <InfoTip>
+                        Page tier in the linking plan: 1–2 are core money pages and
+                        hubs, 3–4 are supporting articles that feed them.
+                      </InfoTip>
+                    </span>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <span className="inline-flex items-center gap-1 justify-end">
+                      PageRank
+                      <InfoTip>
+                        Internal PageRank — the share of link authority this page
+                        collects from your internal linking. Higher = more of your
+                        site's authority flows here.
+                      </InfoTip>
+                    </span>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
