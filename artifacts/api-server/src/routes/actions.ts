@@ -20,6 +20,7 @@ function serialize(a: ActionItem) {
     source: a.source ?? {},
     status: a.status,
     resolution: a.resolution,
+    pinnedOpen: a.pinnedOpen,
     createdAt: (a.createdAt ?? new Date()).toISOString(),
     completedAt: a.completedAt?.toISOString() ?? null,
     dismissedAt: a.dismissedAt?.toISOString() ?? null,
@@ -85,12 +86,14 @@ router.post("/actions/:id/status", requireAuth, requireSite, async (req, res) =>
   }
   const status = parsed.data.status;
   const now = new Date();
+  // Reopening pins the item: recompute won't auto-close it again; a manual
+  // Done/Dismiss clears the pin.
   const set =
     status === "done"
-      ? { status, resolution: "manual", completedAt: now, dismissedAt: null }
+      ? { status, resolution: "manual", completedAt: now, dismissedAt: null, pinnedOpen: false }
       : status === "dismissed"
-        ? { status, resolution: "manual", dismissedAt: now, completedAt: null }
-        : { status, resolution: null, completedAt: null, dismissedAt: null };
+        ? { status, resolution: "manual", dismissedAt: now, completedAt: null, pinnedOpen: false }
+        : { status, resolution: null, completedAt: null, dismissedAt: null, pinnedOpen: true };
 
   const updated = await db
     .update(actionItemsTable)

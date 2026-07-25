@@ -25,6 +25,7 @@ export interface ActionItem {
   status: ActionItemStatus;
   /** @nullable */
   resolution?: ActionItemResolution;
+  pinnedOpen: boolean;
   createdAt: Date;
   /** @nullable */
   completedAt?: Date | null;

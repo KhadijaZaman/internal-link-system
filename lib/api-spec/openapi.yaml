@@ -2311,6 +2311,7 @@ components:
         - impressionsAtStake
         - clicksAtStake
         - status
+        - pinnedOpen
         - createdAt
       properties:
         id: { type: integer }
@@ -2330,6 +2331,7 @@ components:
           type: string
           enum: [open, done, dismissed]
         resolution: { type: ["string", "null"], enum: [manual, auto, null] }
+        pinnedOpen: { type: boolean }
         createdAt: { type: string, format: date-time }
         completedAt: { type: ["string", "null"], format: date-time }
         dismissedAt: { type: ["string", "null"], format: date-time }

@@ -617,6 +617,10 @@ export async function recomputeActionQueue(siteId: number): Promise<RecomputeRes
       );
       updated++;
     } else if (row.status === "open") {
+      // Manually reopened items are pinned: the operator explicitly said
+      // "this still needs my attention", so recompute must never auto-close
+      // them — only a manual Done/Dismiss (which clears the pin) does.
+      if (row.pinnedOpen) continue;
       // Source signal vanished — the underlying problem was fixed (links
       // added, suggestion inserted, optimization completed...). Auto-close;
       // completed_at becomes the impact-tracking baseline event.

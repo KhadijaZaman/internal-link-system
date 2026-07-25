@@ -144,9 +144,29 @@ function ActionRow({
               score {Math.round(item.score)}
             </span>
             {item.status !== "open" && (
-              <Badge variant="secondary" className="text-xs">
-                {item.status}
-                {item.resolution === "auto" ? " (auto)" : ""}
+              <Badge
+                variant="secondary"
+                className="text-xs"
+                title={
+                  item.resolution === "auto"
+                    ? "The system closed this automatically because the underlying signal is no longer active — the issue was fixed or the data moved on."
+                    : "You closed this yourself."
+                }
+              >
+                {item.status === "done"
+                  ? item.resolution === "auto"
+                    ? "resolved on its own"
+                    : "done"
+                  : "dismissed"}
+              </Badge>
+            )}
+            {item.status === "open" && item.pinnedOpen && (
+              <Badge
+                variant="secondary"
+                className="text-xs"
+                title="You reopened this item, so it stays on your list until you mark it Done or Dismiss it — the system won't close it automatically."
+              >
+                kept open
               </Badge>
             )}
           </div>
@@ -295,7 +315,11 @@ export default function Actions() {
           },
           {
             title: "What if the problem fixes itself?",
-            body: "If an action's underlying signal disappears (e.g. an orphan page gains links), the action is auto-closed as done.",
+            body: "If an action's underlying signal disappears (e.g. an orphan page gains links, or a ranking drop is no longer in the latest week's data), the action is closed automatically and labeled \"resolved on its own\".",
+          },
+          {
+            title: "What does Reopen do?",
+            body: "Reopen puts an item back on your Open list and pins it there — it stays until you mark it Done or Dismiss it yourself, even if the system no longer detects the issue.",
           },
         ]}
       />

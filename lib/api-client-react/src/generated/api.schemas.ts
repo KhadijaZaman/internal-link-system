@@ -297,6 +297,7 @@ export interface ActionItem {
   status: ActionItemStatus;
   /** @nullable */
   resolution?: ActionItemResolution;
+  pinnedOpen: boolean;
   createdAt: string;
   /** @nullable */
   completedAt?: string | null;

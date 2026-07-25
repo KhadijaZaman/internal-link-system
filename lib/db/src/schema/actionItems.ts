@@ -3,6 +3,7 @@ import {
   serial,
   text,
   integer,
+  boolean,
   doublePrecision,
   timestamp,
   jsonb,
@@ -40,6 +41,12 @@ export const actionItemsTable = pgTable(
     status: text("status").default("open").notNull(),
     /** How a non-open row got there: manual (admin click) | auto (signal resolved). */
     resolution: text("resolution"),
+    /**
+     * Set when the operator manually reopens an item. Pinned-open rows are
+     * exempt from auto-close on recompute — only a manual Done/Dismiss (which
+     * clears the pin) closes them.
+     */
+    pinnedOpen: boolean("pinned_open").default(false).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     dismissedAt: timestamp("dismissed_at", { withTimezone: true }),

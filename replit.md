@@ -104,6 +104,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 - `hasRunningJobs` (jobs/runner.ts) checks the in-memory running map only — correct on the single-instance gce deployment; revisit before moving to autoscale
 - Deleting the active site must call `clearStoredSite()` + `queryClient.clear()` (query keys aren't site-scoped, so stale cached data could briefly render under the fallback site) — mirror `switchSite`, which already clears
 - The generated `UpdateSiteLimitsBody` Zod schema enforces min/max but NOT integer-ness (Orval doesn't emit `.int()`); the PATCH /site/limits handler compensates with `Number.isInteger` — keep that guard (pinned by siteLimitsBounds.test.ts)
+- Action-queue items reopened by the operator get `pinned_open=true` and are exempt from recompute auto-close (their `last_seen_at` freezes while the signal is gone) — any future staleness sweep keyed on `last_seen_at` must exempt pinned rows
 
 ## Pointers
 
