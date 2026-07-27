@@ -1,0 +1,86 @@
+Build a one-page, data-backed topical authority assessment for
+wellows.com covering two entity clusters:
+  Entity A: AI Visibility
+  Entity B: Generative Engine Optimization (GEO)
+
+Sources: GSC (Bulk Data Export in BigQuery, not the API), Bing Webmaster
+Tools, GA4. All three are already connected.
+
+FRAMEWORK — operationalize this, don't just cite it
+Topical Authority = Topical Coverage x Historical Data.
+Coverage = complete, structured, CONNECTED information. Page count is
+not coverage. Historical Data = quality of engagement over time, and it
+lags roughly 6 months — so today's position reflects work from at least
+two quarters ago. Every metric below maps to one side of that equation.
+
+STEP 1 — ENTITY MATCHING (do this before any metric)
+Assign each GSC/Bing query to Entity A, Entity B, both, or neither.
+- Entity A seeds: ai visibility, ai visibility tracking/tool/software,
+  brand visibility in ai, llm visibility, ai search visibility,
+  ai brand monitoring
+- Entity B seeds: generative engine optimization, geo, aeo,
+  answer engine optimization, llm seo, ai seo, optimize for chatgpt /
+  perplexity / ai overviews
+- Use stem + variant matching, not exact match. Output the unmatched
+  query list separately so I can see what the rules missed.
+- Flag "geo" collisions with geographic intent and exclude them.
+- Print the final match rule set. I need to audit it.
+
+STEP 2 — METRICS, per entity, per engine (Google vs Bing side by side,
+never summed, never averaged)
+
+Historical Data signals:
+- Impressions, clicks, CTR, avg position (weighted by impressions, not
+  a mean of means)
+- 6-month trend on each, since authority lags roughly two quarters
+- GA4 for the matched landing pages: organic sessions, engagement rate,
+  avg engagement time, conversions
+
+Coverage signals (this is what "depth" means here — override if you
+meant crawl depth):
+- Query depth: count of DISTINCT queries with >=1 impression in the
+  cluster. This is the primary coverage proxy.
+- Long-tail share: % of cluster impressions from queries of 4+ words
+- Page spread: count of distinct URLs earning impressions in the
+  cluster, and the Gini/concentration of impressions across them
+- Intent spread: bucket cluster queries by predicate (know / compare /
+  buy / do) and show the distribution
+- URL depth: directory level of each ranking URL from root
+
+STEP 3 — DERIVE, don't assume
+- Central entity: which entity does wellows.com actually rank across
+  most broadly (highest query depth + widest page spread)? Report what
+  the data says, even if it contradicts our positioning.
+- Topical borders: name the query territories we appear in and the
+  adjacent ones where we have zero impressions. The gaps are the output
+  that matters most.
+- Core vs outer: which URLs carry commercial intent queries (core) vs
+  informational (outer), and whether the outer section is feeding the
+  core.
+
+STEP 4 — ONE-PAGER OUTPUT (fits one screen, no scroll)
+1. Verdict line: which of the two entities we have more authority in,
+   and the single number that proves it
+2. Entity A vs Entity B comparison table across all metrics above
+3. Two trend lines: impressions and clicks, 6 months, both entities
+4. Coverage gap list: top 10 in-border query territories with zero
+   impressions
+5. Three narrative claims I can defend publicly, each with its
+   supporting number attached
+
+GUARDRAILS
+- Impressions rise before clicks do. Rising impressions with flat
+  clicks is an early authority signal, not a failure — label it that
+  way.
+- Google and Bing differ in index, audience, and counting rules. Show
+  both; never blend.
+- Anonymized queries are stripped from GSC, so cluster totals will not
+  reconcile to site totals. State the gap size.
+- Position is an impression-weighted average of topmost slot. Never
+  present it as rank.
+- State every assumption in the entity matching rules on the page
+  itself. This one-pager becomes a public narrative — every number has
+  to survive someone checking it.
+
+Do not fabricate any figure. If a metric isn't available from these
+three sources, print "not available from GSC/Bing/GA4" and move on.
