@@ -118,6 +118,12 @@ export async function queryGscDimension(opts: {
   /** ISO 3166-1 alpha-3 country code (lowercase), e.g. "usa", "gbr", "ind". */
   countryFilter?: string;
   rowLimit?: number;
+  /**
+   * "all" includes fresh (not-yet-finalized) rows for the most recent ~2
+   * days — those numbers can still revise upward. Default (omitted) = GSC's
+   * "final": stable data only, which typically ends 2-3 days ago.
+   */
+  dataState?: "all" | "final";
 }): Promise<GscDimensionRow[]> {
   const { sc, siteUrl } = await connect(opts.siteId);
   const rowLimit = opts.rowLimit ?? 5000;
@@ -127,6 +133,7 @@ export async function queryGscDimension(opts: {
     dimensions: [opts.dimension],
     rowLimit,
   };
+  if (opts.dataState) body.dataState = opts.dataState;
   const filters: NonNullable<NonNullable<searchconsole_v1.Schema$SearchAnalyticsQueryRequest["dimensionFilterGroups"]>[number]["filters"]> = [];
   if (opts.pageFilter) {
     filters.push({ dimension: "page", operator: "equals", expression: opts.pageFilter });

@@ -71,11 +71,14 @@ updating", first compare their link's spreadsheet id against `app_state.keyword_
 - **Gotcha:** adding `&connector_names=google-sheet` to that URL returns 0 items even when the
   connection is healthy — fetch unfiltered and filter client-side.
 
-## Trailing-day zeros in the movement sheet (final vs fresh GSC data)
-The exporter's range ends at today−2 (PT) but reads **final-only** GSC data (no `dataState`), and
-Google often hasn't finalized that day yet (final can end at today−3). The last date column then
-shows 0 impressions on every keyword, a misleading red "Impr change" drop, and a blank Position
-(weighted position is null with no impressions — by design, never write 0). Self-heals on the next
-daily export. Probe with `dataState:"all"` to confirm it's lag, not a real zero day. Operator asked
-about this once (2026-07-27) — if it recurs, options are: trim trailing unfinalized days, or switch
-to fresh data and accept upward revisions.
+## Movement sheet uses FRESH GSC data (operator decision 2026-07-27)
+The sheet once showed an all-zero trailing day (0 impressions everywhere, blank Position, fake red
+"Impr change" drop) because it read final-only GSC data whose coverage ended a day before the
+sheet's range. Operator chose **fresh data** over trimming: the sheet's GSC reads pass
+`dataState:"all"` and the range ends at **yesterday Pacific Time** — the newest ~2 days revise
+upward until finalized (header/label notes say so). Durable rules: blank Position on
+zero-impression days is by design (weighted position is null — never write 0, it reads "above
+#1"); compute "yesterday" in PT, not UTC, or the 06:00-UTC cron grabs the still-in-progress PT day
+(`Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" })` gives YYYY-MM-DD). Other
+queryGscDimension callers still default to final — don't flip them without asking. Probe with vs
+without `dataState:"all"` to tell data lag from a real zero day.

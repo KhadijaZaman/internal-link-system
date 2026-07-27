@@ -20,6 +20,9 @@
 //
 // Data sources are Search Console plus already-synced Bing/AI-citation rows
 // from our own database — no crawling, no paid fetches, no AI calls.
+// GSC reads use dataState "all" (fresh included): the range ends at
+// yesterday Pacific Time and the newest ~2 days revise upward until Google
+// finalizes them (position stays blank on days with zero impressions).
 // Google's "Generative AI performance" report (AI Overviews / AI Mode) is
 // deliberately absent: as of 2026-07 it is UI-only (subset rollout) and the
 // Search Analytics API exposes no generative-AI type or searchAppearance.
@@ -216,7 +219,7 @@ function keywordTabValues(
 // every keyword tab — keyword tabs have terse labels, so the tooltip carries
 // the explanation instead of a wider header.
 const KEYWORD_ROW_NOTES: string[] = [
-  "One column per day (Pacific Time). Search Console data lags ~2 days.",
+  "One column per day (Pacific Time), through yesterday. The most recent ~2 days are fresh Search Console estimates and can revise upward until Google finalizes them.",
   "Times the page appeared in Google results for the target keyword that day. Orange = new record high up to that day.",
   "Impressions vs the day before. Green = up, red = down.",
   "Google clicks for the target keyword that day. Orange = new record high.",
@@ -432,6 +435,7 @@ async function loadTrackedPagesData(
       endDate,
       dimension: "date",
       pageRegex: pageVariantsRegex(url),
+      dataState: "all",
     });
     return { url, byDate: new Map(rows.map((r) => [r.key, r])) };
   });
@@ -765,7 +769,7 @@ const TRACKED_LEGEND: Array<{ color: Exclude<CellColor, null>; text: string }> =
 
 function trackedPagesNotes(data: TrackedPagesData): string[] {
   const notes: string[] = [
-    "Google columns read Search Console for each page across ALL search queries (the Keyword summary tab filters to the target keyword only); data lags ~2 days.",
+    "Google columns read Search Console for each page across ALL search queries (the Keyword summary tab filters to the target keyword only); includes fresh data — the most recent ~2 days can revise upward.",
   ];
   if (data.bingSynced) {
     notes.push(
@@ -955,9 +959,15 @@ export async function exportKeywordMovementSheet(
     .map((s) => ({ url: s.url, keyword: (s.keyword ?? "").trim() }));
   if (tracked.length === 0) throw new NoTrackedKeywordsError();
 
-  // GSC data lags ~2 days behind real time.
-  const end = new Date();
-  end.setUTCDate(end.getUTCDate() - 2);
+  // With fresh data (dataState "all") GSC covers through yesterday Pacific
+  // Time — the most recent ~2 days can still revise upward until finalized.
+  // Compute "yesterday" in PT (not UTC) so the 06:00-UTC cron doesn't grab
+  // the still-in-progress PT day.
+  const ptToday = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Los_Angeles",
+  }).format(new Date());
+  const end = new Date(`${ptToday}T00:00:00Z`);
+  end.setUTCDate(end.getUTCDate() - 1);
   const start = new Date(end);
   start.setUTCDate(start.getUTCDate() - (days - 1));
   const endDate = isoDay(end);
@@ -995,6 +1005,7 @@ export async function exportKeywordMovementSheet(
         expression: keywordExactRegex(t.keyword),
         operator: "includingRegex",
       },
+      dataState: "all",
     });
     const byDate = new Map(rows.map((r) => [r.key, r]));
     return { keyword: t.keyword, url: t.url, byDate } satisfies KeywordSeries;
