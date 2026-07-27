@@ -46,4 +46,6 @@ kind), feeding new sheet columns. Needs a sample export to see the format — an
 actually have the report (subset rollout).
 
 **Decision (2026-07-27):** operator was offered the upload flow and chose to wait for API support
-instead — don't re-pitch uploads; re-probe the API when Google-AI data comes up again.
+instead — don't re-pitch uploads; re-probe the API when Google-AI data comes up again. Same day:
+offered enabling the BigQuery bulk export (as future-proofing) and declined — don't re-pitch that
+either unless Google actually ships AI data on API/export.
