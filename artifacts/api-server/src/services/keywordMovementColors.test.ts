@@ -5,6 +5,7 @@ import {
   newRecordFlags,
   keywordTabColorMatrix,
   bestWeekFlags,
+  trackedRowColors,
   type DailyMetricRow,
 } from "./keywordMovementColors";
 
@@ -121,5 +122,53 @@ describe("bestWeekFlags", () => {
     const f = bestWeekFlags(computeDaily(rows));
     expect(f.pos).toBe(false);
     expect(f.impr).toBe(true);
+  });
+});
+
+describe("trackedRowColors", () => {
+  it("colors record value cells orange, change cells green/red, totals never", () => {
+    const colors = trackedRowColors({
+      gscBest: { impr: true, clicks: false, pos: false },
+      gscImprChange: 12,
+      gscClicksChange: -3,
+      gscPosChange: 0,
+      bingRecord: { impr: false, clicks: true, pos: false },
+      bingImprChange: null,
+      bingClicksChange: 4,
+      bingPosChange: -0.5,
+      aiRecord: true,
+      aiChange: null,
+    });
+    expect(colors).toHaveLength(20);
+    // Range-total cells (Google C..E, Bing L..N) are never colored.
+    expect(colors.slice(0, 3)).toEqual([null, null, null]);
+    expect(colors.slice(9, 12)).toEqual([null, null, null]);
+    expect(colors[3]).toBe("orange"); // Google last-7d impressions record
+    expect(colors[4]).toBe("green"); // impressions up
+    expect(colors[6]).toBe("red"); // clicks down
+    expect(colors[8]).toBeNull(); // unchanged position -> no color
+    expect(colors[13]).toBeNull(); // no prior week -> no color
+    expect(colors[14]).toBe("orange"); // Bing latest-week clicks record
+    expect(colors[15]).toBe("green");
+    expect(colors[17]).toBe("red"); // position change negative = declined
+    expect(colors[18]).toBe("orange"); // AI citations record
+    expect(colors[19]).toBeNull(); // no prior report
+  });
+
+  it("is all-null when nothing moved and nothing set a record", () => {
+    const none = { impr: false, clicks: false, pos: false };
+    const colors = trackedRowColors({
+      gscBest: none,
+      gscImprChange: 0,
+      gscClicksChange: null,
+      gscPosChange: null,
+      bingRecord: none,
+      bingImprChange: null,
+      bingClicksChange: 0,
+      bingPosChange: null,
+      aiRecord: false,
+      aiChange: 0,
+    });
+    expect(colors).toEqual(Array.from({ length: 20 }, () => null));
   });
 });

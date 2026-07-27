@@ -3,16 +3,26 @@
 // Reproduces the workbook layout the operator approved as the template:
 //   - Tab "Keyword summary" (frozen header row): one row per tracked keyword
 //     with full-range totals plus last-7d vs prior-7d movement.
-//   - Tab "Tracked pages — Bing & AI" (frozen header row): one row per
-//     tracked page with Bing clicks/impressions/position over the range,
-//     latest-vs-prior weekly movement, and AI citations from the newest
-//     uploaded Bing AI Performance report (with change vs the prior upload).
+//   - Tab "Tracked pages — Google, Bing & AI" (frozen header row + Page
+//     column): one row per tracked page with page-level Google Search
+//     Console impressions/clicks/position (range totals + last-7d movement,
+//     across ALL queries), the same Bing metrics (range totals +
+//     latest-vs-prior weekly movement), and AI citations from the newest
+//     uploaded Bing AI Performance report — all color-coded like the
+//     summary tab (green/red change, orange record).
 //   - One tab per keyword (frozen first column): Target keyword / Page /
 //     blank / Date / Impressions / Impr change / Clicks / Clicks change /
 //     Position / Position change (+ = moved up), with one column per day.
 //
+// Every header cell (and keyword-tab label cell) carries a hover note — an
+// in-sheet tooltip explaining the metric, its comparison window, and what
+// the cell colors mean.
+//
 // Data sources are Search Console plus already-synced Bing/AI-citation rows
 // from our own database — no crawling, no paid fetches, no AI calls.
+// Google's "Generative AI performance" report (AI Overviews / AI Mode) is
+// deliberately absent: as of 2026-07 it is UI-only (subset rollout) and the
+// Search Analytics API exposes no generative-AI type or searchAppearance.
 //
 // The spreadsheet is PERSISTENT: the first export creates it and stores its id
 // in app_state; every later export (and the daily sync_keyword_sheet job)
@@ -45,8 +55,11 @@ import {
   keywordTabColorMatrix,
   bestWeekFlags,
   changeColor,
+  newRecordFlags,
+  trackedRowColors,
   type CellColor,
   type DailyComputed,
+  type RecordTriple,
 } from "./keywordMovementColors";
 
 interface KeywordSeries {
@@ -173,6 +186,12 @@ function pagePath(url: string): string {
 
 type Cell = string | number;
 
+/** A column header plus the hover note (tooltip) attached to its header cell. */
+interface HeaderCol {
+  label: string;
+  note: string;
+}
+
 function keywordTabValues(
   series: KeywordSeries,
   dates: string[],
@@ -192,6 +211,19 @@ function keywordTabValues(
     ["Position change (+ = moved up)", ...daily.posChange.map(blank)],
   ];
 }
+
+// Hover notes for the label column (rows Date..Position change, A4:A10) on
+// every keyword tab — keyword tabs have terse labels, so the tooltip carries
+// the explanation instead of a wider header.
+const KEYWORD_ROW_NOTES: string[] = [
+  "One column per day (Pacific Time). Search Console data lags ~2 days.",
+  "Times the page appeared in Google results for the target keyword that day. Orange = new record high up to that day.",
+  "Impressions vs the day before. Green = up, red = down.",
+  "Google clicks for the target keyword that day. Orange = new record high.",
+  "Clicks vs the day before. Green = up, red = down.",
+  "Average Google position for the keyword that day. Lower is better; orange = best position yet.",
+  "The prior day's position minus this day's, so positive = moved up the rankings. Green = improved, red = dropped.",
+];
 
 // Light backgrounds readable under black text; picked to match the standard
 // Sheets palette (light red/green/orange 3).
@@ -220,20 +252,55 @@ const LEGEND_ROWS: Array<{ color: Exclude<CellColor, null>; text: string }> = [
   { color: "orange", text: "Orange = best ever in this tracking period (new record high for impressions/clicks, or best position yet)" },
 ];
 
-function summaryValues(rows: SummaryRow[], rangeLabel: string): Cell[][] {
-  const header: Cell[] = [
-    "Target keyword",
-    "Page",
-    `Impressions (${rangeLabel})`,
-    `Clicks (${rangeLabel})`,
-    `Avg position (${rangeLabel})`,
-    "Impressions (last 7d)",
-    "Impr change vs prior 7d",
-    "Clicks (last 7d)",
-    "Clicks change vs prior 7d",
-    "Position (last 7d)",
-    "Position change vs prior 7d (+ = moved up)",
+/** Headers + hover notes (tooltips) for the Keyword summary tab. */
+function summaryHeaderCols(rangeLabel: string): HeaderCol[] {
+  return [
+    {
+      label: "Target keyword",
+      note: "Tracked keyword from My Submissions. The matching keyword tab holds its day-by-day detail.",
+    },
+    { label: "Page", note: "The page this keyword is tracked against." },
+    {
+      label: `Impressions (${rangeLabel})`,
+      note: "Google impressions for this exact keyword on this page over the whole range (Search Console). Range totals are context only — never color-coded.",
+    },
+    {
+      label: `Clicks (${rangeLabel})`,
+      note: "Google clicks for this keyword on this page over the whole range.",
+    },
+    {
+      label: `Avg position (${rangeLabel})`,
+      note: "Impression-weighted average Google position for this keyword over the range. Lower is better.",
+    },
+    {
+      label: "Impressions (last 7d)",
+      note: "Impressions in the last 7 days. Orange = best week of the tracking period.",
+    },
+    {
+      label: "Impr change vs prior 7d",
+      note: "Last 7 days minus the 7 days before. Green = grew, red = fell.",
+    },
+    {
+      label: "Clicks (last 7d)",
+      note: "Clicks in the last 7 days. Orange = best week of the tracking period.",
+    },
+    {
+      label: "Clicks change vs prior 7d",
+      note: "Last 7 days minus the 7 days before. Green = grew, red = fell.",
+    },
+    {
+      label: "Position (last 7d)",
+      note: "Impression-weighted average position over the last 7 days. Lower is better; orange = best week of the tracking period.",
+    },
+    {
+      label: "Position change vs prior 7d (+ = moved up)",
+      note: "Prior 7 days minus last 7 days, so positive = moved up the rankings. Green = improved, red = dropped.",
+    },
   ];
+}
+
+function summaryValues(rows: SummaryRow[], rangeLabel: string): Cell[][] {
+  const header: Cell[] = summaryHeaderCols(rangeLabel).map((c) => c.label);
   const body = rows.map((r): Cell[] => [
     r.keyword,
     pagePath(r.url),
@@ -250,20 +317,29 @@ function summaryValues(rows: SummaryRow[], rangeLabel: string): Cell[][] {
   return [header, ...body];
 }
 
-// ---------- Tracked pages — Bing & AI citations tab ----------
+// ---------- Tracked pages — Google, Bing & AI citations tab ----------
 
-const TRACKED_TAB_TITLE = "Tracked pages — Bing & AI";
+const TRACKED_TAB_TITLE = "Tracked pages — Google, Bing & AI";
 
 interface TrackedPageStats {
   url: string;
   keyword: string;
-  bingClicks: number;
+  /** Page-level Search Console totals/movement across ALL queries. */
+  gsc: SummaryRow;
+  gscBest: RecordTriple;
   bingImpressions: number;
+  bingClicks: number;
   bingPosition: number | null;
+  bingLatestWeekImpressions: number;
+  bingImprChange: number | null;
   bingLatestWeekClicks: number;
   bingClicksChange: number | null;
+  bingLatestWeekPosition: number | null;
+  bingPosChange: number | null;
+  bingRecord: RecordTriple;
   aiCitations: number | null;
   aiCitationsChange: number | null;
+  aiRecord: boolean;
 }
 
 interface TrackedPagesData {
@@ -274,16 +350,23 @@ interface TrackedPagesData {
 }
 
 /**
- * Bing weekly stats + AI-citation counts for every tracked page, read purely
- * from rows the sync_bing_pages job / AI-report uploads already stored — no
- * external API calls, so this adds zero spend to the sheet export.
+ * Google (Search Console), Bing, and AI-citation stats for every tracked
+ * page. Bing/AI come purely from rows the sync_bing_pages job / AI-report
+ * uploads already stored; Google adds one free-quota GSC call per unique
+ * tracked page (daily series across ALL queries — the keyword tabs filter to
+ * the target keyword, this tab shows the whole page). No crawling, no paid
+ * fetches, no AI calls.
  */
 async function loadTrackedPagesData(
   siteId: number,
   siteHost: string,
   subs: Array<{ url: string; keyword: string | null }>,
-  startDate: string,
+  dates: string[],
+  last7Start: string,
+  prior7Start: string,
 ): Promise<TrackedPagesData> {
+  const startDate = dates[0]!;
+  const endDate = dates[dates.length - 1]!;
   const pages = subs
     .map((s) => ({
       url: s.url,
@@ -296,7 +379,7 @@ async function loadTrackedPagesData(
     );
   const paths = Array.from(new Set(pages.map((p) => p.path)));
 
-  const [anyBing, bingRows, latestBuckets, uploads] = await Promise.all([
+  const [anyBing, bingRows, bucketRows, uploads] = await Promise.all([
     db
       .select({ id: bingPageStatsTable.id })
       .from(bingPageStatsTable)
@@ -314,12 +397,20 @@ async function loadTrackedPagesData(
             ),
           )
       : Promise.resolve<BingPageStat[]>([]),
+    // Every weekly bucket inside the range (ascending): the last two give
+    // latest-vs-prior movement, the full list powers record (orange) flags.
     db
       .selectDistinct({ bucketDate: bingPageStatsTable.bucketDate })
       .from(bingPageStatsTable)
-      .where(eq(bingPageStatsTable.siteId, siteId))
-      .orderBy(desc(bingPageStatsTable.bucketDate))
-      .limit(2),
+      .where(
+        and(
+          eq(bingPageStatsTable.siteId, siteId),
+          gte(bingPageStatsTable.bucketDate, startDate),
+        ),
+      )
+      .orderBy(bingPageStatsTable.bucketDate),
+    // ALL "pages" uploads (newest first): [0]/[1] give latest-vs-prior, the
+    // chronological series powers the AI-citation record flag.
     db
       .select()
       .from(aiCitationUploadsTable)
@@ -329,9 +420,35 @@ async function loadTrackedPagesData(
           eq(aiCitationUploadsTable.kind, "pages"),
         ),
       )
-      .orderBy(desc(aiCitationUploadsTable.uploadedAt))
-      .limit(2),
+      .orderBy(desc(aiCitationUploadsTable.uploadedAt)),
   ]);
+
+  // One page-level GSC daily series per unique tracked URL (no query filter).
+  const uniqueUrls = Array.from(new Set(pages.map((p) => p.url)));
+  const gscSeries = await mapWithConcurrency(uniqueUrls, 4, async (url) => {
+    const rows = await queryGscDimension({
+      siteId,
+      startDate,
+      endDate,
+      dimension: "date",
+      pageRegex: pageVariantsRegex(url),
+    });
+    return { url, byDate: new Map(rows.map((r) => [r.key, r])) };
+  });
+  const gscByUrl = new Map(
+    gscSeries.map((s) => {
+      const summary = summarize(
+        { keyword: "", url: s.url, byDate: s.byDate },
+        dates,
+        last7Start,
+        prior7Start,
+      );
+      const best = bestWeekFlags(
+        computeDaily(dates.map((d) => s.byDate.get(d))),
+      );
+      return [s.url, { summary, best }] as const;
+    }),
+  );
 
   const citationRows =
     uploads.length > 0 && paths.length > 0
@@ -357,15 +474,15 @@ async function loadTrackedPagesData(
     else bingByPath.set(r.path, [r]);
   }
   // Bing reports weekly buckets; "latest week" movement compares the two most
-  // recent bucket dates the sync has stored for this site. The prior bucket
-  // must fall inside the export range (bingRows is filtered gte startDate) or
-  // its clicks would sum to 0 and fake a big "change" on short ranges.
-  const bucket0 = latestBuckets[0]?.bucketDate ?? null;
-  const rawBucket1 = latestBuckets[1]?.bucketDate ?? null;
-  const bucket1 = rawBucket1 != null && rawBucket1 >= startDate ? rawBucket1 : null;
+  // recent bucket dates inside the export range (both filtered gte startDate,
+  // or a prior week outside the range would sum to 0 and fake a big change).
+  const allBuckets = bucketRows.map((b) => b.bucketDate);
+  const bucket0 = allBuckets.length > 0 ? allBuckets[allBuckets.length - 1]! : null;
+  const bucket1 = allBuckets.length > 1 ? allBuckets[allBuckets.length - 2]! : null;
 
   const latestUploadId = uploads[0]?.id ?? null;
   const priorUploadId = uploads[1]?.id ?? null;
+  const uploadsChrono = [...uploads].reverse(); // oldest -> newest
   const citationsFor = (uploadId: number | null, path: string): number => {
     if (uploadId == null) return 0;
     let sum = 0;
@@ -375,14 +492,22 @@ async function loadTrackedPagesData(
     return sum;
   };
 
+  interface WeekAgg {
+    clicks: number;
+    impr: number;
+    posSum: number;
+    posW: number;
+  }
+  const weekPos = (b: WeekAgg | undefined): number | null =>
+    b != null && b.posW > 0 ? b.posSum / b.posW : null;
+
   const rows = pages.map((p): TrackedPageStats => {
     const prows = bingByPath.get(p.path) ?? [];
     let clicks = 0;
     let impressions = 0;
     let posSum = 0;
     let posWeight = 0;
-    let latestWeek = 0;
-    let priorWeek = 0;
+    const byBucket = new Map<string, WeekAgg>();
     for (const r of prows) {
       clicks += r.clicks;
       impressions += r.impressions;
@@ -392,29 +517,78 @@ async function loadTrackedPagesData(
         posSum += r.position * r.impressions;
         posWeight += r.impressions;
       }
-      if (bucket0 != null && r.bucketDate === bucket0) latestWeek += r.clicks;
-      else if (bucket1 != null && r.bucketDate === bucket1) priorWeek += r.clicks;
+      let agg = byBucket.get(r.bucketDate);
+      if (!agg) {
+        agg = { clicks: 0, impr: 0, posSum: 0, posW: 0 };
+        byBucket.set(r.bucketDate, agg);
+      }
+      agg.clicks += r.clicks;
+      agg.impr += r.impressions;
+      if (r.position != null && r.impressions > 0) {
+        agg.posSum += r.position * r.impressions;
+        agg.posW += r.impressions;
+      }
     }
+    const latest = bucket0 != null ? byBucket.get(bucket0) : undefined;
+    const prior = bucket1 != null ? byBucket.get(bucket1) : undefined;
+    const latestPos = weekPos(latest);
+    const priorPos = weekPos(prior);
+    // Weekly series across every bucket in range (missing week = no traffic,
+    // unknown position = skipped) -> strict-record flags for the orange
+    // highlights, same rules the keyword tabs use for daily records.
+    const wkImpr = allBuckets.map((b) => byBucket.get(b)?.impr ?? 0);
+    const wkClicks = allBuckets.map((b) => byBucket.get(b)?.clicks ?? 0);
+    const wkPos = allBuckets.map((b) => weekPos(byBucket.get(b)));
+    const bingRecord: RecordTriple = {
+      impr: newRecordFlags(wkImpr, "higher").at(-1) ?? false,
+      clicks: newRecordFlags(wkClicks, "higher").at(-1) ?? false,
+      pos: newRecordFlags(wkPos, "lower").at(-1) ?? false,
+    };
+
     const latestCitations = citationsFor(latestUploadId, p.path);
     const priorCitations = citationsFor(priorUploadId, p.path);
+    const aiSeries = uploadsChrono.map((u) => citationsFor(u.id, p.path));
+
+    const gsc = gscByUrl.get(p.url) ?? {
+      summary: summarize(
+        { keyword: "", url: p.url, byDate: new Map() },
+        dates,
+        last7Start,
+        prior7Start,
+      ),
+      best: { impr: false, clicks: false, pos: false } satisfies RecordTriple,
+    };
+
     return {
       url: p.url,
       keyword: p.keyword,
-      bingClicks: clicks,
+      gsc: gsc.summary,
+      gscBest: gsc.best,
       bingImpressions: impressions,
+      bingClicks: clicks,
       bingPosition: posWeight > 0 ? posSum / posWeight : null,
-      bingLatestWeekClicks: latestWeek,
-      bingClicksChange: bucket1 != null ? latestWeek - priorWeek : null,
+      bingLatestWeekImpressions: latest?.impr ?? 0,
+      bingImprChange:
+        bucket1 != null ? (latest?.impr ?? 0) - (prior?.impr ?? 0) : null,
+      bingLatestWeekClicks: latest?.clicks ?? 0,
+      bingClicksChange:
+        bucket1 != null ? (latest?.clicks ?? 0) - (prior?.clicks ?? 0) : null,
+      bingLatestWeekPosition: latestPos,
+      // Positive = moved up the rankings (position number went down).
+      bingPosChange:
+        latestPos != null && priorPos != null ? priorPos - latestPos : null,
+      bingRecord,
       aiCitations: latestUploadId != null ? latestCitations : null,
       aiCitationsChange:
         priorUploadId != null ? latestCitations - priorCitations : null,
+      aiRecord: newRecordFlags(aiSeries, "higher").at(-1) ?? false,
     };
   });
   rows.sort(
     (a, b) =>
+      b.gsc.totalImpressions - a.gsc.totalImpressions ||
       b.bingClicks - a.bingClicks ||
-      (b.aiCitations ?? 0) - (a.aiCitations ?? 0) ||
-      b.bingImpressions - a.bingImpressions,
+      (b.aiCitations ?? 0) - (a.aiCitations ?? 0),
   );
 
   return {
@@ -425,37 +599,174 @@ async function loadTrackedPagesData(
   };
 }
 
+/** Headers + hover notes (tooltips) for the tracked-pages tab. */
+function trackedHeaderCols(rangeLabel: string): HeaderCol[] {
+  return [
+    {
+      label: "Page",
+      note: "Tracked page from My Submissions. Rows are sorted by Google impressions over the range (ties: Bing clicks, then AI citations).",
+    },
+    {
+      label: "Target keyword",
+      note: "The keyword this page is tracked against on the Keyword summary tab. Blank = page is tracked without a target keyword.",
+    },
+    {
+      label: `Google impressions (${rangeLabel})`,
+      note: "Times this page appeared in Google Search across ALL queries over the whole range (Search Console). Range totals are context only — never color-coded.",
+    },
+    {
+      label: `Google clicks (${rangeLabel})`,
+      note: "Google clicks to this page across all queries over the whole range.",
+    },
+    {
+      label: `Google avg position (${rangeLabel})`,
+      note: "Impression-weighted average Google position over the range. Lower is better.",
+    },
+    {
+      label: "Google impressions (last 7d)",
+      note: "Google impressions in the last 7 days. Orange = best week of the tracking period.",
+    },
+    {
+      label: "Impr change vs prior 7d",
+      note: "Last 7 days minus the 7 days before. Green = grew, red = fell.",
+    },
+    {
+      label: "Google clicks (last 7d)",
+      note: "Google clicks in the last 7 days. Orange = best week of the tracking period.",
+    },
+    {
+      label: "Clicks change vs prior 7d",
+      note: "Last 7 days minus the 7 days before. Green = grew, red = fell.",
+    },
+    {
+      label: "Google position (last 7d)",
+      note: "Impression-weighted average position over the last 7 days. Lower is better; orange = best week of the tracking period.",
+    },
+    {
+      label: "Position change vs prior 7d (+ = moved up)",
+      note: "Prior 7 days minus last 7 days, so positive = moved up the rankings. Green = improved, red = dropped.",
+    },
+    {
+      label: `Bing impressions (${rangeLabel})`,
+      note: "Times this page appeared in Bing search over the whole range (Bing Webmaster weekly data). Range totals aren't color-coded.",
+    },
+    {
+      label: `Bing clicks (${rangeLabel})`,
+      note: "Bing clicks to this page over the whole range.",
+    },
+    {
+      label: `Bing avg position (${rangeLabel})`,
+      note: "Impression-weighted average Bing position over the range (weeks with unknown position excluded). Lower is better.",
+    },
+    {
+      label: "Bing impressions (latest week)",
+      note: "Impressions in Bing's most recent weekly bucket. Bing only reports the site's top pages each week, so 0 can simply mean the page fell out of that week's report. Orange = record week in the range.",
+    },
+    {
+      label: "Impr change vs prior week",
+      note: "Latest weekly bucket minus the one before. Green = grew, red = fell.",
+    },
+    {
+      label: "Bing clicks (latest week)",
+      note: "Clicks in Bing's most recent weekly bucket. Orange = record week in the range.",
+    },
+    {
+      label: "Clicks change vs prior week",
+      note: "Latest weekly bucket minus the one before. Green = grew, red = fell.",
+    },
+    {
+      label: "Bing position (latest week)",
+      note: "Impression-weighted average position in the latest weekly bucket. Lower is better; orange = best weekly position in the range.",
+    },
+    {
+      label: "Position change vs prior week (+ = moved up)",
+      note: "Prior week minus latest week, so positive = moved up the rankings. Green = improved, red = dropped.",
+    },
+    {
+      label: "AI citations (latest report)",
+      note: "How often Bing's AI (Copilot) cited this page in your latest uploaded AI Performance report. Orange = record high across all uploads. (Google doesn't expose AI Overviews / AI Mode data per page in its API yet.)",
+    },
+    {
+      label: "Citations change vs prior report",
+      note: "Latest report minus the previous upload. Green = cited more, red = cited less.",
+    },
+  ];
+}
+
 function trackedPagesValues(
   data: TrackedPagesData,
   rangeLabel: string,
 ): Cell[][] {
-  const header: Cell[] = [
-    "Page",
-    "Target keyword",
-    `Bing clicks (${rangeLabel})`,
-    `Bing impressions (${rangeLabel})`,
-    `Bing avg position (${rangeLabel})`,
-    "Bing clicks (latest week)",
-    "Clicks change vs prior week",
-    "AI citations (latest report)",
-    "Citations change vs prior report",
-  ];
+  const header: Cell[] = trackedHeaderCols(rangeLabel).map((c) => c.label);
+  // Bing cells stay blank until the first Bing sync; null values (unknown
+  // position, no prior week/report to compare) render blank, never 0.
+  const bing = (v: Cell | null): Cell =>
+    data.bingSynced && v != null ? v : "";
   const body = data.rows.map((r): Cell[] => [
     pagePath(r.url),
     r.keyword,
-    data.bingSynced ? r.bingClicks : "",
-    data.bingSynced ? r.bingImpressions : "",
-    data.bingSynced && r.bingPosition != null ? round1(r.bingPosition) : "",
-    data.bingSynced ? r.bingLatestWeekClicks : "",
-    data.bingSynced && r.bingClicksChange != null ? r.bingClicksChange : "",
+    r.gsc.totalImpressions,
+    r.gsc.totalClicks,
+    r.gsc.avgPosition == null ? "" : round1(r.gsc.avgPosition),
+    r.gsc.last7Impressions,
+    r.gsc.imprChange,
+    r.gsc.last7Clicks,
+    r.gsc.clicksChange,
+    r.gsc.last7Position == null ? "" : round1(r.gsc.last7Position),
+    r.gsc.positionChange == null ? "" : round1(r.gsc.positionChange),
+    bing(r.bingImpressions),
+    bing(r.bingClicks),
+    bing(r.bingPosition == null ? null : round1(r.bingPosition)),
+    bing(r.bingLatestWeekImpressions),
+    bing(r.bingImprChange),
+    bing(r.bingLatestWeekClicks),
+    bing(r.bingClicksChange),
+    bing(
+      r.bingLatestWeekPosition == null
+        ? null
+        : round1(r.bingLatestWeekPosition),
+    ),
+    bing(r.bingPosChange == null ? null : round1(r.bingPosChange)),
     r.aiCitations == null ? "" : r.aiCitations,
     r.aiCitationsChange == null ? "" : r.aiCitationsChange,
   ]);
   return [header, ...body];
 }
 
+/** Color band (columns C..V) for every data row of the tracked-pages tab. */
+function trackedPagesColorRows(data: TrackedPagesData): CellColor[][] {
+  return data.rows.map((r) =>
+    trackedRowColors({
+      gscBest: r.gscBest,
+      gscImprChange: r.gsc.imprChange,
+      gscClicksChange: r.gsc.clicksChange,
+      gscPosChange: r.gsc.positionChange,
+      bingRecord: r.bingRecord,
+      bingImprChange: r.bingImprChange,
+      bingClicksChange: r.bingClicksChange,
+      bingPosChange: r.bingPosChange,
+      aiRecord: r.aiRecord,
+      aiChange: r.aiCitationsChange,
+    }),
+  );
+}
+
+const TRACKED_LEGEND: Array<{ color: Exclude<CellColor, null>; text: string }> = [
+  {
+    color: "green",
+    text: "Green = improved (Google: last 7 days vs the 7 before; Bing: latest weekly bucket vs the one before; AI: latest report vs the prior upload)",
+  },
+  { color: "red", text: "Red = declined over the same comparison" },
+  {
+    color: "orange",
+    text: "Orange = best in this tracking period (record impressions/clicks/citations, or best position yet)",
+  },
+];
+
 function trackedPagesNotes(data: TrackedPagesData): string[] {
-  const notes: string[] = [];
+  const notes: string[] = [
+    "Google columns read Search Console for each page across ALL search queries (the Keyword summary tab filters to the target keyword only); data lags ~2 days.",
+  ];
   if (data.bingSynced) {
     notes.push(
       "Bing reports weekly totals; the 'latest week' columns compare Bing's two most recent weekly buckets.",
@@ -660,13 +971,15 @@ export async function exportKeywordMovementSheet(
   const last7Start = isoDay(last7StartD);
   const prior7Start = isoDay(prior7StartD);
 
-  // Bing + AI-citation stats for ALL tracked pages (keyword or not) — pure
-  // DB reads of already-synced rows, kicked off alongside the GSC calls.
+  // Google + Bing + AI-citation stats for ALL tracked pages (keyword or
+  // not), kicked off alongside the per-keyword GSC calls below.
   const trackedDataPromise = loadTrackedPagesData(
     siteId,
     site.host,
     subs,
-    startDate,
+    dates,
+    last7Start,
+    prior7Start,
   );
 
   // One GSC call per keyword: daily series for page (incl. #fragment/?query
@@ -721,9 +1034,14 @@ export async function exportKeywordMovementSheet(
   const trackedData = await trackedDataPromise;
   const trackedNotes = trackedPagesNotes(trackedData);
   const trackedGrid = {
-    rowCount: trackedData.rows.length + trackedNotes.length + 4,
-    columnCount: 9,
+    rowCount:
+      trackedData.rows.length +
+      TRACKED_LEGEND.length +
+      trackedNotes.length +
+      6,
+    columnCount: 22,
     frozenRowCount: 1,
+    frozenColumnCount: 1,
   };
 
   // ---- Create the spreadsheet, or rewrite the stored one in place ----
@@ -866,10 +1184,37 @@ export async function exportKeywordMovementSheet(
   });
 
   // Bold headers: summary header row + label column on each keyword tab.
+  const summaryCols = summaryHeaderCols(rangeLabel);
+  const trackedCols = trackedHeaderCols(rangeLabel);
   await sheetsRequest(`/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
     method: "POST",
     body: {
       requests: [
+        // Hover notes (tooltips) on every header cell and keyword-tab label
+        // cell. `fields: "note"` touches nothing else about the cells.
+        {
+          updateCells: {
+            start: { sheetId: summarySheetId, rowIndex: 0, columnIndex: 0 },
+            rows: [{ values: summaryCols.map((c) => ({ note: c.note })) }],
+            fields: "note",
+          },
+        },
+        {
+          updateCells: {
+            start: { sheetId: trackedSheetId, rowIndex: 0, columnIndex: 0 },
+            rows: [{ values: trackedCols.map((c) => ({ note: c.note })) }],
+            fields: "note",
+          },
+        },
+        ...keywordSheetIds.map((sheetId) => ({
+          updateCells: {
+            start: { sheetId, rowIndex: 3, columnIndex: 0 },
+            rows: KEYWORD_ROW_NOTES.map((note) => ({
+              values: [{ note }],
+            })),
+            fields: "note",
+          },
+        })),
         {
           repeatCell: {
             range: { sheetId: summarySheetId, startRowIndex: 0, endRowIndex: 1 },
@@ -900,8 +1245,40 @@ export async function exportKeywordMovementSheet(
               sheetId: trackedSheetId,
               dimension: "COLUMNS",
               startIndex: 0,
-              endIndex: 9,
+              endIndex: 22,
             },
+          },
+        },
+        // Color coding — tracked-pages tab: columns C..V (Google last-7d,
+        // Bing latest-week, AI citations + all their changes) per page row.
+        ...(trackedData.rows.length > 0
+          ? [
+              {
+                updateCells: {
+                  start: {
+                    sheetId: trackedSheetId,
+                    rowIndex: 1,
+                    columnIndex: 2,
+                  },
+                  rows: trackedPagesColorRows(trackedData).map((row) => ({
+                    values: row.map(bgCell),
+                  })),
+                  fields: "userEnteredFormat.backgroundColor",
+                },
+              },
+            ]
+          : []),
+        // Legend swatches under the tracked table (text written below,
+        // after autoResize, so long legend lines don't stretch column A).
+        {
+          updateCells: {
+            start: {
+              sheetId: trackedSheetId,
+              rowIndex: trackedData.rows.length + 2,
+              columnIndex: 0,
+            },
+            rows: TRACKED_LEGEND.map((l) => ({ values: [bgCell(l.color)] })),
+            fields: "userEnteredFormat.backgroundColor",
           },
         },
         ...keywordSheetIds.map((sheetId) => ({
@@ -978,15 +1355,20 @@ export async function exportKeywordMovementSheet(
     },
   );
 
-  // Tracked-pages footnotes — same pattern: written after autoResize so the
-  // long explainer lines don't stretch the Page column.
+  // Tracked-pages legend text + footnotes — same pattern: written after
+  // autoResize so the long explainer lines don't stretch the Page column.
   await sheetsRequest(
     `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
       `'${TRACKED_TAB_TITLE}'!A${trackedData.rows.length + 3}`,
     )}?valueInputOption=RAW`,
     {
       method: "PUT",
-      body: { values: trackedNotes.map((n) => [n]) },
+      body: {
+        values: [
+          ...TRACKED_LEGEND.map((l) => [l.text]),
+          ...trackedNotes.map((n) => [n]),
+        ],
+      },
     },
   );
 

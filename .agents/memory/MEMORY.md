@@ -21,6 +21,7 @@
 - [E2E testing auth bridge](e2e-test-auth-bridge.md) — testing subagent can't read ADMIN_PASSWORD; mint session via bash, pass cookie via addCookies url-form, logout after.
 - [Crawl reconcile guard](crawl-reconcile-guard.md) — partial sitemap fetch once mass-deleted inventory & crashed health score; reconciles must propagate child failures + abort on >20% shrink.
 - [GSC operator junk queries](gsc-operator-junk-queries.md) — AI-scraper operator queries pollute GSC top-N; filter structurally before paid spend; requeued jobs need heartbeat-based staleness.
+- [GSC Generative AI data access](gsc-generative-ai-api.md) — AI Overviews/AI Mode report is UI-only (2026-07): no API type/searchAppearance; re-probe before promising Google-AI columns.
 - [Multi-tenant auth gates](multi-tenant-auth-gates.md) — after swapping admin-password for self-signup auth, audit every auth-only route for missing ownership gates; spend/proxy routes evade scoping sweeps.
 - [Orval inline body collision](orval-inline-body-collision.md) — inline requestBody schemas make orval emit a zod const and TS type with the same *Body name → star-export clash; always $ref a named component.
 - [Per-site background jobs](per-site-jobs.md) — crons iterate sites sequentially with isolated failures; budget-truncated crawls must skip reconcile-deletes or they mass-delete inventory.

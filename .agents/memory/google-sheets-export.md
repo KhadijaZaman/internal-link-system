@@ -22,6 +22,14 @@ sheet work instead of re-deriving the raw credential-proxy approach. The "Target
 Movement" workbook is PERSISTENT: its spreadsheet id is stored in `app_state`
 (`keyword_movement_sheet_id`) and every export / daily `sync_keyword_sheet` job run rewrites the
 SAME sheet — never create per-run snapshot spreadsheets for it again (that was a user complaint).
+Its tracked-pages tab unifies Google (page-level GSC, all queries) + Bing + AI citations per page
+with the summary tab's color rules; record (orange) flags need the FULL weekly-bucket / upload
+history in range, not just the latest two. Dev and prod share the same spreadsheet id, so a dev
+export rewrites the operator's real sheet — sync `tracked_submissions` from prod first.
+
+**Gotcha — Bing weekly page export covers only the site's top pages each week:** a tracked page
+can hold months of Bing totals yet show 0 for the latest weekly bucket simply because it fell out
+of Bing's top-pages report. Those zeros are real data, not a sync bug — don't "fix" them.
 
 **In-place tab replacement pattern (Sheets v4):** one atomic `:batchUpdate` — rename all old tabs
 to `__old_<sheetId>` (avoids title collisions), `addSheet` the new tabs with fresh sheetIds

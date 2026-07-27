@@ -191,3 +191,57 @@ export function bestWeekFlags(d: DailyComputed): {
     pos: posRecord,
   };
 }
+
+export interface RecordTriple {
+  impr: boolean;
+  clicks: boolean;
+  pos: boolean;
+}
+
+/** Inputs for one row of the "Tracked pages" tab's color band (columns C..V:
+ * Google range totals, Google last-7d values + changes, Bing range totals,
+ * Bing latest-week values + changes, AI citations + change). */
+export interface TrackedRowColorInput {
+  gscBest: RecordTriple;
+  gscImprChange: number | null;
+  gscClicksChange: number | null;
+  gscPosChange: number | null;
+  bingRecord: RecordTriple;
+  bingImprChange: number | null;
+  bingClicksChange: number | null;
+  bingPosChange: number | null;
+  aiRecord: boolean;
+  aiChange: number | null;
+}
+
+/**
+ * 20 background colors for one tracked-pages row (columns C..V), same rules
+ * as the keyword summary tab: orange on a VALUE cell that set a record within
+ * the tracking window, green/red on CHANGE cells, range-total cells never
+ * colored (they have no comparison).
+ */
+export function trackedRowColors(r: TrackedRowColorInput): CellColor[] {
+  const orange = (f: boolean): CellColor => (f ? "orange" : null);
+  return [
+    null, // Google impressions (range)
+    null, // Google clicks (range)
+    null, // Google avg position (range)
+    orange(r.gscBest.impr),
+    changeColor(r.gscImprChange),
+    orange(r.gscBest.clicks),
+    changeColor(r.gscClicksChange),
+    orange(r.gscBest.pos),
+    changeColor(r.gscPosChange),
+    null, // Bing impressions (range)
+    null, // Bing clicks (range)
+    null, // Bing avg position (range)
+    orange(r.bingRecord.impr),
+    changeColor(r.bingImprChange),
+    orange(r.bingRecord.clicks),
+    changeColor(r.bingClicksChange),
+    orange(r.bingRecord.pos),
+    changeColor(r.bingPosChange),
+    orange(r.aiRecord),
+    changeColor(r.aiChange),
+  ];
+}
