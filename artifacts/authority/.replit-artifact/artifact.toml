@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/authority/"
+title = "Wellows — Topical Authority"
+version = "1.0.0"
+id = "artifacts/authority"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/authority/" ]
+localPort = 20920
+
+[services.development]
+run = "pnpm --filter @workspace/authority run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/authority", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/authority/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20920"
+BASE_PATH = "/authority/"
