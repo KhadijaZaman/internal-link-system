@@ -4,7 +4,7 @@ import { useClerk, useUser } from "@clerk/react";
 import { useGetSession } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { SiteSwitcher } from "@/components/site-switcher";
-import { LayoutDashboard, Network, TrendingDown, Settings2, LogOut, LineChart, FileText, Ban, PenLine, Link2, Compass, BookOpen, ClipboardList, Bot, Gauge, Table2, ListTodo, Newspaper, Waypoints, SearchCheck, Boxes, GitCompareArrows, Sparkles, Map, Plug, ChevronDown, ShieldCheck, Lightbulb } from "lucide-react";
+import { LayoutDashboard, Network, TrendingDown, Settings2, LogOut, LineChart, FileText, Ban, PenLine, Link2, Compass, BookOpen, ClipboardList, Bot, Gauge, Table2, ListTodo, Newspaper, Waypoints, SearchCheck, Boxes, GitCompareArrows, Sparkles, Map, Plug, ChevronDown, ShieldCheck, Lightbulb, ScrollText, ExternalLink } from "lucide-react";
 
 interface NavItem {
   href: string;
@@ -121,6 +121,34 @@ function NavLink({ item, isActive }: { item: NavItem; isActive: boolean }) {
   );
 }
 
+// Full-page anchor for destinations outside the SPA (e.g. the standalone
+// authority assessment artifact) — wouter must not intercept these.
+function ExternalNavLink({
+  href,
+  label,
+  icon: Icon,
+  testId,
+}: {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  testId?: string;
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      data-testid={testId}
+      className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] font-medium transition-colors text-muted-foreground hover:bg-muted hover:text-foreground"
+    >
+      <Icon className="h-4 w-4 shrink-0 text-muted-foreground/70" />
+      <span className="flex-1 truncate">{label}</span>
+      <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground/50" />
+    </a>
+  );
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { signOut } = useClerk();
@@ -216,6 +244,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         isActive={isItemActive(item.href, location)}
                       />
                     ))}
+                    {section.label === "Improve linking" && isAdmin && (
+                      <ExternalNavLink
+                        href="/authority/"
+                        label="Authority Report"
+                        icon={ScrollText}
+                        testId="link-authority-report"
+                      />
+                    )}
                     {section.label === "Setup" && isAdmin && (
                       <NavLink
                         item={{ href: "/admin", label: "Admin", icon: ShieldCheck }}
