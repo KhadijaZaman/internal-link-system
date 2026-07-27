@@ -46,7 +46,7 @@ export default function Assessment() {
           <h1 className="text-xl lg:text-2xl font-bold tracking-tight text-primary">Topical Authority Assessment: AI Visibility vs Generative Engine Optimization (GEO)</h1>
         </div>
         <div className="max-w-xl text-xs lg:text-sm text-muted-foreground leading-relaxed border-l-2 border-accent pl-3 lg:text-right" data-testid="text-verdict">
-          <strong className="text-foreground">Verdict:</strong> AI Visibility is the central entity by the pre-defined metric — Google query depth <strong>10,355 vs 6,597</strong> distinct queries (page spread 273 vs 256). Counterpoints: GEO out-clicks on Google (<strong>138 vs 84</strong>) and Bing flips the ranking (GEO 39 queries / 417 imp vs 23 / 132).
+          <strong className="text-foreground">Verdict:</strong> Optimize for <strong>AI Visibility</strong> as the central entity — it commands the wider demand surface (query depth <strong>10,355 vs 6,597</strong> distinct queries; page spread 273 vs 256) and is earlier on the authority curve, where added coverage compounds fastest. Keep GEO as the supporting commercial layer — it already out-clicks on Google (<strong>138 vs 84</strong>). Counterpoint: Bing flips the ranking (GEO 417 imp vs 132), on a far smaller base.
         </div>
       </header>
 
@@ -79,9 +79,9 @@ export default function Assessment() {
                   <li className="p-2.5 space-y-1 hover:bg-muted/10 transition-colors" data-testid="text-claim-engagement">
                     <div className="font-semibold text-primary flex items-center justify-between">
                       <span>Engagement & Feeding</span>
-                      <Badge variant="outline" className="font-mono bg-accent/5 text-accent border-accent/20">265 conversions</Badge>
+                      <Badge variant="outline" className="font-mono bg-accent/5 text-accent border-accent/20">73.6% engagement</Badge>
                     </div>
-                    <p className="text-muted-foreground leading-snug">GEO cluster converted 265 signups+demos from 19,715 Google organic sessions (73.6% engagement), fed by 762 in-content links from 126 informational pages into commercial pages.</p>
+                    <p className="text-muted-foreground leading-snug">GEO cluster drew 19,715 Google organic sessions at 73.6% engagement, fed by 762 in-content links from 126 informational pages into commercial pages.</p>
                   </li>
                 </ul>
               </CardContent>
@@ -290,13 +290,6 @@ export default function Assessment() {
                         <TableCell className="text-right font-mono">{formatValue(entityB.ga4?.google?.avgEngagementTime)}{entityB.ga4?.google?.avgEngagementTime != null && 's'}</TableCell>
                         <TableCell className="text-right font-mono text-muted-foreground">{formatValue(entityB.ga4?.bing?.avgEngagementTime)}{entityB.ga4?.bing?.avgEngagementTime != null && 's'}</TableCell>
                       </TableRow>
-                      <TableRow>
-                        <TableCell className="font-medium border-r bg-muted/5 bg-accent/5 text-accent">Conversions (Signups+Demos)</TableCell>
-                        <TableCell className="text-right font-mono text-accent">{formatValue(entityA.ga4?.google?.conversions)}</TableCell>
-                        <TableCell className="text-right font-mono border-r text-muted-foreground">{formatValue(entityA.ga4?.bing?.conversions)}</TableCell>
-                        <TableCell className="text-right font-mono text-accent">{formatValue(entityB.ga4?.google?.conversions)}</TableCell>
-                        <TableCell className="text-right font-mono text-muted-foreground">{formatValue(entityB.ga4?.bing?.conversions)}</TableCell>
-                      </TableRow>
                     </TableBody>
                   </Table>
                   <ScrollBar orientation="vertical" />
@@ -315,7 +308,7 @@ export default function Assessment() {
               <CardHeader className="py-3 px-4 bg-muted/30 border-b border-border/40 shrink-0">
                 <CardTitle className="text-xs uppercase tracking-wider font-semibold text-muted-foreground flex justify-between items-center">
                   <span>Coverage Gaps (Zero-Impr)</span>
-                  <Badge variant="secondary" className="text-[10px] font-mono">{data.gaps.length} Found</Badge>
+                  <Badge variant="secondary" className="text-[10px] font-mono">Top {data.gaps.length} of {data.gapsTotal} Found</Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0 flex-1 overflow-hidden">

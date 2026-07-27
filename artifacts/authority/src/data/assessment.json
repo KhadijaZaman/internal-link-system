@@ -14,7 +14,7 @@
   "sources": {
    "google": "Google Search Console — Search Analytics API (finalized data, type=web). BigQuery bulk export requested but not available for this property (no export configured; no backfill exists) — stated per operator decision.",
    "bing": "Bing Webmaster Tools API — GetQueryStats/GetPageStats weekly buckets (stored sync) + GetPageQueryStats live fan-out (177/177 pages).",
-   "ga4": "GA4 Data API (service account) — Organic Search sessions by landing page × source, host-filtered; key events merged by path."
+   "ga4": "GA4 Data API (service account) — Organic Search sessions by landing page × source, host-filtered."
   },
   "bingPageQueryCoverage": {
    "total": 177,
@@ -679,14 +679,12 @@
      "sessions": 27827,
      "engagementRate": 72.1,
      "avgEngagementTime": 89,
-     "conversions": 249,
      "pagesWithTraffic": 234
     },
     "bing": {
      "sessions": 155,
      "engagementRate": 67.1,
      "avgEngagementTime": 69,
-     "conversions": 5,
      "pagesWithTraffic": 16
     }
    }
@@ -962,14 +960,12 @@
      "sessions": 19715,
      "engagementRate": 73.6,
      "avgEngagementTime": 71,
-     "conversions": 265,
      "pagesWithTraffic": 226
     },
     "bing": {
      "sessions": 354,
      "engagementRate": 72,
      "avgEngagementTime": 102,
-     "conversions": 5,
      "pagesWithTraffic": 19
     }
    }
@@ -1477,5 +1473,6 @@
   "nav": 6947,
   "content": 6775,
   "footer": 2976
- }
+ },
+ "gapsTotal": 19
 }
