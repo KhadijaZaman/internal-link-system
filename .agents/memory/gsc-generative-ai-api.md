@@ -27,3 +27,6 @@ has no Google-AI columns and the AI-citations columns remain Bing-Copilot-based.
 uploaded like the existing Bing AI Performance report (same upload-parse-store pattern, new report
 kind), feeding new sheet columns. Needs a sample export to see the format — and the property must
 actually have the report (subset rollout).
+
+**Decision (2026-07-27):** operator was offered the upload flow and chose to wait for API support
+instead — don't re-pitch uploads; re-probe the API when Google-AI data comes up again.
