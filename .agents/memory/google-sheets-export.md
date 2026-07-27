@@ -70,3 +70,12 @@ updating", first compare their link's spreadsheet id against `app_state.keyword_
   `google-sheet` and use `settings.access_token`.
 - **Gotcha:** adding `&connector_names=google-sheet` to that URL returns 0 items even when the
   connection is healthy — fetch unfiltered and filter client-side.
+
+## Trailing-day zeros in the movement sheet (final vs fresh GSC data)
+The exporter's range ends at today−2 (PT) but reads **final-only** GSC data (no `dataState`), and
+Google often hasn't finalized that day yet (final can end at today−3). The last date column then
+shows 0 impressions on every keyword, a misleading red "Impr change" drop, and a blank Position
+(weighted position is null with no impressions — by design, never write 0). Self-heals on the next
+daily export. Probe with `dataState:"all"` to confirm it's lag, not a real zero day. Operator asked
+about this once (2026-07-27) — if it recurs, options are: trim trailing unfinalized days, or switch
+to fresh data and accept upward revisions.
