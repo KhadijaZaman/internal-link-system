@@ -27,3 +27,4 @@
 - [Per-site background jobs](per-site-jobs.md) — crons iterate sites sequentially with isolated failures; budget-truncated crawls must skip reconcile-deletes or they mass-delete inventory.
 - [GitHub push from the workspace](github-push-technique.md) — get token via unfiltered connectors API (listConnections can miss it); verify pushes with ls-remote, the sandbox ref-lock error can fire after success.
 - [Authority one-pager provenance](authority-assessment-provenance.md) — frozen API-sourced snapshot; on-page gap disclosures required; verdict numerals baked into JSX — regen data + JSX together.
+- [Google Docs export](google-docs-export.md) — connector is Docs-scope only (no Drive); build via placeholder→insertTable→reverse-fill; listConnections missed it — use bash-node unfiltered connectors API.
