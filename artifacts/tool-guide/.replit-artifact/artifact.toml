@@ -1,0 +1,27 @@
+kind = "slides"
+previewPath = "/tool-guide/"
+title = "Linkweave — Tool Guide & Demo Script"
+version = "1.0.0"
+id = "artifacts/tool-guide"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/tool-guide/" ]
+localPort = 18111
+
+[services.development]
+run = "pnpm --filter @workspace/tool-guide run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/tool-guide", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/tool-guide/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18111"
+BASE_PATH = "/tool-guide/"

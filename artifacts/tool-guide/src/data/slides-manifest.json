@@ -1,0 +1,146 @@
+[
+  {
+    "id": "5d0a7c9e-1101-4b2a-9f01-3e8c2a1b4c01",
+    "position": 1,
+    "filepath": "src/pages/slides/Slide01Title.tsx",
+    "title": "Linkweave — The Complete Tool Guide",
+    "description": "Title slide: section-by-section logic & use cases, plus the full presenter demo script.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "5d0a7c9e-1102-4b2a-9f02-3e8c2a1b4c02",
+    "position": 2,
+    "filepath": "src/pages/slides/Slide02WhatItDoes.tsx",
+    "title": "What Linkweave does",
+    "description": "Product purpose and the core loop from data sources to ranked wins.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "5d0a7c9e-1103-4b2a-9f03-3e8c2a1b4c03",
+    "position": 3,
+    "filepath": "src/pages/slides/Slide03Organization.tsx",
+    "title": "How the tool is organized",
+    "description": "The five sidebar zones and the measure-link-content workflow logic.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "5d0a7c9e-1104-4b2a-9f04-3e8c2a1b4c04",
+    "position": 4,
+    "filepath": "src/pages/slides/Slide04DailyLoop.tsx",
+    "title": "The daily loop — Home, To-Do List, Weekly Digest",
+    "description": "Home KPIs and Actionable Wins, the task queue, and the weekly digest.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "5d0a7c9e-1105-4b2a-9f05-3e8c2a1b4c05",
+    "position": 5,
+    "filepath": "src/pages/slides/Slide05InsightsGsc.tsx",
+    "title": "Track performance — SEO Insights & Google Search",
+    "description": "Cross-source mismatch finder and the full GSC suite.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "5d0a7c9e-1106-4b2a-9f06-3e8c2a1b4c06",
+    "position": 6,
+    "filepath": "src/pages/slides/Slide06EngagementBing.tsx",
+    "title": "Track performance — Visitor Engagement & Bing/AI",
+    "description": "GA4 engagement plus Bing and AI-citation visibility.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "5d0a7c9e-1107-4b2a-9f07-3e8c2a1b4c07",
+    "position": 7,
+    "filepath": "src/pages/slides/Slide07DeclinesReports.tsx",
+    "title": "Track performance — Declines & reports",
+    "description": "Declining queries triage plus page and keyword reports.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "5d0a7c9e-1108-4b2a-9f08-3e8c2a1b4c08",
+    "position": 8,
+    "filepath": "src/pages/slides/Slide08ClustersAskAi.tsx",
+    "title": "Track performance — Keyword Clusters & Ask AI",
+    "description": "Semantic keyword clustering and natural-language questions over search data.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "5d0a7c9e-1109-4b2a-9f09-3e8c2a1b4c09",
+    "position": 9,
+    "filepath": "src/pages/slides/Slide09LinkSuggestions.tsx",
+    "title": "Improve linking — Link Suggestions",
+    "description": "The three linking engines and the crawl-verified suggestion lifecycle.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "5d0a7c9e-1110-4b2a-9f10-3e8c2a1b4c10",
+    "position": 10,
+    "filepath": "src/pages/slides/Slide10LinkMapGraph.tsx",
+    "title": "Improve linking — Link Map, Knowledge Graph, Site Authority",
+    "description": "Link graph visualization, entity mapping, and topical authority.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "5d0a7c9e-1111-4b2a-9f11-3e8c2a1b4c11",
+    "position": 11,
+    "filepath": "src/pages/slides/Slide11OptimizerWriter.tsx",
+    "title": "Improve content — Page Optimizer & Content Writer",
+    "description": "On-page analysis and knowledge-base-grounded AI drafting.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "5d0a7c9e-1112-4b2a-9f12-3e8c2a1b4c12",
+    "position": 12,
+    "filepath": "src/pages/slides/Slide12MapsSimilarity.tsx",
+    "title": "Improve content — Maps, similarity & submissions",
+    "description": "Topical map, content similarity, knowledge base, and tracked submissions.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "5d0a7c9e-1113-4b2a-9f13-3e8c2a1b4c13",
+    "position": 13,
+    "filepath": "src/pages/slides/Slide13SetupGovernance.tsx",
+    "title": "Setup & governance",
+    "description": "Connections, classifications, exclusions, and the admin surface.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "5d0a7c9e-1114-4b2a-9f14-3e8c2a1b4c14",
+    "position": 14,
+    "filepath": "src/pages/slides/Slide14JobPipeline.tsx",
+    "title": "Under the hood — the job pipeline",
+    "description": "Ingest, process, and audit jobs that power every page.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "5d0a7c9e-1115-4b2a-9f15-3e8c2a1b4c15",
+    "position": 15,
+    "filepath": "src/pages/slides/Slide15Act1.tsx",
+    "title": "Demo script · Act 1 — Connect & first sync",
+    "description": "Word-for-word opening: connections, first sync, and the four sources rule.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "5d0a7c9e-1116-4b2a-9f16-3e8c2a1b4c16",
+    "position": 16,
+    "filepath": "src/pages/slides/Slide16Act2.tsx",
+    "title": "Demo script · Act 2 — The daily loop",
+    "description": "Word-for-word walkthrough of Home, To-Do List, and Weekly Digest.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "5d0a7c9e-1117-4b2a-9f17-3e8c2a1b4c17",
+    "position": 17,
+    "filepath": "src/pages/slides/Slide17Act3.tsx",
+    "title": "Demo script · Act 3 — Diagnose",
+    "description": "Word-for-word walkthrough of Insights, Declines, Clusters, and Ask AI.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "5d0a7c9e-1118-4b2a-9f18-3e8c2a1b4c18",
+    "position": 18,
+    "filepath": "src/pages/slides/Slide18Act4.tsx",
+    "title": "Demo script · Act 4 — Fix, build, close",
+    "description": "Word-for-word close: Link Suggestions, Link Map, Content Writer, and the loop.",
+    "speakerNotes": ""
+  }
+]

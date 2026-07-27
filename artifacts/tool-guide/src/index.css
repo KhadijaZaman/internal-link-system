@@ -1,0 +1,63 @@
+@import 'tailwindcss';
+
+@theme inline {
+  --color-primary: var(--slide-primary);
+  --color-accent: var(--slide-accent);
+  --color-bg: var(--slide-bg);
+  --color-text: var(--slide-text);
+  --color-muted: var(--slide-muted);
+  --color-soft: var(--slide-soft);
+  --color-line: var(--slide-line);
+  --color-faint: var(--slide-faint);
+  --font-display: var(--font-display-family);
+  --font-body: var(--font-body-family);
+}
+
+:root {
+  /* Corporate Grid palette */
+  --slide-primary: #3d5a80;
+  --slide-accent: #ee6c4d;
+  --slide-bg: #ffffff;
+  --slide-text: #111111;
+  --slide-muted: #666666;
+  --slide-soft: #98c1d9;
+  --slide-line: #e0e0e0;
+  --slide-faint: #999999;
+  --font-display-family: 'Inter', system-ui, sans-serif;
+  --font-body-family: 'Inter', system-ui, sans-serif;
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--slide-bg);
+  color: var(--slide-text);
+}
+
+/* Corporate Grid signature background: 5vw x 5vh light grid on white */
+.grid-bg {
+  background-color: var(--slide-bg);
+  background-image:
+    linear-gradient(to right, #f0f0f0 1px, transparent 1px),
+    linear-gradient(to bottom, #f0f0f0 1px, transparent 1px);
+  background-size: 5vw 5vh;
+}
+
+.slide {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.slide-viewer {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}

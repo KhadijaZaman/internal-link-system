@@ -54,3 +54,9 @@ id = "7EeJ66L03CLKBLNgBaHWB"
 uri = "file://exports/wellows-source.zip"
 type = "unspecified"
 title = "Wellows — Full Source Code (663 files)"
+
+[[outputs]]
+id = "s2-17sc7iMVMXjp14t-b9"
+uri = "file://.local/outputs/Linkweave---The-Complete-Tool-Guide.pptx"
+type = "slides"
+title = "Linkweave - The Complete Tool Guide (PPTX)"
