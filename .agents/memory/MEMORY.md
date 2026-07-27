@@ -9,7 +9,7 @@
 - [GSC anchor-fragments & non-www](gsc-anchor-fragments.md) — GSC splits /page/#anchor into separate pages; SUM by path (never overwrite), property is non-www, else metrics 50-200x off.
 - [BOFU page taxonomy](bofu-taxonomy.md) — what counts as a Wellows BOFU page (user labels override) + rule-based query-intent rubric; direct OpenAI hangs here.
 - [First-fold CTA detection](first-fold-cta-detection.md) — score candidates; exclude nav toggles (aria-haspopup) & /author/ links; prefer hero over global header CTA; tag which zone won.
-- [GA4 Data API](ga4-data-api.md) — service account + Data API (no connector); key events fire on other hosts → fetch unfiltered, merge by path.
+- [GA4 Data API](ga4-data-api.md) — service account + Data API (no connector); key events unfiltered, merge by path; ALL reports exclude PK by default via shared filter helper.
 - [Sandbox vs bash env](sandbox-vs-bash-env.md) — code_execution sandbox has no process.env secrets (use listConnections); bash node does; bridge via a /tmp JSON file.
 - [Google Sheets export](google-sheets-export.md) — connector authorized; keyword-movement sheet is PERSISTENT (id in app_state, rewritten in place), never per-run snapshots.
 - [SSE streaming through the Replit proxy](sse-streaming-replit-proxy.md) — needs 16KB padding + keep-alives server-side; clients skip ':' comments, buffer chunks, guard by request identity.

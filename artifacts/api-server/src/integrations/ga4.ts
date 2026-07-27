@@ -42,6 +42,31 @@ export type Ga4Channel = "organic" | "all";
 // in GA4 the runReport 400s, so keep this list in sync with the property.
 const KEY_EVENT_METRICS = ["keyEvents:signup_success", "keyEvents:invitee_meeting_scheduled"];
 
+// Default geo exclusion (requested 2026-07-27): all GA4 reports drop traffic
+// geolocated to Pakistan. Filtering on countryId (ISO 3166-1 alpha-2, exact)
+// rather than the "country" display name. Applied to EVERY runReport —
+// engagement, key events, and daily series — so sessions, conversions and
+// AI-session counts stay mutually consistent. Rows with unknown geo
+// ("(not set)") are kept; only confirmed matches are dropped.
+const EXCLUDED_COUNTRY_IDS = ["PK"];
+
+/**
+ * Combines a report's own filter expressions with the default country
+ * exclusions into a single GA4 FilterExpression (andGroup when needed).
+ * Call with no arguments to get just the exclusion filter.
+ */
+function ga4DimensionFilter(...expressions: Record<string, unknown>[]): Record<string, unknown> {
+  const all = [
+    ...expressions,
+    ...EXCLUDED_COUNTRY_IDS.map((id) => ({
+      notExpression: {
+        filter: { fieldName: "countryId", stringFilter: { matchType: "EXACT", value: id } },
+      },
+    })),
+  ];
+  return all.length === 1 ? all[0] : { andGroup: { expressions: all } };
+}
+
 // ORGANIC_CHANNEL_GROUP / AI_CHANNEL_GROUP / AI_SOURCE_RE live in
 // lib/ga4Daily.ts (pure, unit-tested) so per-page daily series and the
 // pages rollup can never disagree on what counts as an AI referral.
@@ -123,7 +148,8 @@ async function fetchRawPathAggs(
   // v4: key events fetched WITHOUT the hostName filter (they fire on
   // app.wellows.com / calendly.com, never on the marketing host, so the
   // filtered report always reported 0).
-  return withCache(`s${site.id}|ga4:pages:v4|${startDate}|${endDate}`, GA4_CACHE_TTL_MS, async () => {
+  // v5: default country exclusion (EXCLUDED_COUNTRY_IDS) on both reports.
+  return withCache(`s${site.id}|ga4:pages:v5|${startDate}|${endDate}`, GA4_CACHE_TTL_MS, async () => {
     const { token, propertyId: property } = await ga4Auth(site.id);
     const block = await loadBlockRegexes(site.id);
     const dateRanges = [{ startDate, endDate }];
@@ -148,19 +174,22 @@ async function fetchRawPathAggs(
           { name: "engagedSessions" },
           { name: "userEngagementDuration" },
         ],
-        dimensionFilter: {
+        dimensionFilter: ga4DimensionFilter({
           filter: {
             fieldName: "hostName",
             stringFilter: { matchType: "EXACT", value: normalizeHost(site.host) },
           },
-        },
+        }),
         orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
         limit: "100000",
       }),
+      // No host filter here (see above) — but the default country exclusion
+      // still applies.
       runReport(token, property, {
         dateRanges,
         dimensions: [{ name: "landingPage" }, { name: "sessionDefaultChannelGroup" }],
         metrics: KEY_EVENT_METRICS.map((name) => ({ name })),
+        dimensionFilter: ga4DimensionFilter(),
         limit: "100000",
       }),
     ]);
@@ -287,7 +316,8 @@ export async function queryGa4PathDaily(opts: {
 }): Promise<Ga4DayAgg[]> {
   const { startDate, endDate, path, site } = opts;
   return withCache(
-    `s${site.id}|ga4:path-daily:v1|${path}|${startDate}|${endDate}`,
+    // v2: default country exclusion (EXCLUDED_COUNTRY_IDS) on both reports.
+    `s${site.id}|ga4:path-daily:v2|${path}|${startDate}|${endDate}`,
     GA4_CACHE_TTL_MS,
     async () => {
       const { token, propertyId: property } = await ga4Auth(site.id);
@@ -313,28 +343,25 @@ export async function queryGa4PathDaily(opts: {
             { name: "engagedSessions" },
             { name: "userEngagementDuration" },
           ],
-          dimensionFilter: {
-            andGroup: {
-              expressions: [
-                {
-                  filter: {
-                    fieldName: "hostName",
-                    stringFilter: { matchType: "EXACT", value: normalizeHost(site.host) },
-                  },
-                },
-                pathFilter,
-              ],
+          dimensionFilter: ga4DimensionFilter(
+            {
+              filter: {
+                fieldName: "hostName",
+                stringFilter: { matchType: "EXACT", value: normalizeHost(site.host) },
+              },
             },
-          },
+            pathFilter,
+          ),
           limit: "100000",
         }),
         // Key events: NO host filter (see fetchRawPathAggs) — landing page is
         // session-scoped, so conversions still attribute to marketing paths.
+        // The default country exclusion still applies.
         runReport(token, property, {
           dateRanges,
           dimensions: [{ name: "date" }, { name: "landingPage" }],
           metrics: KEY_EVENT_METRICS.map((name) => ({ name })),
-          dimensionFilter: pathFilter,
+          dimensionFilter: ga4DimensionFilter(pathFilter),
           limit: "100000",
         }),
       ]);
