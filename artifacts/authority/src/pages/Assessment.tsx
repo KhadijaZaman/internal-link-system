@@ -301,37 +301,10 @@ export default function Assessment() {
             </Card>
           </div>
 
-          {/* COLUMN 3: Gaps & Method */}
+          {/* COLUMN 3: Method */}
           <div className="w-full xl:flex-[25_1_0%] xl:min-w-0 flex flex-col gap-4 min-h-0">
             
-            <Card className="shadow-xs border-border/60 bg-white flex-1 flex flex-col min-h-[250px]">
-              <CardHeader className="py-3 px-4 bg-muted/30 border-b border-border/40 shrink-0">
-                <CardTitle className="text-xs uppercase tracking-wider font-semibold text-muted-foreground flex justify-between items-center">
-                  <span>Coverage Gaps (Zero-Impr)</span>
-                  <Badge variant="secondary" className="text-[10px] font-mono">Top {data.gaps.length} of {data.gapsTotal} Found</Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0 flex-1 overflow-hidden">
-                <ScrollArea className="h-full">
-                  <div className="divide-y divide-border/40" data-testid="list-coverage-gaps">
-                    {data.gaps.map((gap: any, idx: number) => (
-                      <div key={idx} className="p-3 text-xs flex justify-between items-center gap-3 hover:bg-muted/5 transition-colors">
-                        <div className="flex-1 truncate">
-                          <span className="font-medium block truncate" title={gap.label}>{gap.label}</span>
-                          <span className="text-[10px] text-muted-foreground font-mono">Head Imp: {gap.familyImpr.toLocaleString()}</span>
-                        </div>
-                        <Badge variant="outline" className={gap.entity === 'A' ? 'bg-accent/10 text-accent border-accent/20' : 'bg-primary/5 text-primary border-primary/20'}>
-                          Entity {gap.entity}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                  <ScrollBar orientation="vertical" />
-                </ScrollArea>
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-xs border-border/60 bg-white shrink-0 max-h-[350px] flex flex-col">
+            <Card className="shadow-xs border-border/60 bg-white flex-1 flex flex-col min-h-0">
               <CardHeader className="py-3 px-4 bg-muted/30 border-b border-border/40 shrink-0">
                 <CardTitle className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">Method & Assumptions</CardTitle>
               </CardHeader>
@@ -406,7 +379,6 @@ export default function Assessment() {
                       <div className="mt-3 flex flex-col gap-2 pt-2 border-t border-border/40">
                         <a href={`${import.meta.env.BASE_URL}data/unmatched_full.json`} download className="text-accent hover:underline flex items-center gap-1 font-medium" data-testid="link-download-unmatched">↓ Download Unmatched Queries ({data.unmatched.google.count.toLocaleString()} Google / {data.unmatched.bing.count.toLocaleString()} Bing)</a>
                         <a href={`${import.meta.env.BASE_URL}data/geo_flags_full.json`} download className="text-accent hover:underline flex items-center gap-1 font-medium" data-testid="link-download-geoflags">↓ Download Geo Flags</a>
-                        <a href={`${import.meta.env.BASE_URL}data/gaps_full.json`} download className="text-accent hover:underline flex items-center gap-1 font-medium" data-testid="link-download-gaps">↓ Download Complete Gaps</a>
                       </div>
                     </AccordionContent>
                   </AccordionItem>
