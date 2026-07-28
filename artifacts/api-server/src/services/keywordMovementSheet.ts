@@ -46,7 +46,7 @@ import { canonicalPath } from "../lib/urlCanon";
 import {
   queryGscDimension,
   pageVariantsRegex,
-  keywordExactRegex,
+  keywordContainsRegex,
   type GscDimensionRow,
 } from "../integrations/gsc";
 import {
@@ -220,7 +220,7 @@ function keywordTabValues(
 // the explanation instead of a wider header.
 const KEYWORD_ROW_NOTES: string[] = [
   "One column per day (Pacific Time), through yesterday. The most recent ~2 days are fresh Search Console estimates and can revise upward until Google finalizes them.",
-  "Times the page appeared in Google results for the target keyword that day. Orange = new record high up to that day.",
+  "Times the page appeared in Google results for the target keyword (including longer queries containing it, e.g. \"best <keyword>\") that day. Orange = new record high up to that day.",
   "Impressions vs the day before. Green = up, red = down.",
   "Google clicks for the target keyword that day. Orange = new record high.",
   "Clicks vs the day before. Green = up, red = down.",
@@ -265,7 +265,7 @@ function summaryHeaderCols(rangeLabel: string): HeaderCol[] {
     { label: "Page", note: "The page this keyword is tracked against." },
     {
       label: `Impressions (${rangeLabel})`,
-      note: "Google impressions for this exact keyword on this page over the whole range (Search Console). Range totals are context only — never color-coded.",
+      note: "Google impressions for this keyword — including longer queries containing it as a phrase — on this page over the whole range (Search Console). Range totals are context only — never color-coded.",
     },
     {
       label: `Clicks (${rangeLabel})`,
@@ -993,7 +993,10 @@ export async function exportKeywordMovementSheet(
   );
 
   // One GSC call per keyword: daily series for page (incl. #fragment/?query
-  // variants) filtered to the exact keyword (case-insensitive).
+  // variants) filtered to queries CONTAINING the keyword as a phrase
+  // (case-insensitive) — "best peec ai alternatives" counts toward "peec ai
+  // alternatives". Exact-only left daily positions blank whenever the exact
+  // query string had zero impressions that day.
   const series = await mapWithConcurrency(tracked, 4, async (t) => {
     const rows = await queryGscDimension({
       siteId,
@@ -1002,7 +1005,7 @@ export async function exportKeywordMovementSheet(
       dimension: "date",
       pageRegex: pageVariantsRegex(t.url),
       queryFilter: {
-        expression: keywordExactRegex(t.keyword),
+        expression: keywordContainsRegex(t.keyword),
         operator: "includingRegex",
       },
       dataState: "all",

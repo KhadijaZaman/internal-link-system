@@ -82,3 +82,9 @@ zero-impression days is by design (weighted position is null — never write 0, 
 (`Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" })` gives YYYY-MM-DD). Other
 queryGscDimension callers still default to final — don't flip them without asking. Probe with vs
 without `dataState:"all"` to tell data lag from a real zero day.
+
+**Keyword matching (2026-07-28):** keyword tabs + summary match queries CONTAINING the tracked
+keyword as a whole-word phrase (`keywordContainsRegex`, case-insensitive) — exact-only left daily
+position blank whenever the exact query string had 0 impressions that day (user asked for positions
+to fill in). `keywordExactRegex` is still used by keyword-report and tracked-submission routes;
+don't "unify" them without asking.

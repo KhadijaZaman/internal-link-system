@@ -196,6 +196,19 @@ export function keywordExactRegex(keyword: string): string {
   return `(?i)^${escaped}$`;
 }
 
+/**
+ * Case-insensitive "contains phrase" match: the keyword appearing anywhere in
+ * the query as a whole-word phrase (e.g. "peec ai alternatives" also matches
+ * "best peec ai alternatives"). RE2 has no \b, so anchor on start/whitespace.
+ */
+export function keywordContainsRegex(keyword: string): string {
+  const escaped = keyword
+    .trim()
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\s+/g, "\\s+");
+  return `(?i)(^|\\s)${escaped}(\\s|$)`;
+}
+
 export function aggregateTotals(rows: { clicks: number; impressions: number; position: number }[]): GscTotals {
   let clicks = 0;
   let impressions = 0;
