@@ -1,0 +1,88 @@
+# Internal Link Map — Reusable Prompt
+
+Paste the block below into a new chat, fill the INPUTS, and run it. It produces an auditable directed link map rather than a pile of suggestions.
+
+---
+
+## THE PROMPT
+
+You are building an internal link map for a topical cluster. Work from the rules below, and for every link you propose, name the rule that justifies it. If a link cannot be justified by a rule, do not propose it.
+
+### INPUTS
+
+**Central entity:** `<the single entity the cluster is about>`
+**Parent topic / canonical query of the hub:** `<e.g. generative engine optimization>`
+**Hub URL:** `<the category or pillar page, if one exists>`
+
+**Pages in scope** — one row per URL:
+
+| URL | H1 (verbatim) | Canonical query this page answers | Layer | Intent | Inbound internal links (site-wide) | Existing outbound links to others in this set |
+|---|---|---|---|---|---|---|
+| | | | hub / core / outer / commercial | know / compare / do / buy | | |
+
+**Constraints:**
+- Max new links to add per page: `<e.g. 4>`
+- Pages I cannot edit right now: `<list>`
+- Anchor text already used on the site for each target (to avoid collisions): `<list, or "unknown">`
+
+### RULES
+
+Apply in this order. Earlier rules win when two conflict.
+
+**R1 — Hierarchy before affinity.** Every page links up to its parent, and the parent links down to every child. Sibling-to-sibling links are added only where rule R4 can be satisfied. A cluster where children link up but the parent doesn't link down is a distribution failure, not a cluster.
+
+**R2 — Asymmetry encodes structure.** Do not reciprocate every pair. Reciprocal links everywhere flatten the hierarchy and tell a crawler no page is more important than another. Parent↔child is bidirectional; sibling→sibling is usually one-directional, in the direction the reader's question actually travels.
+
+**R3 — Anchor text lemmatizes to the target's H1.** The anchor must be the target's canonical query or a close morphological variant of its H1. Never "click here", "this post", "learn more", or the bare brand name. The anchor must also be *supported by content on the target page* — an anchor promising something the target doesn't deliver is a mismatch risk.
+
+**R4 — Every link needs a bridge sentence.** The sentence containing the link must state the relationship between the two pages, so the link makes sense with the surrounding text removed. If you cannot write that sentence without padding, the link does not belong. Output the bridge sentence with each proposed link.
+
+**R5 — Placement follows attention.** Main content beats sidebar beats footer. Earlier in the body beats later. A link inside a paragraph that argues for it beats a link in a list of links. Never propose a "Related posts" or "Read more" block — an undifferentiated list of links carries almost no weight and dilutes everything else on the page.
+
+**R6 — Respect the link budget.** Each outbound link on a page divides that page's distributable authority. A page with 100 outbound links passes little through any one of them. Prioritise: on high-authority pages, propose *few, well-placed* links rather than many.
+
+**R7 — Relevance gate.** Do not link between two pages whose topics only loosely touch. Off-topic internal links dilute the site's topical focus. Ask: would a reader mid-sentence actually want this next? If no, skip it.
+
+**R8 — Depth ceiling.** Every page in scope should be reachable within 3 clicks of the hub or homepage. Flag any page that isn't.
+
+**R9 — Anchor diversity across sources, consistency of meaning.** Use a different surface form of the anchor on each source page (singular/plural, with/without modifier), but keep the meaning identical. Do not use the same exact anchor from ten different pages, and do not use one anchor for two different targets.
+
+**R10 — Commercial pages receive, informational pages send.** Comparison, pricing, agency, and tool pages should be net receivers from explainers and data pages. Do not route readers from a commercial page back into top-of-funnel content unless it answers an objection.
+
+### OUTPUT
+
+Produce these four sections, in order. No preamble.
+
+**1. Current coverage matrix.** Rows = source, columns = target, ✓ / — for each pair. Include a "links out into cluster" and "links in from cluster" total per page.
+
+**2. Proposed additions**, sorted by expected impact:
+
+| # | From | To | Anchor text | Placement (section + before/after what) | Bridge sentence | Rule(s) | Why this one matters |
+|---|---|---|---|---|---|---|---|
+
+**3. Flags.** Only real problems, each with the specific page:
+- Orphans (fewer than 3 inbound internal links)
+- Hubs that hoard (high inbound, low outbound into their own cluster)
+- Anchor collisions (one anchor pointing at two targets, or vice versa)
+- Fully reciprocal pairs that should be directional
+- Pages beyond the depth ceiling
+- Link dumps to delete
+
+**4. Do-not-link list.** Pairs that look plausible but fail R7, with the reason. This section is as valuable as section 2 — it stops the next person adding them.
+
+### WHAT NOT TO DO
+
+- Do not invent pages, URLs, or metrics that aren't in the INPUTS.
+- Do not propose a link you can't write a bridge sentence for.
+- Do not pad the map to look thorough. Ten justified links beat forty guesses.
+- If the INPUTS are missing something you need (H1s, inbound counts), say which field and stop — don't estimate it.
+
+---
+
+## Filling the INPUTS efficiently
+
+**Inbound internal link count per URL** — if you have WordPress access, search post content for the URL slug string; the result count is the number of posts containing that link. Faster than a crawl for a small set.
+
+**Existing outbound links within the set** — read each page's raw source, not the rendered page. Links inside shortcodes, tabs, and accordions won't always appear in rendered text extraction.
+
+**Layer** — the label matters more than it looks. It's what drives R1, R2, and R10. Assign it before you run the prompt, not during.
