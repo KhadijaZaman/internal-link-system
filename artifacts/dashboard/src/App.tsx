@@ -27,6 +27,7 @@ import { SiteProvider, useSiteContext } from "@/lib/site-context";
 import { WelcomePage } from "@/pages/welcome";
 import Dashboard from "@/pages/dashboard";
 import LinkMap from "@/pages/link-map";
+import LinkMapPrompt from "@/pages/link-map-prompt";
 import KnowledgeGraph from "@/pages/knowledge-graph";
 import LinksHub from "@/pages/links";
 import AuthoritySnapshot from "@/pages/authority-snapshot";
@@ -309,6 +310,7 @@ function Router() {
       <Route path="/sign-in/*?" component={SignInPage} />
       <Route path="/sign-up/*?" component={SignUpPage} />
       <Route path="/link-map" component={() => <ProtectedRoute component={LinkMap} />} />
+      <Route path="/link-map-prompt" component={() => <ProtectedRoute component={LinkMapPrompt} />} />
       <Route path="/knowledge-graph" component={() => <ProtectedRoute component={KnowledgeGraph} />} />
       <Route path="/links" component={() => <ProtectedRoute component={LinksHub} />} />
       <Route path="/links/lookups" component={() => <ProtectedRoute component={LinksHub} />} />

@@ -44,6 +44,7 @@ const navSections: NavSection[] = [
     items: [
       { href: "/links", label: "Link Suggestions", icon: Link2 },
       { href: "/link-map", label: "Link Map", icon: Network },
+      { href: "/link-map-prompt", label: "Link Map Prompt", icon: ScrollText },
       { href: "/knowledge-graph", label: "Knowledge Graph", icon: Waypoints },
       { href: "/authority", label: "Site Authority", icon: Compass },
     ],
