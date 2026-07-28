@@ -2365,6 +2365,72 @@ export const RunResearchResponse = zod.object({
 
 
 /**
+ * @summary Latest in-app AI link-map generation run (available=false when none)
+ */
+export const GetLinkMapGenerationLatestResponse = zod.object({
+  "available": zod.boolean(),
+  "runId": zod.number().nullable(),
+  "status": zod.string().nullable(),
+  "error": zod.string().nullable(),
+  "centralEntity": zod.string().nullable(),
+  "hubUrl": zod.string().nullable(),
+  "pageUrls": zod.array(zod.string()),
+  "maxNewLinksPerPage": zod.number().nullable(),
+  "startedAt": zod.coerce.date().nullable(),
+  "finishedAt": zod.coerce.date().nullable(),
+  "coverage": zod.array(zod.object({
+  "url": zod.string(),
+  "h1": zod.string().nullable(),
+  "layer": zod.string(),
+  "inboundSiteWide": zod.number(),
+  "outIntoCluster": zod.number(),
+  "inFromCluster": zod.number()
+})),
+  "proposals": zod.array(zod.object({
+  "from": zod.string(),
+  "to": zod.string(),
+  "anchorText": zod.string(),
+  "placement": zod.string(),
+  "bridgeSentence": zod.string(),
+  "rules": zod.array(zod.string()),
+  "why": zod.string()
+})),
+  "flags": zod.array(zod.object({
+  "type": zod.string(),
+  "page": zod.string(),
+  "detail": zod.string()
+})),
+  "doNotLink": zod.array(zod.object({
+  "from": zod.string(),
+  "to": zod.string(),
+  "reason": zod.string()
+}))
+})
+
+
+/**
+ * @summary Generate an internal link map in-app — builds the INPUTS from real site data and runs the R1–R10 rules prompt against the AI (user-initiated only)
+ */
+export const generateLinkMapBodyCentralEntityMin = 2;
+export const generateLinkMapBodyCentralEntityMax = 200;
+
+export const generateLinkMapBodyPageUrlsMin = 2;
+export const generateLinkMapBodyPageUrlsMax = 30;
+
+export const generateLinkMapBodyMaxNewLinksPerPageDefault = 4;
+export const generateLinkMapBodyMaxNewLinksPerPageMax = 10;
+
+
+
+export const GenerateLinkMapBody = zod.object({
+  "centralEntity": zod.string().min(generateLinkMapBodyCentralEntityMin).max(generateLinkMapBodyCentralEntityMax),
+  "hubUrl": zod.string().nullish(),
+  "pageUrls": zod.array(zod.string()).min(generateLinkMapBodyPageUrlsMin).max(generateLinkMapBodyPageUrlsMax),
+  "maxNewLinksPerPage": zod.number().min(1).max(generateLinkMapBodyMaxNewLinksPerPageMax).default(generateLinkMapBodyMaxNewLinksPerPageDefault)
+})
+
+
+/**
  * @summary Country and device breakdown
  */
 export const GetGscGeoQueryParams = zod.object({

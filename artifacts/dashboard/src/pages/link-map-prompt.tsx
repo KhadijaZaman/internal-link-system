@@ -1,7 +1,14 @@
+import { useMemo, useState } from "react";
 import { HowThisWorks } from "@/components/how-this-works";
 import { CopyButton } from "@/components/copy-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Spinner } from "@/components/ui/spinner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -10,6 +17,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Search, Sparkles, X, AlertTriangle, Ban } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  useGetLinkGraph,
+  useGetLinkMapGenerationLatest,
+  getGetLinkMapGenerationLatestQueryKey,
+  useGenerateLinkMap,
+} from "@workspace/api-client-react";
 
 // The paste-ready prompt block (everything between INPUTS and WHAT NOT TO DO,
 // verbatim). Kept as one string so "Copy prompt" hands over exactly what the
@@ -178,23 +193,393 @@ const INPUT_FIELDS: Array<{ field: string; hint: string }> = [
   },
 ];
 
+const FLAG_LABEL: Record<string, string> = {
+  orphan: "Orphan",
+  hub_hoards: "Hub hoards",
+  anchor_collision: "Anchor collision",
+  reciprocal_pair: "Reciprocal pair",
+  depth: "Beyond depth ceiling",
+  link_dump: "Link dump",
+  other: "Other",
+};
+
+function shortPath(url: string): string {
+  try {
+    const p = new URL(url).pathname.replace(/\/$/, "") || "/";
+    return p.length > 48 ? p.slice(0, 47) + "…" : p;
+  } catch {
+    return url;
+  }
+}
+
+function GeneratorSection() {
+  const queryClient = useQueryClient();
+  const { data: graph, isLoading: graphLoading } = useGetLinkGraph();
+  const { data: latest } = useGetLinkMapGenerationLatest({
+    query: {
+      queryKey: getGetLinkMapGenerationLatestQueryKey(),
+      refetchInterval: (q) => (q.state.data?.status === "running" ? 3000 : false),
+    },
+  });
+  const generateMutation = useGenerateLinkMap({
+    mutation: {
+      onSettled: () =>
+        void queryClient.invalidateQueries({ queryKey: getGetLinkMapGenerationLatestQueryKey() }),
+    },
+  });
+
+  const [centralEntity, setCentralEntity] = useState("");
+  const [hubUrl, setHubUrl] = useState<string>("none");
+  const [maxNewLinks, setMaxNewLinks] = useState(4);
+  const [pageSearch, setPageSearch] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const nodes = useMemo(
+    () => [...(graph?.nodes ?? [])].sort((a, b) => (b.pagerank ?? 0) - (a.pagerank ?? 0)),
+    [graph],
+  );
+  const matches = useMemo(() => {
+    const q = pageSearch.trim().toLowerCase();
+    const pool = q ? nodes.filter((n) => n.id.toLowerCase().includes(q)) : nodes;
+    return pool.slice(0, 60);
+  }, [nodes, pageSearch]);
+
+  const toggle = (url: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(url)) next.delete(url);
+      else if (next.size < 30) next.add(url);
+      return next;
+    });
+
+  const running = latest?.status === "running";
+  const canGenerate =
+    centralEntity.trim().length >= 2 && selected.size >= 2 && !running && !generateMutation.isPending;
+
+  const generate = () => {
+    generateMutation.mutate({
+      data: {
+        centralEntity: centralEntity.trim(),
+        hubUrl: hubUrl === "none" ? null : hubUrl,
+        pageUrls: [...selected],
+        maxNewLinksPerPage: maxNewLinks,
+      },
+    });
+  };
+
+  const result = latest?.available && latest.status === "complete" ? latest : null;
+
+  return (
+    <div className="space-y-5">
+      <Card className="border-primary/30">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" /> Generate the link map in-app
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Pick the cluster pages — the INPUTS (H1s, canonical queries, inbound counts, existing
+            links, used anchors) are filled from your crawl and Search Console data automatically,
+            then the 10-rule prompt runs against the AI. Only runs when you click Generate.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label>Central entity</Label>
+              <Input
+                placeholder="e.g. AI visibility"
+                value={centralEntity}
+                onChange={(e) => setCentralEntity(e.target.value)}
+                data-testid="input-central-entity"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Hub / pillar page (optional)</Label>
+              <Select value={hubUrl} onValueChange={setHubUrl}>
+                <SelectTrigger data-testid="select-hub">
+                  <SelectValue placeholder="No hub page" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No hub page</SelectItem>
+                  {[...selected].map((u) => (
+                    <SelectItem key={u} value={u}>
+                      {shortPath(u)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Max new links per page</Label>
+              <Input
+                type="number"
+                min={1}
+                max={10}
+                value={maxNewLinks}
+                onChange={(e) =>
+                  setMaxNewLinks(Math.max(1, Math.min(10, Number(e.target.value) || 4)))
+                }
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>
+              Pages in scope{" "}
+              <span className="text-muted-foreground font-normal">
+                ({selected.size} selected, 2–30)
+              </span>
+            </Label>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Filter pages, e.g. /blog/ai-visibility"
+                className="pl-9"
+                value={pageSearch}
+                onChange={(e) => setPageSearch(e.target.value)}
+                data-testid="input-page-search"
+              />
+            </div>
+            {graphLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-3">
+                <Spinner className="h-4 w-4" /> Loading pages…
+              </div>
+            ) : (
+              <div className="max-h-56 overflow-y-auto rounded-md border divide-y">
+                {matches.map((n) => (
+                  <label
+                    key={n.id}
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-accent/50"
+                  >
+                    <Checkbox checked={selected.has(n.id)} onCheckedChange={() => toggle(n.id)} />
+                    <span className="truncate flex-1" title={n.id}>
+                      {shortPath(n.id)}
+                    </span>
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {n.inboundCount} in / {n.outboundCount} out
+                    </span>
+                  </label>
+                ))}
+                {matches.length === 0 && (
+                  <p className="px-3 py-3 text-sm text-muted-foreground">
+                    No pages match — run the link map crawl first if the list is empty.
+                  </p>
+                )}
+              </div>
+            )}
+            {selected.size > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {[...selected].map((u) => (
+                  <Badge key={u} variant="secondary" className="gap-1 font-normal">
+                    {shortPath(u)}
+                    <button onClick={() => toggle(u)} aria-label={`Remove ${u}`}>
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Button onClick={generate} disabled={!canGenerate} data-testid="button-generate">
+              {running || generateMutation.isPending ? (
+                <>
+                  <Spinner className="h-4 w-4 mr-1.5" /> Generating…
+                </>
+              ) : (
+                "Generate link map"
+              )}
+            </Button>
+            {latest?.status === "error" && (
+              <p className="text-sm text-destructive">
+                Last run failed: {latest.error ?? "unknown error"} — try again.
+              </p>
+            )}
+            {generateMutation.isError && (
+              <p className="text-sm text-destructive">
+                {(generateMutation.error as { response?: { data?: { error?: string } } })?.response
+                  ?.data?.error ?? "Could not start the generation"}
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {result && (
+        <>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">
+                Coverage — {result.centralEntity}
+                <span className="ml-2 text-sm font-normal text-muted-foreground">
+                  {result.finishedAt ? new Date(result.finishedAt).toLocaleString() : ""}
+                </span>
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Current in-cluster linking, computed from your crawl data (updates as links go live).
+              </p>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Page</TableHead>
+                    <TableHead>Layer</TableHead>
+                    <TableHead className="text-right">Inbound site-wide</TableHead>
+                    <TableHead className="text-right">Out into cluster</TableHead>
+                    <TableHead className="text-right">In from cluster</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {result.coverage.map((c) => (
+                    <TableRow key={c.url}>
+                      <TableCell className="max-w-xs">
+                        <div className="truncate font-medium" title={c.url}>
+                          {shortPath(c.url)}
+                        </div>
+                        {c.h1 && (
+                          <div className="truncate text-xs text-muted-foreground">{c.h1}</div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {c.url === result.hubUrl ? "hub" : c.layer}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">{c.inboundSiteWide}</TableCell>
+                      <TableCell className="text-right">{c.outIntoCluster}</TableCell>
+                      <TableCell className="text-right">{c.inFromCluster}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle className="text-base">
+                  Proposed links ({result.proposals.length})
+                </CardTitle>
+                <CopyButton
+                  getText={() =>
+                    result.proposals
+                      .map(
+                        (p, i) =>
+                          `${i + 1}. ${p.from} → ${p.to}\n   Anchor: "${p.anchorText}"\n   Placement: ${p.placement}\n   Bridge: ${p.bridgeSentence}\n   Rules: ${p.rules.join(", ")} — ${p.why}`,
+                      )
+                      .join("\n\n")
+                  }
+                  label="Copy all"
+                />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Sorted by expected impact. Each has the anchor, where to put it, and a ready
+                bridge sentence.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {result.proposals.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No new links proposed — the cluster may already be fully linked.
+                </p>
+              )}
+              {result.proposals.map((p, i) => (
+                <div key={`${p.from}-${p.to}`} className="rounded-md border p-3 space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">#{i + 1}</span>
+                    <span className="font-medium">{shortPath(p.from)}</span>
+                    <span className="text-muted-foreground">→</span>
+                    <span className="font-medium">{shortPath(p.to)}</span>
+                    {p.rules.map((r) => (
+                      <Badge key={r} variant="outline" className="font-mono text-xs">
+                        {r}
+                      </Badge>
+                    ))}
+                  </div>
+                  <p className="text-sm">
+                    Anchor: <span className="font-medium">“{p.anchorText}”</span>
+                    <span className="text-muted-foreground"> · {p.placement}</span>
+                  </p>
+                  <p className="text-sm text-muted-foreground italic">“{p.bridgeSentence}”</p>
+                  <p className="text-xs text-muted-foreground">{p.why}</p>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-5 lg:grid-cols-2">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-500" /> Flags (
+                  {result.flags.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {result.flags.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No structural problems flagged.</p>
+                )}
+                {result.flags.map((f, i) => (
+                  <div key={i} className="text-sm">
+                    <Badge variant="outline" className="mr-2">
+                      {FLAG_LABEL[f.type] ?? f.type}
+                    </Badge>
+                    <span className="font-medium">{shortPath(f.page)}</span>
+                    <p className="text-muted-foreground">{f.detail}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Ban className="h-4 w-4 text-red-500" /> Do not link ({result.doNotLink.length})
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Plausible-looking pairs that fail the relevance gate — don't add them later.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {result.doNotLink.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No pairs ruled out.</p>
+                )}
+                {result.doNotLink.map((d, i) => (
+                  <div key={i} className="text-sm">
+                    <span className="font-medium">{shortPath(d.from)}</span>
+                    <span className="text-muted-foreground"> ↛ </span>
+                    <span className="font-medium">{shortPath(d.to)}</span>
+                    <p className="text-muted-foreground">{d.reason}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function LinkMapPrompt() {
   return (
     <div className="space-y-5">
       <HowThisWorks
-        summary="A reusable prompt that turns a list of cluster pages into an auditable, rule-justified internal link map — every proposed link names the rule that justifies it, with anchor text, placement, and a bridge sentence."
+        summary="Turns a set of cluster pages into an auditable, rule-justified internal link map — every proposed link names the rule that justifies it, with anchor text, placement, and a bridge sentence. Generate it in-app (the INPUTS are filled from your crawl + Search Console data) or copy the prompt to run manually."
         steps={[
           {
-            title: "Copy the prompt",
-            body: "Use the Copy prompt button — it copies the full prompt with the rules, output format, and guardrails.",
+            title: "Pick the cluster",
+            body: "Name the central entity, select 2–30 pages in scope (optionally mark one as the hub), and set the per-page link budget.",
           },
           {
-            title: "Fill the INPUTS",
-            body: "Paste it into a new AI chat and fill in the central entity, hub, the pages-in-scope table, and your constraints. Assign each page's layer (hub / core / outer / commercial) before running — it drives the hierarchy and money-page rules.",
+            title: "Generate",
+            body: "The app builds the INPUTS from real data — H1s, canonical queries, inbound counts, existing in-cluster links, anchors already in use — and runs the 10-rule prompt against the AI. Nothing runs on page load; only when you click Generate.",
           },
           {
-            title: "Run and apply",
-            body: "You get a coverage matrix, proposed links sorted by impact (each with anchor, placement, and bridge sentence), flags for structural problems, and a do-not-link list.",
+            title: "Apply the map",
+            body: "You get a coverage table, proposed links sorted by impact (each with anchor, placement, and bridge sentence), flags for structural problems, and a do-not-link list.",
           },
         ]}
         tips={[
@@ -206,10 +591,10 @@ export default function LinkMapPrompt() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Internal Link Map Prompt</h1>
+          <h1 className="text-xl font-semibold">Internal Link Map</h1>
           <p className="text-sm text-muted-foreground">
-            Paste into a new AI chat, fill the INPUTS, and get a directed link
-            map you can audit — not a pile of suggestions.
+            Generate a directed, rule-justified link map in-app from your real
+            crawl data — or copy the prompt to run it manually.
           </p>
         </div>
         <CopyButton
@@ -218,6 +603,8 @@ export default function LinkMapPrompt() {
           toastTitle="Prompt copied — paste it into a new AI chat"
         />
       </div>
+
+      <GeneratorSection />
 
       <Card>
         <CardHeader className="pb-3">

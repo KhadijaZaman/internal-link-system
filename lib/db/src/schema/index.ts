@@ -36,4 +36,5 @@ export * from "./claimAttempts";
 export * from "./similarityRuns";
 export * from "./topicalMaps";
 export * from "./researchRuns";
+export * from "./linkMapRuns";
 export * from "./backlinkProspects";

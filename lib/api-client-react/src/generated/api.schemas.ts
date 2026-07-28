@@ -1786,6 +1786,83 @@ export interface SeoInsightsResponse {
   insights: SeoInsight[];
 }
 
+export interface GenerateLinkMapInput {
+  /**
+     * @minLength 2
+     * @maxLength 200
+     */
+  centralEntity: string;
+  /** @nullable */
+  hubUrl?: string | null;
+  /**
+     * @minItems 2
+     * @maxItems 30
+     */
+  pageUrls: string[];
+  /**
+     * @minimum 1
+     * @maximum 10
+     */
+  maxNewLinksPerPage?: number;
+}
+
+export interface LinkMapProposal {
+  from: string;
+  to: string;
+  anchorText: string;
+  placement: string;
+  bridgeSentence: string;
+  rules: string[];
+  why: string;
+}
+
+export interface LinkMapFlag {
+  type: string;
+  page: string;
+  detail: string;
+}
+
+export interface LinkMapDoNotLink {
+  from: string;
+  to: string;
+  reason: string;
+}
+
+export interface LinkMapCoverageRow {
+  url: string;
+  /** @nullable */
+  h1: string | null;
+  layer: string;
+  inboundSiteWide: number;
+  outIntoCluster: number;
+  inFromCluster: number;
+}
+
+export interface LinkMapGenerationResponse {
+  available: boolean;
+  /** @nullable */
+  runId: number | null;
+  /** @nullable */
+  status: string | null;
+  /** @nullable */
+  error: string | null;
+  /** @nullable */
+  centralEntity: string | null;
+  /** @nullable */
+  hubUrl: string | null;
+  pageUrls: string[];
+  /** @nullable */
+  maxNewLinksPerPage: number | null;
+  /** @nullable */
+  startedAt: string | null;
+  /** @nullable */
+  finishedAt: string | null;
+  coverage: LinkMapCoverageRow[];
+  proposals: LinkMapProposal[];
+  flags: LinkMapFlag[];
+  doNotLink: LinkMapDoNotLink[];
+}
+
 export interface ResearchDetailRow {
   label: string;
   value: number;

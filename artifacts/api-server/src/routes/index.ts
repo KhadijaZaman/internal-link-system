@@ -43,6 +43,7 @@ import insightsRouter from "./insights";
 import insightsReportRouter from "./insightsReport";
 import researchRouter from "./research";
 import backlinksRouter from "./backlinks";
+import linkMapAiRouter from "./linkMapAi";
 
 const router: IRouter = Router();
 
@@ -90,5 +91,6 @@ router.use(insightsRouter);
 router.use(insightsReportRouter);
 router.use(researchRouter);
 router.use(backlinksRouter);
+router.use(linkMapAiRouter);
 
 export default router;

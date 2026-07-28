@@ -1491,6 +1491,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ResearchRunResponse"
+  /link-map/generations/latest:
+    get:
+      operationId: getLinkMapGenerationLatest
+      tags: [links]
+      summary: Latest in-app AI link-map generation run (available=false when none)
+      responses:
+        "200":
+          description: Latest run with its proposals, flags, and do-not-link list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkMapGenerationResponse"
+  /link-map/generate:
+    post:
+      operationId: generateLinkMap
+      tags: [links]
+      summary: Generate an internal link map in-app — builds the INPUTS from real site data and runs the R1–R10 rules prompt against the AI (user-initiated only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GenerateLinkMapInput" }
+      responses:
+        "202":
+          description: Run started — poll /link-map/generations/latest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkMapGenerationResponse"
+        "400":
+          description: Invalid input (needs 2–30 pages that exist in inventory)
+        "409":
+          description: A generation is already running for this site
   /gsc/geo:
     get:
       operationId: getGscGeo
@@ -3976,6 +4009,102 @@ components:
         insights:
           type: array
           items: { $ref: "#/components/schemas/SeoInsight" }
+    GenerateLinkMapInput:
+      type: object
+      required: [centralEntity, pageUrls]
+      properties:
+        # The single entity the cluster is about.
+        centralEntity: { type: string, minLength: 2, maxLength: 200 }
+        # Optional pillar/category page; must be one of pageUrls when set.
+        hubUrl: { type: ["string", "null"] }
+        pageUrls:
+          type: array
+          minItems: 2
+          maxItems: 30
+          items: { type: string }
+        maxNewLinksPerPage: { type: integer, minimum: 1, maximum: 10, default: 4 }
+    LinkMapProposal:
+      type: object
+      required: [from, to, anchorText, placement, bridgeSentence, rules, why]
+      properties:
+        from: { type: string }
+        to: { type: string }
+        anchorText: { type: string }
+        placement: { type: string }
+        bridgeSentence: { type: string }
+        rules:
+          type: array
+          items: { type: string }
+        why: { type: string }
+    LinkMapFlag:
+      type: object
+      required: [type, page, detail]
+      properties:
+        type: { type: string }
+        page: { type: string }
+        detail: { type: string }
+    LinkMapDoNotLink:
+      type: object
+      required: [from, to, reason]
+      properties:
+        from: { type: string }
+        to: { type: string }
+        reason: { type: string }
+    LinkMapCoverageRow:
+      type: object
+      required: [url, h1, layer, inboundSiteWide, outIntoCluster, inFromCluster]
+      properties:
+        url: { type: string }
+        h1: { type: ["string", "null"] }
+        layer: { type: string }
+        inboundSiteWide: { type: integer }
+        outIntoCluster: { type: integer }
+        inFromCluster: { type: integer }
+    LinkMapGenerationResponse:
+      type: object
+      required:
+        [
+          available,
+          runId,
+          status,
+          error,
+          centralEntity,
+          hubUrl,
+          pageUrls,
+          maxNewLinksPerPage,
+          startedAt,
+          finishedAt,
+          coverage,
+          proposals,
+          flags,
+          doNotLink,
+        ]
+      properties:
+        available: { type: boolean }
+        runId: { type: ["integer", "null"] }
+        status: { type: ["string", "null"] }
+        error: { type: ["string", "null"] }
+        centralEntity: { type: ["string", "null"] }
+        hubUrl: { type: ["string", "null"] }
+        pageUrls:
+          type: array
+          items: { type: string }
+        maxNewLinksPerPage: { type: ["integer", "null"] }
+        startedAt: { type: ["string", "null"], format: date-time }
+        finishedAt: { type: ["string", "null"], format: date-time }
+        # Deterministic per-page cluster coverage computed from the crawl DB (not the AI).
+        coverage:
+          type: array
+          items: { $ref: "#/components/schemas/LinkMapCoverageRow" }
+        proposals:
+          type: array
+          items: { $ref: "#/components/schemas/LinkMapProposal" }
+        flags:
+          type: array
+          items: { $ref: "#/components/schemas/LinkMapFlag" }
+        doNotLink:
+          type: array
+          items: { $ref: "#/components/schemas/LinkMapDoNotLink" }
     ResearchDetailRow:
       type: object
       required: [label, value, extra]

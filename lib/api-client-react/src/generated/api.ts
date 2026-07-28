@@ -58,6 +58,7 @@ import type {
   DeleteSite409,
   DigestList,
   Ga4PagesResponse,
+  GenerateLinkMapInput,
   GenerateTopicalMapInput,
   GetAuthoritySnapshotParams,
   GetDailyActivityParams,
@@ -109,6 +110,7 @@ import type {
   LinkGraphFocus,
   LinkLookup,
   LinkLookupCreateInput,
+  LinkMapGenerationResponse,
   LinkSuggestion,
   LinkingSettings,
   LinkingSettingsInput,
@@ -6194,6 +6196,154 @@ export const useRunResearch = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getRunResearchMutationOptions(options));
+    }
+
+export const getGetLinkMapGenerationLatestUrl = () => {
+
+
+
+
+  return `/api/link-map/generations/latest`
+}
+
+/**
+ * @summary Latest in-app AI link-map generation run (available=false when none)
+ */
+export const getLinkMapGenerationLatest = async ( options?: RequestInit): Promise<LinkMapGenerationResponse> => {
+
+  return customFetch<LinkMapGenerationResponse>(getGetLinkMapGenerationLatestUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLinkMapGenerationLatestQueryKey = () => {
+    return [
+    `/api/link-map/generations/latest`
+    ] as const;
+    }
+
+
+export const getGetLinkMapGenerationLatestQueryOptions = <TData = Awaited<ReturnType<typeof getLinkMapGenerationLatest>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLinkMapGenerationLatest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLinkMapGenerationLatestQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLinkMapGenerationLatest>>> = ({ signal }) => getLinkMapGenerationLatest({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLinkMapGenerationLatest>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLinkMapGenerationLatestQueryResult = NonNullable<Awaited<ReturnType<typeof getLinkMapGenerationLatest>>>
+export type GetLinkMapGenerationLatestQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Latest in-app AI link-map generation run (available=false when none)
+ */
+
+export function useGetLinkMapGenerationLatest<TData = Awaited<ReturnType<typeof getLinkMapGenerationLatest>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLinkMapGenerationLatest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLinkMapGenerationLatestQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGenerateLinkMapUrl = () => {
+
+
+
+
+  return `/api/link-map/generate`
+}
+
+/**
+ * @summary Generate an internal link map in-app — builds the INPUTS from real site data and runs the R1–R10 rules prompt against the AI (user-initiated only)
+ */
+export const generateLinkMap = async (generateLinkMapInput: GenerateLinkMapInput, options?: RequestInit): Promise<LinkMapGenerationResponse> => {
+
+  return customFetch<LinkMapGenerationResponse>(getGenerateLinkMapUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      generateLinkMapInput,)
+  }
+);}
+
+
+
+
+export const getGenerateLinkMapMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateLinkMap>>, TError,{data: BodyType<GenerateLinkMapInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateLinkMap>>, TError,{data: BodyType<GenerateLinkMapInput>}, TContext> => {
+
+const mutationKey = ['generateLinkMap'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateLinkMap>>, {data: BodyType<GenerateLinkMapInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  generateLinkMap(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateLinkMapMutationResult = NonNullable<Awaited<ReturnType<typeof generateLinkMap>>>
+    export type GenerateLinkMapMutationBody = BodyType<GenerateLinkMapInput>
+    export type GenerateLinkMapMutationError = ErrorType<void>
+
+    /**
+ * @summary Generate an internal link map in-app — builds the INPUTS from real site data and runs the R1–R10 rules prompt against the AI (user-initiated only)
+ */
+export const useGenerateLinkMap = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateLinkMap>>, TError,{data: BodyType<GenerateLinkMapInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateLinkMap>>,
+        TError,
+        {data: BodyType<GenerateLinkMapInput>},
+        TContext
+      > => {
+      return useMutation(getGenerateLinkMapMutationOptions(options));
     }
 
 export const getGetGscGeoUrl = (params: GetGscGeoParams,) => {
