@@ -8,6 +8,7 @@ import {
   NoTrackedKeywordsError,
 } from "../services/keywordMovementSheet";
 import type { SiteContext } from "../lib/site";
+import { IntegrationNotConnectedError } from "../lib/siteIntegrations";
 import { logger } from "../lib/logger";
 
 export async function runSyncKeywordSheet(site: SiteContext): Promise<void> {
@@ -22,6 +23,13 @@ export async function runSyncKeywordSheet(site: SiteContext): Promise<void> {
       logger.info(
         { siteId: site.id },
         "sync_keyword_sheet skipped — no tracked keywords",
+      );
+      return;
+    }
+    if (e instanceof IntegrationNotConnectedError) {
+      logger.info(
+        { siteId: site.id },
+        "sync_keyword_sheet skipped — GSC not connected",
       );
       return;
     }

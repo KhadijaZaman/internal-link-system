@@ -25,6 +25,8 @@
 - [Multi-tenant auth gates](multi-tenant-auth-gates.md) — after swapping admin-password for self-signup auth, audit every auth-only route for missing ownership gates; spend/proxy routes evade scoping sweeps.
 - [Orval inline body collision](orval-inline-body-collision.md) — inline requestBody schemas make orval emit a zod const and TS type with the same *Body name → star-export clash; always $ref a named component.
 - [Per-site background jobs](per-site-jobs.md) — crons iterate sites sequentially with isolated failures; budget-truncated crawls must skip reconcile-deletes or they mass-delete inventory.
+- [Drizzle array params](drizzle-array-params.md) — a JS array in a sql template becomes a tuple, breaking `= any()`; use inArray.
+- [Concurrency pools must allSettle](concurrency-pool-unhandled-rejection.md) — Promise.all over worker loops leaves second rejections unobserved → Node 24 process crash.
 - [GitHub push from the workspace](github-push-technique.md) — get token via unfiltered connectors API (listConnections can miss it); verify pushes with ls-remote, the sandbox ref-lock error can fire after success.
 - [Authority one-pager provenance](authority-assessment-provenance.md) — frozen snapshot; verdict numerals baked in JSX — regen data + JSX together; NO signup/conversion data (user directive; analyze.mjs still emits it).
 - [Google Docs export](google-docs-export.md) — connector is Docs-scope only (no Drive); build via placeholder→insertTable→reverse-fill; listConnections missed it — use bash-node unfiltered connectors API.

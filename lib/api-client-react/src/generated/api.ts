@@ -124,6 +124,7 @@ import type {
   PruningReport,
   QueryInsights,
   SeoInsightsResponse,
+  SeoReportResponse,
   SetGscPropertyInput,
   SimilarityRun,
   Site,
@@ -5589,6 +5590,83 @@ export function useGetSeoInsights<TData = Awaited<ReturnType<typeof getSeoInsigh
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetSeoInsightsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetSeoReportUrl = () => {
+
+
+
+
+  return `/api/insights/report`
+}
+
+/**
+ * @summary Comprehensive 7-section GSC analysis report — near-miss keywords, intent clusters, content gaps, technical debt, internal linking gaps, backlink profile, weekly movement
+ */
+export const getSeoReport = async ( options?: RequestInit): Promise<SeoReportResponse> => {
+
+  return customFetch<SeoReportResponse>(getGetSeoReportUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSeoReportQueryKey = () => {
+    return [
+    `/api/insights/report`
+    ] as const;
+    }
+
+
+export const getGetSeoReportQueryOptions = <TData = Awaited<ReturnType<typeof getSeoReport>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSeoReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSeoReportQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSeoReport>>> = ({ signal }) => getSeoReport({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSeoReport>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSeoReportQueryResult = NonNullable<Awaited<ReturnType<typeof getSeoReport>>>
+export type GetSeoReportQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Comprehensive 7-section GSC analysis report — near-miss keywords, intent clusters, content gaps, technical debt, internal linking gaps, backlink profile, weekly movement
+ */
+
+export function useGetSeoReport<TData = Awaited<ReturnType<typeof getSeoReport>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSeoReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSeoReportQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

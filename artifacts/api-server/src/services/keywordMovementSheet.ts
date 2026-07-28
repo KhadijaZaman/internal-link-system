@@ -810,7 +810,11 @@ async function mapWithConcurrency<T, R>(
       }
     },
   );
-  await Promise.all(workers);
+  // allSettled so a second worker's rejection is never left unobserved
+  // (an unhandled rejection crashes the whole process on Node 24).
+  const settled = await Promise.allSettled(workers);
+  const failed = settled.find((s) => s.status === "rejected");
+  if (failed && failed.status === "rejected") throw failed.reason;
   return results;
 }
 

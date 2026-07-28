@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { HowThisWorks } from "@/components/how-this-works";
+import { SeoReportSections } from "@/components/seo-report-sections";
 import { DataNarrative, Num, type NarrativeInsight } from "@/components/data-narrative";
 import {
   ChevronDown,
@@ -332,6 +333,18 @@ export default function InsightsPage() {
         ) : (
           insights.map((insight) => <InsightCard key={insight.id} insight={insight} />)
         )}
+      </div>
+
+      <div className="space-y-3">
+        <div>
+          <h2 className="font-display text-lg">The full report</h2>
+          <p className="text-sm text-muted-foreground">
+            Seven sections, one pass — near-miss keywords, intent clusters, content gaps, technical
+            debt, internal linking, backlinks, and this week's movement. Each links to the tool that
+            fixes it.
+          </p>
+        </div>
+        <SeoReportSections />
       </div>
 
       <p className="text-xs text-muted-foreground">

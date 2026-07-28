@@ -1359,6 +1359,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SeoInsightsResponse"
+  /insights/report:
+    get:
+      operationId: getSeoReport
+      tags: [report]
+      summary: Comprehensive 7-section GSC analysis report — near-miss keywords, intent clusters, content gaps, technical debt, internal linking gaps, backlink profile, weekly movement
+      responses:
+        "200":
+          description: Seven report sections; each carries `available` + `note` so missing data sources degrade gracefully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeoReportResponse"
   /gsc/geo:
     get:
       operationId: getGscGeo
@@ -3764,6 +3776,176 @@ components:
         insights:
           type: array
           items: { $ref: "#/components/schemas/SeoInsight" }
+    SeoReportNearMissQuery:
+      type: object
+      required: [query, position, impressions, clicks, score, page2, bestPath]
+      properties:
+        query: { type: string }
+        position: { type: number }
+        impressions: { type: integer }
+        clicks: { type: integer }
+        # position × volume ranking score (impressions × closeness to page 1).
+        score: { type: number }
+        # True when the query sits on page 2 (position > 10) — page 2 → page 1 candidates.
+        page2: { type: boolean }
+        bestPath: { type: ["string", "null"] }
+    SeoReportNearMiss:
+      type: object
+      required: [available, note, windowStart, windowEnd, totalCandidates, queries]
+      properties:
+        available: { type: boolean }
+        note: { type: ["string", "null"] }
+        windowStart: { type: ["string", "null"] }
+        windowEnd: { type: ["string", "null"] }
+        totalCandidates: { type: integer }
+        queries:
+          type: array
+          items: { $ref: "#/components/schemas/SeoReportNearMissQuery" }
+    SeoReportCluster:
+      type: object
+      required: [topic, intent, keywordCount, totalImpressions, totalClicks, avgPosition]
+      properties:
+        topic: { type: string }
+        intent:
+          type: string
+          enum: [commercial, informational]
+        keywordCount: { type: integer }
+        totalImpressions: { type: integer }
+        totalClicks: { type: integer }
+        avgPosition: { type: ["number", "null"] }
+    SeoReportClusters:
+      type: object
+      required: [available, note, runFinishedAt, commercialCount, informationalCount, clusters]
+      properties:
+        available: { type: boolean }
+        note: { type: ["string", "null"] }
+        runFinishedAt: { type: ["string", "null"], format: date-time }
+        commercialCount: { type: integer }
+        informationalCount: { type: integer }
+        clusters:
+          type: array
+          items: { $ref: "#/components/schemas/SeoReportCluster" }
+    SeoReportContentGap:
+      type: object
+      required: [query, impressions, clicks, position, bestPath]
+      properties:
+        query: { type: string }
+        impressions: { type: integer }
+        clicks: { type: integer }
+        position: { type: number }
+        # The page currently ranking for the query, if any.
+        bestPath: { type: ["string", "null"] }
+    SeoReportContentGaps:
+      type: object
+      required: [available, note, windowStart, windowEnd, gaps]
+      properties:
+        available: { type: boolean }
+        note: { type: ["string", "null"] }
+        windowStart: { type: ["string", "null"] }
+        windowEnd: { type: ["string", "null"] }
+        gaps:
+          type: array
+          items: { $ref: "#/components/schemas/SeoReportContentGap" }
+    SeoReportTechAudit:
+      type: object
+      required: [type, runAt, itemCount]
+      properties:
+        type: { type: string }
+        runAt: { type: string, format: date-time }
+        itemCount: { type: integer }
+    SeoReportTechDebt:
+      type: object
+      required: [available, note, audits, notIndexedCount, topPagesAtRisk]
+      properties:
+        available: { type: boolean }
+        note: { type: ["string", "null"] }
+        audits:
+          type: array
+          items: { $ref: "#/components/schemas/SeoReportTechAudit" }
+        # Sitemap URLs the crawler/GSC knows about that carry no impressions at all.
+        notIndexedCount: { type: integer }
+        topPagesAtRisk:
+          type: array
+          items: { $ref: "#/components/schemas/SeoReportPageAtRisk" }
+    SeoReportPageAtRisk:
+      type: object
+      required: [path, clicks, impressions, issue]
+      properties:
+        path: { type: string }
+        clicks: { type: integer }
+        impressions: { type: integer }
+        issue: { type: string }
+    SeoReportLinkGapItem:
+      type: object
+      required: [url, title, isOrphan, isDeadEnd, inboundCount, outboundCount, clicks]
+      properties:
+        url: { type: string }
+        title: { type: ["string", "null"] }
+        isOrphan: { type: boolean }
+        isDeadEnd: { type: boolean }
+        inboundCount: { type: integer }
+        outboundCount: { type: integer }
+        # GSC clicks on this page (latest sync) — the traffic at stake.
+        clicks: { type: integer }
+    SeoReportLinkGaps:
+      type: object
+      required: [available, note, orphanCount, deadEndCount, items]
+      properties:
+        available: { type: boolean }
+        note: { type: ["string", "null"] }
+        orphanCount: { type: integer }
+        deadEndCount: { type: integer }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/SeoReportLinkGapItem" }
+    SeoReportBacklinkDomain:
+      type: object
+      required: [domain, backlinks, rank, firstSeen, lastSeen]
+      properties:
+        domain: { type: string }
+        backlinks: { type: integer }
+        # DataForSEO domain rank (0-1000, comparable to DR). Null when unknown.
+        rank: { type: ["integer", "null"] }
+        firstSeen: { type: ["string", "null"] }
+        lastSeen: { type: ["string", "null"] }
+    SeoReportBacklinks:
+      type: object
+      required: [available, note, domains]
+      properties:
+        available: { type: boolean }
+        note: { type: ["string", "null"] }
+        domains:
+          type: array
+          items: { $ref: "#/components/schemas/SeoReportBacklinkDomain" }
+    SeoReportWeekly:
+      type: object
+      required: [available, note, weekOf, healthCurrent, healthDelta, newIssues, completed, winsImproved, winsDeclined, openActions, priorities]
+      properties:
+        available: { type: boolean }
+        note: { type: ["string", "null"] }
+        weekOf: { type: ["string", "null"] }
+        healthCurrent: { type: ["number", "null"] }
+        healthDelta: { type: ["number", "null"] }
+        newIssues: { type: integer }
+        completed: { type: integer }
+        winsImproved: { type: integer }
+        winsDeclined: { type: integer }
+        openActions: { type: integer }
+        # Up to three plain-English priorities for the week.
+        priorities:
+          type: array
+          items: { type: string }
+    SeoReportResponse:
+      type: object
+      required: [nearMiss, clusters, contentGaps, techDebt, linkGaps, backlinks, weekly]
+      properties:
+        nearMiss: { $ref: "#/components/schemas/SeoReportNearMiss" }
+        clusters: { $ref: "#/components/schemas/SeoReportClusters" }
+        contentGaps: { $ref: "#/components/schemas/SeoReportContentGaps" }
+        techDebt: { $ref: "#/components/schemas/SeoReportTechDebt" }
+        linkGaps: { $ref: "#/components/schemas/SeoReportLinkGaps" }
+        backlinks: { $ref: "#/components/schemas/SeoReportBacklinks" }
+        weekly: { $ref: "#/components/schemas/SeoReportWeekly" }
     GscDimensionRow:
       type: object
       required: [key, clicks, impressions, ctr, position]

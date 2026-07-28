@@ -1693,6 +1693,166 @@ export interface SeoInsightsResponse {
   insights: SeoInsight[];
 }
 
+export interface SeoReportNearMissQuery {
+  query: string;
+  position: number;
+  impressions: number;
+  clicks: number;
+  score: number;
+  page2: boolean;
+  /** @nullable */
+  bestPath: string | null;
+}
+
+export interface SeoReportNearMiss {
+  available: boolean;
+  /** @nullable */
+  note: string | null;
+  /** @nullable */
+  windowStart: string | null;
+  /** @nullable */
+  windowEnd: string | null;
+  totalCandidates: number;
+  queries: SeoReportNearMissQuery[];
+}
+
+export type SeoReportClusterIntent = typeof SeoReportClusterIntent[keyof typeof SeoReportClusterIntent];
+
+
+export const SeoReportClusterIntent = {
+  commercial: 'commercial',
+  informational: 'informational',
+} as const;
+
+export interface SeoReportCluster {
+  topic: string;
+  intent: SeoReportClusterIntent;
+  keywordCount: number;
+  totalImpressions: number;
+  totalClicks: number;
+  /** @nullable */
+  avgPosition: number | null;
+}
+
+export interface SeoReportClusters {
+  available: boolean;
+  /** @nullable */
+  note: string | null;
+  /** @nullable */
+  runFinishedAt: string | null;
+  commercialCount: number;
+  informationalCount: number;
+  clusters: SeoReportCluster[];
+}
+
+export interface SeoReportContentGap {
+  query: string;
+  impressions: number;
+  clicks: number;
+  position: number;
+  /** @nullable */
+  bestPath: string | null;
+}
+
+export interface SeoReportContentGaps {
+  available: boolean;
+  /** @nullable */
+  note: string | null;
+  /** @nullable */
+  windowStart: string | null;
+  /** @nullable */
+  windowEnd: string | null;
+  gaps: SeoReportContentGap[];
+}
+
+export interface SeoReportTechAudit {
+  type: string;
+  runAt: string;
+  itemCount: number;
+}
+
+export interface SeoReportPageAtRisk {
+  path: string;
+  clicks: number;
+  impressions: number;
+  issue: string;
+}
+
+export interface SeoReportTechDebt {
+  available: boolean;
+  /** @nullable */
+  note: string | null;
+  audits: SeoReportTechAudit[];
+  notIndexedCount: number;
+  topPagesAtRisk: SeoReportPageAtRisk[];
+}
+
+export interface SeoReportLinkGapItem {
+  url: string;
+  /** @nullable */
+  title: string | null;
+  isOrphan: boolean;
+  isDeadEnd: boolean;
+  inboundCount: number;
+  outboundCount: number;
+  clicks: number;
+}
+
+export interface SeoReportLinkGaps {
+  available: boolean;
+  /** @nullable */
+  note: string | null;
+  orphanCount: number;
+  deadEndCount: number;
+  items: SeoReportLinkGapItem[];
+}
+
+export interface SeoReportBacklinkDomain {
+  domain: string;
+  backlinks: number;
+  /** @nullable */
+  rank: number | null;
+  /** @nullable */
+  firstSeen: string | null;
+  /** @nullable */
+  lastSeen: string | null;
+}
+
+export interface SeoReportBacklinks {
+  available: boolean;
+  /** @nullable */
+  note: string | null;
+  domains: SeoReportBacklinkDomain[];
+}
+
+export interface SeoReportWeekly {
+  available: boolean;
+  /** @nullable */
+  note: string | null;
+  /** @nullable */
+  weekOf: string | null;
+  /** @nullable */
+  healthCurrent: number | null;
+  /** @nullable */
+  healthDelta: number | null;
+  newIssues: number;
+  completed: number;
+  winsImproved: number;
+  winsDeclined: number;
+  openActions: number;
+  priorities: string[];
+}
+
+export interface SeoReportResponse {
+  nearMiss: SeoReportNearMiss;
+  clusters: SeoReportClusters;
+  contentGaps: SeoReportContentGaps;
+  techDebt: SeoReportTechDebt;
+  linkGaps: SeoReportLinkGaps;
+  backlinks: SeoReportBacklinks;
+  weekly: SeoReportWeekly;
+}
+
 export interface GscDimensionRow {
   key: string;
   clicks: number;

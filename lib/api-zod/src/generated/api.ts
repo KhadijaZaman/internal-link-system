@@ -2099,6 +2099,112 @@ export const GetSeoInsightsResponse = zod.object({
 
 
 /**
+ * @summary Comprehensive 7-section GSC analysis report — near-miss keywords, intent clusters, content gaps, technical debt, internal linking gaps, backlink profile, weekly movement
+ */
+export const GetSeoReportResponse = zod.object({
+  "nearMiss": zod.object({
+  "available": zod.boolean(),
+  "note": zod.string().nullable(),
+  "windowStart": zod.string().nullable(),
+  "windowEnd": zod.string().nullable(),
+  "totalCandidates": zod.number(),
+  "queries": zod.array(zod.object({
+  "query": zod.string(),
+  "position": zod.number(),
+  "impressions": zod.number(),
+  "clicks": zod.number(),
+  "score": zod.number(),
+  "page2": zod.boolean(),
+  "bestPath": zod.string().nullable()
+}))
+}),
+  "clusters": zod.object({
+  "available": zod.boolean(),
+  "note": zod.string().nullable(),
+  "runFinishedAt": zod.coerce.date().nullable(),
+  "commercialCount": zod.number(),
+  "informationalCount": zod.number(),
+  "clusters": zod.array(zod.object({
+  "topic": zod.string(),
+  "intent": zod.enum(['commercial', 'informational']),
+  "keywordCount": zod.number(),
+  "totalImpressions": zod.number(),
+  "totalClicks": zod.number(),
+  "avgPosition": zod.number().nullable()
+}))
+}),
+  "contentGaps": zod.object({
+  "available": zod.boolean(),
+  "note": zod.string().nullable(),
+  "windowStart": zod.string().nullable(),
+  "windowEnd": zod.string().nullable(),
+  "gaps": zod.array(zod.object({
+  "query": zod.string(),
+  "impressions": zod.number(),
+  "clicks": zod.number(),
+  "position": zod.number(),
+  "bestPath": zod.string().nullable()
+}))
+}),
+  "techDebt": zod.object({
+  "available": zod.boolean(),
+  "note": zod.string().nullable(),
+  "audits": zod.array(zod.object({
+  "type": zod.string(),
+  "runAt": zod.coerce.date(),
+  "itemCount": zod.number()
+})),
+  "notIndexedCount": zod.number(),
+  "topPagesAtRisk": zod.array(zod.object({
+  "path": zod.string(),
+  "clicks": zod.number(),
+  "impressions": zod.number(),
+  "issue": zod.string()
+}))
+}),
+  "linkGaps": zod.object({
+  "available": zod.boolean(),
+  "note": zod.string().nullable(),
+  "orphanCount": zod.number(),
+  "deadEndCount": zod.number(),
+  "items": zod.array(zod.object({
+  "url": zod.string(),
+  "title": zod.string().nullable(),
+  "isOrphan": zod.boolean(),
+  "isDeadEnd": zod.boolean(),
+  "inboundCount": zod.number(),
+  "outboundCount": zod.number(),
+  "clicks": zod.number()
+}))
+}),
+  "backlinks": zod.object({
+  "available": zod.boolean(),
+  "note": zod.string().nullable(),
+  "domains": zod.array(zod.object({
+  "domain": zod.string(),
+  "backlinks": zod.number(),
+  "rank": zod.number().nullable(),
+  "firstSeen": zod.string().nullable(),
+  "lastSeen": zod.string().nullable()
+}))
+}),
+  "weekly": zod.object({
+  "available": zod.boolean(),
+  "note": zod.string().nullable(),
+  "weekOf": zod.string().nullable(),
+  "healthCurrent": zod.number().nullable(),
+  "healthDelta": zod.number().nullable(),
+  "newIssues": zod.number(),
+  "completed": zod.number(),
+  "winsImproved": zod.number(),
+  "winsDeclined": zod.number(),
+  "openActions": zod.number(),
+  "priorities": zod.array(zod.string())
+})
+})
+
+
+/**
  * @summary Country and device breakdown
  */
 export const GetGscGeoQueryParams = zod.object({
