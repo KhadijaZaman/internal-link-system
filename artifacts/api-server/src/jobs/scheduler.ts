@@ -136,7 +136,13 @@ export function startScheduler(): void {
   cron.schedule("0 2 * * 6", all("crawl_link_map"), { timezone: "UTC" });
   // Daily 06:00 UTC — refresh the persistent keyword-movement Google Sheet
   // (GSC daily data through today-2 is settled by then).
-  cron.schedule("0 6 * * *", all("sync_keyword_sheet"), { timezone: "UTC" });
+  // 2 AM Pacific, NOT UTC: the sheet's day columns end at "yesterday Pacific
+  // Time" (GSC buckets days in PT). The old 06:00 UTC slot fired at 10-11 PM
+  // PT the *previous* day, so "yesterday PT" resolved two calendar days back
+  // and the sheet perpetually lagged an extra day.
+  cron.schedule("0 2 * * *", all("sync_keyword_sheet"), {
+    timezone: "America/Los_Angeles",
+  });
   // Friday 10:00 UTC — weekly digest (after Thursday's audits have refreshed signals)
   cron.schedule("0 10 * * 5", all("weekly_digest"), { timezone: "UTC" });
   // Daily 04:00 UTC — Bing Webmaster stats (free API, one key; full-window
