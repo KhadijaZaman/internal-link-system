@@ -8,9 +8,11 @@
 import type { IntegrationsStatusBing } from './integrationsStatusBing';
 import type { IntegrationsStatusGa4 } from './integrationsStatusGa4';
 import type { IntegrationsStatusGsc } from './integrationsStatusGsc';
+import type { IntegrationsStatusWp } from './integrationsStatusWp';
 
 export interface IntegrationsStatus {
   gsc: IntegrationsStatusGsc;
   ga4: IntegrationsStatusGa4;
   bing: IntegrationsStatusBing;
+  wp: IntegrationsStatusWp;
 }

@@ -4,7 +4,7 @@ import { useClerk, useUser } from "@clerk/react";
 import { useGetSession } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { SiteSwitcher } from "@/components/site-switcher";
-import { LayoutDashboard, Network, TrendingDown, Settings2, LogOut, LineChart, FileText, Ban, PenLine, Link2, Compass, BookOpen, ClipboardList, Bot, Gauge, Table2, ListTodo, Newspaper, Waypoints, SearchCheck, Boxes, GitCompareArrows, Sparkles, Map, Plug, ChevronDown, ShieldCheck, Lightbulb, ScrollText, ExternalLink } from "lucide-react";
+import { LayoutDashboard, Network, TrendingDown, Settings2, LogOut, LineChart, FileText, Ban, PenLine, Link2, Compass, BookOpen, ClipboardList, Bot, Gauge, Table2, ListTodo, Newspaper, Waypoints, SearchCheck, Boxes, GitCompareArrows, Sparkles, Map, Plug, ChevronDown, ShieldCheck, Lightbulb, ScrollText, ExternalLink, FlaskConical, UploadCloud } from "lucide-react";
 
 interface NavItem {
   href: string;
@@ -54,6 +54,9 @@ const navSections: NavSection[] = [
     items: [
       { href: "/optimize", label: "Page Optimizer", icon: Settings2 },
       { href: "/content/writer", label: "Content Writer", icon: PenLine },
+      { href: "/research", label: "Data Research", icon: FlaskConical },
+      { href: "/publish", label: "Publish to CMS", icon: UploadCloud },
+      { href: "/backlinks", label: "Backlink Prospects", icon: Link2 },
       { href: "/topical-map", label: "Topical Map", icon: Map },
       { href: "/similarity", label: "Content Similarity", icon: GitCompareArrows },
       { href: "/knowledge-base", label: "Knowledge Base", icon: BookOpen },

@@ -28,6 +28,9 @@ import { WelcomePage } from "@/pages/welcome";
 import Dashboard from "@/pages/dashboard";
 import LinkMap from "@/pages/link-map";
 import LinkMapPrompt from "@/pages/link-map-prompt";
+import ResearchPage from "@/pages/research";
+import PublishPage from "@/pages/publish";
+import BacklinksPage from "@/pages/backlinks";
 import KnowledgeGraph from "@/pages/knowledge-graph";
 import LinksHub from "@/pages/links";
 import AuthoritySnapshot from "@/pages/authority-snapshot";
@@ -311,6 +314,9 @@ function Router() {
       <Route path="/sign-up/*?" component={SignUpPage} />
       <Route path="/link-map" component={() => <ProtectedRoute component={LinkMap} />} />
       <Route path="/link-map-prompt" component={() => <ProtectedRoute component={LinkMapPrompt} />} />
+      <Route path="/research" component={() => <ProtectedRoute component={ResearchPage} />} />
+      <Route path="/publish" component={() => <ProtectedRoute component={PublishPage} />} />
+      <Route path="/backlinks" component={() => <ProtectedRoute component={BacklinksPage} />} />
       <Route path="/knowledge-graph" component={() => <ProtectedRoute component={KnowledgeGraph} />} />
       <Route path="/links" component={() => <ProtectedRoute component={LinksHub} />} />
       <Route path="/links/lookups" component={() => <ProtectedRoute component={LinksHub} />} />

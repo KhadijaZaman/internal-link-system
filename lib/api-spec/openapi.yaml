@@ -363,6 +363,102 @@ paths:
                 $ref: "#/components/schemas/OkResponse"
         "400":
           description: Invalid or unverifiable API key
+  /integrations/wp:
+    put:
+      operationId: connectWp
+      tags: [integrations]
+      summary: Save WordPress Application Password credentials for the active site (verified with a live wp/v2/users/me call)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectWpInput"
+      responses:
+        "200":
+          description: WordPress connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          description: Invalid or unverifiable credentials
+  /cms/publish:
+    post:
+      operationId: publishToCms
+      tags: [integrations]
+      summary: Publish a post to the connected CMS (WordPress) as draft or live — straight from the app, no copy-paste
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CmsPublishInput"
+      responses:
+        "200":
+          description: Post created in the CMS
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CmsPublishResult"
+        "400":
+          description: CMS not connected or invalid input
+  /backlinks/prospects:
+    get:
+      operationId: listBacklinkProspects
+      tags: [backlinks]
+      summary: List saved backlink prospects with outreach status
+      responses:
+        "200":
+          description: Prospects
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BacklinkProspectList"
+    post:
+      operationId: discoverBacklinkProspects
+      tags: [backlinks]
+      summary: Discover new prospects — domains that link to your competitors but not to you (DataForSEO, cached)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProspectDiscoveryInput"
+      responses:
+        "200":
+          description: Updated prospect list after discovery
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BacklinkProspectList"
+        "400":
+          description: Invalid competitor list
+  /backlinks/prospects/{prospectId}:
+    patch:
+      operationId: updateBacklinkProspect
+      tags: [backlinks]
+      summary: Update outreach status or notes for a prospect
+      parameters:
+        - name: prospectId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProspectUpdateInput"
+      responses:
+        "200":
+          description: Updated prospect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BacklinkProspect"
+        "404":
+          description: Prospect not found
   /integrations/{provider}:
     delete:
       operationId: disconnectIntegration
@@ -372,7 +468,7 @@ paths:
         - name: provider
           in: path
           required: true
-          schema: { type: string, enum: [gsc, ga4, bing] }
+          schema: { type: string, enum: [gsc, ga4, bing, wp] }
       responses:
         "200":
           description: Disconnected
@@ -1371,6 +1467,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SeoReportResponse"
+  /research/latest:
+    get:
+      operationId: getResearchLatest
+      tags: [report]
+      summary: Latest original-data-research run with its citation-ready findings
+      responses:
+        "200":
+          description: Latest research run (available=false when none has run yet)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchRunResponse"
+  /research/run:
+    post:
+      operationId: runResearch
+      tags: [report]
+      summary: Run original data research — mines the site's own stored data into citable statistics (no paid APIs beyond cached GSC reads)
+      responses:
+        "200":
+          description: The completed run and its findings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchRunResponse"
   /gsc/geo:
     get:
       operationId: getGscGeo
@@ -2234,7 +2354,7 @@ components:
         apiKey: { type: string, minLength: 1, maxLength: 200 }
     IntegrationsStatus:
       type: object
-      required: [gsc, ga4, bing]
+      required: [gsc, ga4, bing, wp]
       properties:
         gsc:
           type: object
@@ -2254,6 +2374,86 @@ components:
           required: [connected]
           properties:
             connected: { type: boolean }
+        wp:
+          type: object
+          required: [connected, baseUrl, username]
+          properties:
+            connected: { type: boolean }
+            baseUrl: { type: ["string", "null"] }
+            username: { type: ["string", "null"] }
+    ConnectWpInput:
+      type: object
+      required: [baseUrl, username, appPassword]
+      properties:
+        # The WordPress site root, e.g. https://example.com
+        baseUrl: { type: string }
+        username: { type: string }
+        # A WordPress Application Password (Users → Profile → Application Passwords).
+        appPassword: { type: string }
+    CmsPublishInput:
+      type: object
+      required: [title, markdown, status]
+      properties:
+        title: { type: string, minLength: 1 }
+        # Post body as Markdown; converted to HTML before publishing.
+        markdown: { type: string, minLength: 1 }
+        status:
+          type: string
+          enum: [draft, publish]
+        slug: { type: ["string", "null"] }
+        excerpt: { type: ["string", "null"] }
+    CmsPublishResult:
+      type: object
+      required: [postId, link, status, editLink]
+      properties:
+        postId: { type: integer }
+        # Public permalink of the created post.
+        link: { type: string }
+        status: { type: string }
+        # Direct wp-admin edit URL for the post.
+        editLink: { type: string }
+    BacklinkProspect:
+      type: object
+      required: [id, domain, rank, backlinks, competitorsLinking, status, notes, createdAt]
+      properties:
+        id: { type: integer }
+        domain: { type: string }
+        # DataForSEO domain rank (0-1000), null when unknown.
+        rank: { type: ["integer", "null"] }
+        backlinks: { type: integer }
+        competitorsLinking:
+          type: array
+          items: { type: string }
+        status:
+          type: string
+          enum: [new, contacted, replied, linked, rejected]
+        notes: { type: string }
+        createdAt: { type: string, format: date-time }
+    BacklinkProspectList:
+      type: object
+      required: [prospects]
+      properties:
+        prospects:
+          type: array
+          items:
+            $ref: "#/components/schemas/BacklinkProspect"
+    ProspectDiscoveryInput:
+      type: object
+      required: [competitors]
+      properties:
+        # 1-5 competitor domains, e.g. ["competitor.com"].
+        competitors:
+          type: array
+          items: { type: string, minLength: 3 }
+          minItems: 1
+          maxItems: 5
+    ProspectUpdateInput:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [new, contacted, replied, linked, rejected]
+        notes: { type: string }
     JobLastRun:
       type: object
       required: [name]
@@ -3776,6 +3976,41 @@ components:
         insights:
           type: array
           items: { $ref: "#/components/schemas/SeoInsight" }
+    ResearchDetailRow:
+      type: object
+      required: [label, value, extra]
+      properties:
+        label: { type: string }
+        value: { type: number }
+        extra: { type: ["string", "null"] }
+    ResearchFinding:
+      type: object
+      required: [slug, title, headlineStat, citation, methodology, detail]
+      properties:
+        slug: { type: string }
+        title: { type: string }
+        # The headline number, formatted (e.g. "38.2%").
+        headlineStat: { type: string }
+        # One citation-ready sentence including the stat and sample size.
+        citation: { type: string }
+        # How the number was computed — dataset, window, filters.
+        methodology: { type: string }
+        detail:
+          type: array
+          items: { $ref: "#/components/schemas/ResearchDetailRow" }
+    ResearchRunResponse:
+      type: object
+      required: [available, runId, status, windowStart, windowEnd, finishedAt, findings]
+      properties:
+        available: { type: boolean }
+        runId: { type: ["integer", "null"] }
+        status: { type: ["string", "null"] }
+        windowStart: { type: ["string", "null"] }
+        windowEnd: { type: ["string", "null"] }
+        finishedAt: { type: ["string", "null"], format: date-time }
+        findings:
+          type: array
+          items: { $ref: "#/components/schemas/ResearchFinding" }
     SeoReportNearMissQuery:
       type: object
       required: [query, position, impressions, clicks, score, page2, bestPath]

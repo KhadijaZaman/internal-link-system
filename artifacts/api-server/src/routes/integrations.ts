@@ -3,7 +3,20 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { google } from "googleapis";
 import { db, siteIntegrationsTable, sitesTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
-import { ConnectBingBody, ConnectGa4Body, SetGscPropertyBody } from "@workspace/api-zod";
+import {
+  ConnectBingBody,
+  ConnectGa4Body,
+  ConnectWpBody,
+  PublishToCmsBody,
+  SetGscPropertyBody,
+} from "@workspace/api-zod";
+import { marked } from "marked";
+import {
+  verifyWpCreds,
+  publishPost,
+  WpApiError,
+  WpUrlBlockedError,
+} from "../integrations/wordpressPublish";
 import { requireAuth } from "../lib/auth";
 import { requireSite, getSite } from "../lib/site";
 import {
@@ -11,6 +24,7 @@ import {
   integrationStatus,
   invalidateIntegrationCache,
   getIntegrationRow,
+  IntegrationNotConnectedError,
   type IntegrationProvider,
 } from "../lib/siteIntegrations";
 
@@ -381,13 +395,94 @@ router.put("/integrations/bing", requireAuth, requireSite, async (req, res, next
   }
 });
 
+// ---- WordPress (Application Password, used for publishing) -------------------
+
+router.put("/integrations/wp", requireAuth, requireSite, async (req, res, next) => {
+  try {
+    const site = getSite(req);
+    const parsed = ConnectWpBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid request body" });
+      return;
+    }
+    let baseUrl = parsed.data.baseUrl.trim().replace(/\/$/, "");
+    if (!/^https?:\/\//.test(baseUrl)) baseUrl = `https://${baseUrl}`;
+    try {
+      new URL(baseUrl);
+    } catch {
+      res.status(400).json({ error: "Invalid site URL" });
+      return;
+    }
+    const username = parsed.data.username.trim();
+    const appPassword = parsed.data.appPassword.trim();
+
+    try {
+      const name = await verifyWpCreds({ baseUrl, username, appPassword });
+      req.log.info({ siteId: site.id, name }, "WordPress credentials verified");
+    } catch (err) {
+      req.log.warn({ err, siteId: site.id }, "WordPress verification failed");
+      const msg =
+        err instanceof WpApiError || err instanceof WpUrlBlockedError
+          ? err.message
+          : "Could not reach the WordPress REST API — check the URL and Application Password";
+      res.status(400).json({ error: msg });
+      return;
+    }
+
+    await upsertIntegration(site.id, "wp", { username, appPassword }, { baseUrl });
+    req.log.info({ siteId: site.id }, "WordPress connected");
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/cms/publish", requireAuth, requireSite, async (req, res, next) => {
+  try {
+    const site = getSite(req);
+    const parsed = PublishToCmsBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid request body" });
+      return;
+    }
+    const { title, markdown, status, slug, excerpt } = parsed.data;
+    const contentHtml = await marked.parse(markdown, { async: true });
+    try {
+      const result = await publishPost(site.id, {
+        title,
+        contentHtml,
+        status,
+        slug: slug ?? null,
+        excerpt: excerpt ?? null,
+      });
+      req.log.info(
+        { siteId: site.id, postId: result.postId, status: result.status },
+        "Published to WordPress",
+      );
+      res.json(result);
+    } catch (err) {
+      if (err instanceof IntegrationNotConnectedError) {
+        res.status(400).json({ error: "WordPress is not connected — add it in Settings → Connections" });
+        return;
+      }
+      if (err instanceof WpApiError || err instanceof WpUrlBlockedError) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ---- Disconnect ---------------------------------------------------------------
 
 router.delete("/integrations/:provider", requireAuth, requireSite, async (req, res, next) => {
   try {
     const site = getSite(req);
     const provider = req.params["provider"];
-    if (provider !== "gsc" && provider !== "ga4" && provider !== "bing") {
+    if (provider !== "gsc" && provider !== "ga4" && provider !== "bing" && provider !== "wp") {
       res.status(400).json({ error: "Unknown provider" });
       return;
     }

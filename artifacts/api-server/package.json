@@ -25,6 +25,7 @@
     "express-rate-limit": "^8.5.2",
     "googleapis": "^160.0.0",
     "http-proxy-middleware": "^4.2.0",
+    "marked": "^18.0.7",
     "node-cron": "^4.2.1",
     "openai": "^6.38.0",
     "pg": "^8.20.0",

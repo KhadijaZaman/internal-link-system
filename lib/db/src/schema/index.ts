@@ -35,3 +35,5 @@ export * from "./appState";
 export * from "./claimAttempts";
 export * from "./similarityRuns";
 export * from "./topicalMaps";
+export * from "./researchRuns";
+export * from "./backlinkProspects";

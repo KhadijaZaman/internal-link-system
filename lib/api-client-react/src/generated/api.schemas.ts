@@ -187,10 +187,103 @@ export type IntegrationsStatusBing = {
   connected: boolean;
 };
 
+export type IntegrationsStatusWp = {
+  connected: boolean;
+  /** @nullable */
+  baseUrl: string | null;
+  /** @nullable */
+  username: string | null;
+};
+
 export interface IntegrationsStatus {
   gsc: IntegrationsStatusGsc;
   ga4: IntegrationsStatusGa4;
   bing: IntegrationsStatusBing;
+  wp: IntegrationsStatusWp;
+}
+
+export interface ConnectWpInput {
+  baseUrl: string;
+  username: string;
+  appPassword: string;
+}
+
+export type CmsPublishInputStatus = typeof CmsPublishInputStatus[keyof typeof CmsPublishInputStatus];
+
+
+export const CmsPublishInputStatus = {
+  draft: 'draft',
+  publish: 'publish',
+} as const;
+
+export interface CmsPublishInput {
+  /** @minLength 1 */
+  title: string;
+  /** @minLength 1 */
+  markdown: string;
+  status: CmsPublishInputStatus;
+  /** @nullable */
+  slug?: string | null;
+  /** @nullable */
+  excerpt?: string | null;
+}
+
+export interface CmsPublishResult {
+  postId: number;
+  link: string;
+  status: string;
+  editLink: string;
+}
+
+export type BacklinkProspectStatus = typeof BacklinkProspectStatus[keyof typeof BacklinkProspectStatus];
+
+
+export const BacklinkProspectStatus = {
+  new: 'new',
+  contacted: 'contacted',
+  replied: 'replied',
+  linked: 'linked',
+  rejected: 'rejected',
+} as const;
+
+export interface BacklinkProspect {
+  id: number;
+  domain: string;
+  /** @nullable */
+  rank: number | null;
+  backlinks: number;
+  competitorsLinking: string[];
+  status: BacklinkProspectStatus;
+  notes: string;
+  createdAt: string;
+}
+
+export interface BacklinkProspectList {
+  prospects: BacklinkProspect[];
+}
+
+export interface ProspectDiscoveryInput {
+  /**
+     * @minItems 1
+     * @maxItems 5
+     */
+  competitors: string[];
+}
+
+export type ProspectUpdateInputStatus = typeof ProspectUpdateInputStatus[keyof typeof ProspectUpdateInputStatus];
+
+
+export const ProspectUpdateInputStatus = {
+  new: 'new',
+  contacted: 'contacted',
+  replied: 'replied',
+  linked: 'linked',
+  rejected: 'rejected',
+} as const;
+
+export interface ProspectUpdateInput {
+  status?: ProspectUpdateInputStatus;
+  notes?: string;
 }
 
 export type JobBudgetUsageKindsItemKind = typeof JobBudgetUsageKindsItemKind[keyof typeof JobBudgetUsageKindsItemKind];
@@ -1691,6 +1784,37 @@ export interface SeoInsightsResponse {
   freshness: SeoInsightsFreshness;
   kpis: SeoInsightsKpis;
   insights: SeoInsight[];
+}
+
+export interface ResearchDetailRow {
+  label: string;
+  value: number;
+  /** @nullable */
+  extra: string | null;
+}
+
+export interface ResearchFinding {
+  slug: string;
+  title: string;
+  headlineStat: string;
+  citation: string;
+  methodology: string;
+  detail: ResearchDetailRow[];
+}
+
+export interface ResearchRunResponse {
+  available: boolean;
+  /** @nullable */
+  runId: number | null;
+  /** @nullable */
+  status: string | null;
+  /** @nullable */
+  windowStart: string | null;
+  /** @nullable */
+  windowEnd: string | null;
+  /** @nullable */
+  finishedAt: string | null;
+  findings: ResearchFinding[];
 }
 
 export interface SeoReportNearMissQuery {

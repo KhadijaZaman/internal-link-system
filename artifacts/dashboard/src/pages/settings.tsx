@@ -9,6 +9,7 @@ import {
   useSetGscProperty,
   useConnectGa4,
   useConnectBing,
+  useConnectWp,
   useDisconnectIntegration,
   useGetSiteLimits,
   getGetSiteLimitsQueryKey,
@@ -473,6 +474,27 @@ export default function SettingsPage() {
     },
   });
 
+  const [wpUrl, setWpUrl] = useState("");
+  const [wpUser, setWpUser] = useState("");
+  const [wpPass, setWpPass] = useState("");
+  const connectWp = useConnectWp({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: "WordPress connected", description: "You can now publish straight from the app." });
+        setWpUrl("");
+        setWpUser("");
+        setWpPass("");
+        invalidate();
+      },
+      onError: (err: unknown) => {
+        const msg =
+          (err as { data?: { error?: string } })?.data?.error ??
+          "WordPress connection failed";
+        toast({ title: msg, variant: "destructive" });
+      },
+    },
+  });
+
   const disconnect = useDisconnectIntegration({
     mutation: {
       onSuccess: () => {
@@ -693,6 +715,82 @@ export default function SettingsPage() {
               >
                 {connectBing.isPending ? "Verifying…" : "Save"}
               </Button>
+            </form>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* WordPress publishing */}
+      <Card data-testid="card-wp">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>WordPress Publishing</CardTitle>
+            <StatusBadge connected={status?.wp.connected ?? false} />
+          </div>
+          <CardDescription>
+            Optional. Lets the app publish drafts and posts directly to your WordPress site. Create
+            an Application Password under Users → Profile → Application Passwords (needs an
+            Editor or Administrator account).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {status?.wp.connected ? (
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Publishing to <span className="font-medium text-foreground">{status.wp.baseUrl}</span> as{" "}
+                {status.wp.username}.
+              </p>
+              <Button
+                variant="ghost"
+                className="gap-2 text-muted-foreground"
+                onClick={() => disconnect.mutate({ provider: "wp" })}
+                disabled={disconnect.isPending}
+                data-testid="button-disconnect-wp"
+              >
+                <Unplug className="h-4 w-4" /> Disconnect
+              </Button>
+            </div>
+          ) : (
+            <form
+              className="space-y-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!wpUrl.trim() || !wpUser.trim() || !wpPass.trim() || connectWp.isPending) return;
+                connectWp.mutate({
+                  data: { baseUrl: wpUrl.trim(), username: wpUser.trim(), appPassword: wpPass.trim() },
+                });
+              }}
+            >
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Input
+                  placeholder="Site URL (https://example.com)"
+                  value={wpUrl}
+                  onChange={(e) => setWpUrl(e.target.value)}
+                  data-testid="input-wp-url"
+                />
+                <Input
+                  placeholder="WordPress username"
+                  value={wpUser}
+                  onChange={(e) => setWpUser(e.target.value)}
+                  data-testid="input-wp-username"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Application password (xxxx xxxx xxxx …)"
+                  type="password"
+                  value={wpPass}
+                  onChange={(e) => setWpPass(e.target.value)}
+                  data-testid="input-wp-password"
+                />
+                <Button
+                  type="submit"
+                  disabled={!wpUrl.trim() || !wpUser.trim() || !wpPass.trim() || connectWp.isPending}
+                  data-testid="button-connect-wp"
+                >
+                  {connectWp.isPending ? "Verifying…" : "Save"}
+                </Button>
+              </div>
             </form>
           )}
         </CardContent>

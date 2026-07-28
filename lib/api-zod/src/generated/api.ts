@@ -233,6 +233,11 @@ export const GetIntegrationsResponse = zod.object({
 }),
   "bing": zod.object({
   "connected": zod.boolean()
+}),
+  "wp": zod.object({
+  "connected": zod.boolean(),
+  "baseUrl": zod.string().nullable(),
+  "username": zod.string().nullable()
 })
 })
 
@@ -307,10 +312,115 @@ export const ConnectBingResponse = zod.object({
 
 
 /**
+ * @summary Save WordPress Application Password credentials for the active site (verified with a live wp/v2/users/me call)
+ */
+export const ConnectWpBody = zod.object({
+  "baseUrl": zod.string(),
+  "username": zod.string(),
+  "appPassword": zod.string()
+})
+
+export const ConnectWpResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
+ * @summary Publish a post to the connected CMS (WordPress) as draft or live — straight from the app, no copy-paste
+ */
+
+
+
+
+export const PublishToCmsBody = zod.object({
+  "title": zod.string().min(1),
+  "markdown": zod.string().min(1),
+  "status": zod.enum(['draft', 'publish']),
+  "slug": zod.string().nullish(),
+  "excerpt": zod.string().nullish()
+})
+
+export const PublishToCmsResponse = zod.object({
+  "postId": zod.number(),
+  "link": zod.string(),
+  "status": zod.string(),
+  "editLink": zod.string()
+})
+
+
+/**
+ * @summary List saved backlink prospects with outreach status
+ */
+export const ListBacklinkProspectsResponse = zod.object({
+  "prospects": zod.array(zod.object({
+  "id": zod.number(),
+  "domain": zod.string(),
+  "rank": zod.number().nullable(),
+  "backlinks": zod.number(),
+  "competitorsLinking": zod.array(zod.string()),
+  "status": zod.enum(['new', 'contacted', 'replied', 'linked', 'rejected']),
+  "notes": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Discover new prospects — domains that link to your competitors but not to you (DataForSEO, cached)
+ */
+export const discoverBacklinkProspectsBodyCompetitorsItemMin = 3;
+
+export const discoverBacklinkProspectsBodyCompetitorsMax = 5;
+
+
+
+export const DiscoverBacklinkProspectsBody = zod.object({
+  "competitors": zod.array(zod.string().min(discoverBacklinkProspectsBodyCompetitorsItemMin)).min(1).max(discoverBacklinkProspectsBodyCompetitorsMax)
+})
+
+export const DiscoverBacklinkProspectsResponse = zod.object({
+  "prospects": zod.array(zod.object({
+  "id": zod.number(),
+  "domain": zod.string(),
+  "rank": zod.number().nullable(),
+  "backlinks": zod.number(),
+  "competitorsLinking": zod.array(zod.string()),
+  "status": zod.enum(['new', 'contacted', 'replied', 'linked', 'rejected']),
+  "notes": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Update outreach status or notes for a prospect
+ */
+export const UpdateBacklinkProspectParams = zod.object({
+  "prospectId": zod.coerce.number()
+})
+
+export const UpdateBacklinkProspectBody = zod.object({
+  "status": zod.enum(['new', 'contacted', 'replied', 'linked', 'rejected']).optional(),
+  "notes": zod.string().optional()
+})
+
+export const UpdateBacklinkProspectResponse = zod.object({
+  "id": zod.number(),
+  "domain": zod.string(),
+  "rank": zod.number().nullable(),
+  "backlinks": zod.number(),
+  "competitorsLinking": zod.array(zod.string()),
+  "status": zod.enum(['new', 'contacted', 'replied', 'linked', 'rejected']),
+  "notes": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Disconnect a data source from the active site
  */
 export const DisconnectIntegrationParams = zod.object({
-  "provider": zod.enum(['gsc', 'ga4', 'bing'])
+  "provider": zod.enum(['gsc', 'ga4', 'bing', 'wp'])
 })
 
 export const DisconnectIntegrationResponse = zod.object({
@@ -2201,6 +2311,56 @@ export const GetSeoReportResponse = zod.object({
   "openActions": zod.number(),
   "priorities": zod.array(zod.string())
 })
+})
+
+
+/**
+ * @summary Latest original-data-research run with its citation-ready findings
+ */
+export const GetResearchLatestResponse = zod.object({
+  "available": zod.boolean(),
+  "runId": zod.number().nullable(),
+  "status": zod.string().nullable(),
+  "windowStart": zod.string().nullable(),
+  "windowEnd": zod.string().nullable(),
+  "finishedAt": zod.coerce.date().nullable(),
+  "findings": zod.array(zod.object({
+  "slug": zod.string(),
+  "title": zod.string(),
+  "headlineStat": zod.string(),
+  "citation": zod.string(),
+  "methodology": zod.string(),
+  "detail": zod.array(zod.object({
+  "label": zod.string(),
+  "value": zod.number(),
+  "extra": zod.string().nullable()
+}))
+}))
+})
+
+
+/**
+ * @summary Run original data research — mines the site's own stored data into citable statistics (no paid APIs beyond cached GSC reads)
+ */
+export const RunResearchResponse = zod.object({
+  "available": zod.boolean(),
+  "runId": zod.number().nullable(),
+  "status": zod.string().nullable(),
+  "windowStart": zod.string().nullable(),
+  "windowEnd": zod.string().nullable(),
+  "finishedAt": zod.coerce.date().nullable(),
+  "findings": zod.array(zod.object({
+  "slug": zod.string(),
+  "title": zod.string(),
+  "headlineStat": zod.string(),
+  "citation": zod.string(),
+  "methodology": zod.string(),
+  "detail": zod.array(zod.object({
+  "label": zod.string(),
+  "value": zod.number(),
+  "extra": zod.string().nullable()
+}))
+}))
 })
 
 

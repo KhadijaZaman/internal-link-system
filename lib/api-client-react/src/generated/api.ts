@@ -30,12 +30,17 @@ import type {
   AuditReport,
   AuthSession,
   AuthoritySnapshot,
+  BacklinkProspect,
+  BacklinkProspectList,
   BingPagesReport,
   ClaimLegacyInput,
   ClaimRateLimited,
   ClusterRun,
+  CmsPublishInput,
+  CmsPublishResult,
   ConnectBingInput,
   ConnectGa4Input,
+  ConnectWpInput,
   ContentAuditTextInput,
   ContentEntitiesAudit,
   ContentNgramsAudit,
@@ -121,8 +126,11 @@ import type {
   PageKeywordInput,
   PageReportResponse,
   PageTargetKeyword,
+  ProspectDiscoveryInput,
+  ProspectUpdateInput,
   PruningReport,
   QueryInsights,
+  ResearchRunResponse,
   SeoInsightsResponse,
   SeoReportResponse,
   SetGscPropertyInput,
@@ -1346,7 +1354,369 @@ export const useConnectBing = <TError = ErrorType<void>,
       return useMutation(getConnectBingMutationOptions(options));
     }
 
-export const getDisconnectIntegrationUrl = (provider: 'gsc' | 'ga4' | 'bing',) => {
+export const getConnectWpUrl = () => {
+
+
+
+
+  return `/api/integrations/wp`
+}
+
+/**
+ * @summary Save WordPress Application Password credentials for the active site (verified with a live wp/v2/users/me call)
+ */
+export const connectWp = async (connectWpInput: ConnectWpInput, options?: RequestInit): Promise<OkResponse> => {
+
+  return customFetch<OkResponse>(getConnectWpUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      connectWpInput,)
+  }
+);}
+
+
+
+
+export const getConnectWpMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof connectWp>>, TError,{data: BodyType<ConnectWpInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof connectWp>>, TError,{data: BodyType<ConnectWpInput>}, TContext> => {
+
+const mutationKey = ['connectWp'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof connectWp>>, {data: BodyType<ConnectWpInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  connectWp(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConnectWpMutationResult = NonNullable<Awaited<ReturnType<typeof connectWp>>>
+    export type ConnectWpMutationBody = BodyType<ConnectWpInput>
+    export type ConnectWpMutationError = ErrorType<void>
+
+    /**
+ * @summary Save WordPress Application Password credentials for the active site (verified with a live wp/v2/users/me call)
+ */
+export const useConnectWp = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof connectWp>>, TError,{data: BodyType<ConnectWpInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof connectWp>>,
+        TError,
+        {data: BodyType<ConnectWpInput>},
+        TContext
+      > => {
+      return useMutation(getConnectWpMutationOptions(options));
+    }
+
+export const getPublishToCmsUrl = () => {
+
+
+
+
+  return `/api/cms/publish`
+}
+
+/**
+ * @summary Publish a post to the connected CMS (WordPress) as draft or live — straight from the app, no copy-paste
+ */
+export const publishToCms = async (cmsPublishInput: CmsPublishInput, options?: RequestInit): Promise<CmsPublishResult> => {
+
+  return customFetch<CmsPublishResult>(getPublishToCmsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      cmsPublishInput,)
+  }
+);}
+
+
+
+
+export const getPublishToCmsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishToCms>>, TError,{data: BodyType<CmsPublishInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof publishToCms>>, TError,{data: BodyType<CmsPublishInput>}, TContext> => {
+
+const mutationKey = ['publishToCms'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof publishToCms>>, {data: BodyType<CmsPublishInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  publishToCms(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PublishToCmsMutationResult = NonNullable<Awaited<ReturnType<typeof publishToCms>>>
+    export type PublishToCmsMutationBody = BodyType<CmsPublishInput>
+    export type PublishToCmsMutationError = ErrorType<void>
+
+    /**
+ * @summary Publish a post to the connected CMS (WordPress) as draft or live — straight from the app, no copy-paste
+ */
+export const usePublishToCms = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishToCms>>, TError,{data: BodyType<CmsPublishInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof publishToCms>>,
+        TError,
+        {data: BodyType<CmsPublishInput>},
+        TContext
+      > => {
+      return useMutation(getPublishToCmsMutationOptions(options));
+    }
+
+export const getListBacklinkProspectsUrl = () => {
+
+
+
+
+  return `/api/backlinks/prospects`
+}
+
+/**
+ * @summary List saved backlink prospects with outreach status
+ */
+export const listBacklinkProspects = async ( options?: RequestInit): Promise<BacklinkProspectList> => {
+
+  return customFetch<BacklinkProspectList>(getListBacklinkProspectsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListBacklinkProspectsQueryKey = () => {
+    return [
+    `/api/backlinks/prospects`
+    ] as const;
+    }
+
+
+export const getListBacklinkProspectsQueryOptions = <TData = Awaited<ReturnType<typeof listBacklinkProspects>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBacklinkProspects>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListBacklinkProspectsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBacklinkProspects>>> = ({ signal }) => listBacklinkProspects({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listBacklinkProspects>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListBacklinkProspectsQueryResult = NonNullable<Awaited<ReturnType<typeof listBacklinkProspects>>>
+export type ListBacklinkProspectsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List saved backlink prospects with outreach status
+ */
+
+export function useListBacklinkProspects<TData = Awaited<ReturnType<typeof listBacklinkProspects>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBacklinkProspects>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListBacklinkProspectsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getDiscoverBacklinkProspectsUrl = () => {
+
+
+
+
+  return `/api/backlinks/prospects`
+}
+
+/**
+ * @summary Discover new prospects — domains that link to your competitors but not to you (DataForSEO, cached)
+ */
+export const discoverBacklinkProspects = async (prospectDiscoveryInput: ProspectDiscoveryInput, options?: RequestInit): Promise<BacklinkProspectList> => {
+
+  return customFetch<BacklinkProspectList>(getDiscoverBacklinkProspectsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      prospectDiscoveryInput,)
+  }
+);}
+
+
+
+
+export const getDiscoverBacklinkProspectsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof discoverBacklinkProspects>>, TError,{data: BodyType<ProspectDiscoveryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof discoverBacklinkProspects>>, TError,{data: BodyType<ProspectDiscoveryInput>}, TContext> => {
+
+const mutationKey = ['discoverBacklinkProspects'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof discoverBacklinkProspects>>, {data: BodyType<ProspectDiscoveryInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  discoverBacklinkProspects(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DiscoverBacklinkProspectsMutationResult = NonNullable<Awaited<ReturnType<typeof discoverBacklinkProspects>>>
+    export type DiscoverBacklinkProspectsMutationBody = BodyType<ProspectDiscoveryInput>
+    export type DiscoverBacklinkProspectsMutationError = ErrorType<void>
+
+    /**
+ * @summary Discover new prospects — domains that link to your competitors but not to you (DataForSEO, cached)
+ */
+export const useDiscoverBacklinkProspects = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof discoverBacklinkProspects>>, TError,{data: BodyType<ProspectDiscoveryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof discoverBacklinkProspects>>,
+        TError,
+        {data: BodyType<ProspectDiscoveryInput>},
+        TContext
+      > => {
+      return useMutation(getDiscoverBacklinkProspectsMutationOptions(options));
+    }
+
+export const getUpdateBacklinkProspectUrl = (prospectId: number,) => {
+
+
+
+
+  return `/api/backlinks/prospects/${prospectId}`
+}
+
+/**
+ * @summary Update outreach status or notes for a prospect
+ */
+export const updateBacklinkProspect = async (prospectId: number,
+    prospectUpdateInput: ProspectUpdateInput, options?: RequestInit): Promise<BacklinkProspect> => {
+
+  return customFetch<BacklinkProspect>(getUpdateBacklinkProspectUrl(prospectId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      prospectUpdateInput,)
+  }
+);}
+
+
+
+
+export const getUpdateBacklinkProspectMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateBacklinkProspect>>, TError,{prospectId: number;data: BodyType<ProspectUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateBacklinkProspect>>, TError,{prospectId: number;data: BodyType<ProspectUpdateInput>}, TContext> => {
+
+const mutationKey = ['updateBacklinkProspect'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateBacklinkProspect>>, {prospectId: number;data: BodyType<ProspectUpdateInput>}> = (props) => {
+          const {prospectId,data} = props ?? {};
+
+          return  updateBacklinkProspect(prospectId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateBacklinkProspectMutationResult = NonNullable<Awaited<ReturnType<typeof updateBacklinkProspect>>>
+    export type UpdateBacklinkProspectMutationBody = BodyType<ProspectUpdateInput>
+    export type UpdateBacklinkProspectMutationError = ErrorType<void>
+
+    /**
+ * @summary Update outreach status or notes for a prospect
+ */
+export const useUpdateBacklinkProspect = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateBacklinkProspect>>, TError,{prospectId: number;data: BodyType<ProspectUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateBacklinkProspect>>,
+        TError,
+        {prospectId: number;data: BodyType<ProspectUpdateInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateBacklinkProspectMutationOptions(options));
+    }
+
+export const getDisconnectIntegrationUrl = (provider: 'gsc' | 'ga4' | 'bing' | 'wp',) => {
 
 
 
@@ -1357,7 +1727,7 @@ export const getDisconnectIntegrationUrl = (provider: 'gsc' | 'ga4' | 'bing',) =
 /**
  * @summary Disconnect a data source from the active site
  */
-export const disconnectIntegration = async (provider: 'gsc' | 'ga4' | 'bing', options?: RequestInit): Promise<OkResponse> => {
+export const disconnectIntegration = async (provider: 'gsc' | 'ga4' | 'bing' | 'wp', options?: RequestInit): Promise<OkResponse> => {
 
   return customFetch<OkResponse>(getDisconnectIntegrationUrl(provider),
   {
@@ -1372,8 +1742,8 @@ export const disconnectIntegration = async (provider: 'gsc' | 'ga4' | 'bing', op
 
 
 export const getDisconnectIntegrationMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectIntegration>>, TError,{provider: 'gsc' | 'ga4' | 'bing'}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof disconnectIntegration>>, TError,{provider: 'gsc' | 'ga4' | 'bing'}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectIntegration>>, TError,{provider: 'gsc' | 'ga4' | 'bing' | 'wp'}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof disconnectIntegration>>, TError,{provider: 'gsc' | 'ga4' | 'bing' | 'wp'}, TContext> => {
 
 const mutationKey = ['disconnectIntegration'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -1385,7 +1755,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof disconnectIntegration>>, {provider: 'gsc' | 'ga4' | 'bing'}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof disconnectIntegration>>, {provider: 'gsc' | 'ga4' | 'bing' | 'wp'}> = (props) => {
           const {provider} = props ?? {};
 
           return  disconnectIntegration(provider,requestOptions)
@@ -1406,11 +1776,11 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
  * @summary Disconnect a data source from the active site
  */
 export const useDisconnectIntegration = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectIntegration>>, TError,{provider: 'gsc' | 'ga4' | 'bing'}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectIntegration>>, TError,{provider: 'gsc' | 'ga4' | 'bing' | 'wp'}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof disconnectIntegration>>,
         TError,
-        {provider: 'gsc' | 'ga4' | 'bing'},
+        {provider: 'gsc' | 'ga4' | 'bing' | 'wp'},
         TContext
       > => {
       return useMutation(getDisconnectIntegrationMutationOptions(options));
@@ -5678,6 +6048,153 @@ export function useGetSeoReport<TData = Awaited<ReturnType<typeof getSeoReport>>
 
 
 
+
+export const getGetResearchLatestUrl = () => {
+
+
+
+
+  return `/api/research/latest`
+}
+
+/**
+ * @summary Latest original-data-research run with its citation-ready findings
+ */
+export const getResearchLatest = async ( options?: RequestInit): Promise<ResearchRunResponse> => {
+
+  return customFetch<ResearchRunResponse>(getGetResearchLatestUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetResearchLatestQueryKey = () => {
+    return [
+    `/api/research/latest`
+    ] as const;
+    }
+
+
+export const getGetResearchLatestQueryOptions = <TData = Awaited<ReturnType<typeof getResearchLatest>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getResearchLatest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetResearchLatestQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getResearchLatest>>> = ({ signal }) => getResearchLatest({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getResearchLatest>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetResearchLatestQueryResult = NonNullable<Awaited<ReturnType<typeof getResearchLatest>>>
+export type GetResearchLatestQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Latest original-data-research run with its citation-ready findings
+ */
+
+export function useGetResearchLatest<TData = Awaited<ReturnType<typeof getResearchLatest>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getResearchLatest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetResearchLatestQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getRunResearchUrl = () => {
+
+
+
+
+  return `/api/research/run`
+}
+
+/**
+ * @summary Run original data research — mines the site's own stored data into citable statistics (no paid APIs beyond cached GSC reads)
+ */
+export const runResearch = async ( options?: RequestInit): Promise<ResearchRunResponse> => {
+
+  return customFetch<ResearchRunResponse>(getRunResearchUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRunResearchMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runResearch>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runResearch>>, TError,void, TContext> => {
+
+const mutationKey = ['runResearch'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runResearch>>, void> = () => {
+
+
+          return  runResearch(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunResearchMutationResult = NonNullable<Awaited<ReturnType<typeof runResearch>>>
+
+    export type RunResearchMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Run original data research — mines the site's own stored data into citable statistics (no paid APIs beyond cached GSC reads)
+ */
+export const useRunResearch = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runResearch>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runResearch>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRunResearchMutationOptions(options));
+    }
 
 export const getGetGscGeoUrl = (params: GetGscGeoParams,) => {
   const normalizedParams = new URLSearchParams();

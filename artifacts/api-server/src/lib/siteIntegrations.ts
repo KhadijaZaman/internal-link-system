@@ -11,7 +11,7 @@ import { LEGACY_SITE_ID } from "./site";
  * cross tenants.
  */
 
-export type IntegrationProvider = "gsc" | "ga4" | "bing";
+export type IntegrationProvider = "gsc" | "ga4" | "bing" | "wp";
 
 export class IntegrationNotConnectedError extends Error {
   provider: IntegrationProvider;
@@ -189,16 +189,48 @@ export async function getBingApiKey(siteId: number): Promise<string> {
   throw new IntegrationNotConnectedError("bing", siteId);
 }
 
+// ---------------------------------------------------------------------------
+// WordPress (Application Password — used for publishing, not crawling)
+// ---------------------------------------------------------------------------
+
+export interface WpCreds {
+  baseUrl: string;
+  username: string;
+  appPassword: string;
+}
+
+export async function getWpCreds(siteId: number): Promise<WpCreds> {
+  const row = await getIntegrationRow(siteId, "wp");
+  if (row) {
+    const baseUrl = row.config["baseUrl"];
+    const username = row.credentials["username"];
+    const appPassword = row.credentials["appPassword"];
+    if (
+      typeof baseUrl === "string" &&
+      typeof username === "string" &&
+      typeof appPassword === "string" &&
+      baseUrl &&
+      username &&
+      appPassword
+    ) {
+      return { baseUrl, username, appPassword };
+    }
+  }
+  throw new IntegrationNotConnectedError("wp", siteId);
+}
+
 /** Non-throwing connected check used by the status endpoint. */
 export async function integrationStatus(siteId: number): Promise<{
   gsc: { connected: boolean; property: string | null; needsProperty: boolean };
   ga4: { connected: boolean; propertyId: string | null };
   bing: { connected: boolean };
+  wp: { connected: boolean; baseUrl: string | null; username: string | null };
 }> {
-  const [gscRow, ga4Row, bingRow] = await Promise.all([
+  const [gscRow, ga4Row, bingRow, wpRow] = await Promise.all([
     getIntegrationRow(siteId, "gsc"),
     getIntegrationRow(siteId, "ga4"),
     getIntegrationRow(siteId, "bing"),
+    getIntegrationRow(siteId, "wp"),
   ]);
 
   const isLegacy = siteId === LEGACY_SITE_ID;
@@ -235,5 +267,17 @@ export async function integrationStatus(siteId: number): Promise<{
       ? { connected: true }
       : { connected: false };
 
-  return { gsc, ga4, bing };
+  const wp =
+    wpRow &&
+    typeof wpRow.credentials["username"] === "string" &&
+    typeof wpRow.credentials["appPassword"] === "string" &&
+    typeof wpRow.config["baseUrl"] === "string"
+      ? {
+          connected: true,
+          baseUrl: wpRow.config["baseUrl"] as string,
+          username: wpRow.credentials["username"] as string,
+        }
+      : { connected: false, baseUrl: null, username: null };
+
+  return { gsc, ga4, bing, wp };
 }
