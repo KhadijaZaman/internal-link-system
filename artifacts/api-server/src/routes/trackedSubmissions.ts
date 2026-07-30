@@ -20,6 +20,7 @@ import {
   exportKeywordMovementSheet,
   getStoredSheetUrl,
   isStoredSheetShared,
+  refreshExactImpressions,
   NoTrackedKeywordsError,
 } from "../services/keywordMovementSheet";
 import {
@@ -41,6 +42,32 @@ import { getBingApiKey, IntegrationNotConnectedError } from "../lib/siteIntegrat
 import { loadCannibalizedQueries } from "./gsc";
 
 const router: IRouter = Router();
+
+/**
+ * Fire-and-forget refresh of the "No search data" measurement after a
+ * keyword was added or changed, so the badge doesn't wait for a sheet
+ * export or the next daily sync. Free-quota GSC only; failures (e.g. GSC
+ * not connected) are logged and swallowed — the daily job self-heals.
+ */
+function refreshDeadPhraseInBackground(
+  log: { info: (obj: unknown, msg: string) => void; error: (obj: unknown, msg: string) => void },
+  siteId: number,
+  subs: Array<{ id: number; url: string; keyword: string | null }>,
+): void {
+  const withKeyword = subs.filter((s) => (s.keyword ?? "").trim().length > 0);
+  if (withKeyword.length === 0) return;
+  refreshExactImpressions(siteId, withKeyword)
+    .then((count) =>
+      log.info({ siteId, count }, "refreshed exact-impressions after keyword change"),
+    )
+    .catch((err) => {
+      if (err instanceof IntegrationNotConnectedError) {
+        log.info({ siteId }, "exact-impressions refresh skipped — GSC not connected");
+        return;
+      }
+      log.error({ err, siteId }, "exact-impressions refresh failed");
+    });
+}
 
 function isHttpUrl(raw: string): boolean {
   try {
@@ -135,6 +162,9 @@ router.post("/tracked-submissions", requireAuth, requireSite, async (req, res) =
     keyword: string | null;
   }[] = [];
   const results: (typeof trackedSubmissionsTable.$inferSelect)[] = [];
+  // Rows whose keyword is new or changed — their "No search data" measurement
+  // is refreshed in the background after the response is sent.
+  const needsMeasurement: (typeof trackedSubmissionsTable.$inferSelect)[] = [];
   for (const it of items) {
     const ex = byUrl.get(it.url.toLowerCase());
     if (!ex) {
@@ -144,7 +174,12 @@ router.post("/tracked-submissions", requireAuth, requireSite, async (req, res) =
     if (it.keyword && it.keyword !== ex.keyword) {
       const updated = await db
         .update(trackedSubmissionsTable)
-        .set({ keyword: it.keyword })
+        // Old keyword's measurement no longer applies — clear until re-measured.
+        .set({
+          keyword: it.keyword,
+          exactImpressions28d: null,
+          exactImpressionsCheckedAt: null,
+        })
         .where(
           and(
             eq(trackedSubmissionsTable.id, ex.id),
@@ -152,7 +187,10 @@ router.post("/tracked-submissions", requireAuth, requireSite, async (req, res) =
           ),
         )
         .returning();
-      if (updated[0]) results.push(updated[0]);
+      if (updated[0]) {
+        results.push(updated[0]);
+        needsMeasurement.push(updated[0]);
+      }
     } else {
       results.push(ex);
     }
@@ -163,7 +201,9 @@ router.post("/tracked-submissions", requireAuth, requireSite, async (req, res) =
       .values(toInsert)
       .returning();
     results.push(...inserted);
+    needsMeasurement.push(...inserted);
   }
+  refreshDeadPhraseInBackground(req.log, site.id, needsMeasurement);
   res.status(201).json(results.map(serialize));
 });
 
@@ -184,8 +224,30 @@ router.patch("/tracked-submissions/:id", requireAuth, requireSite, async (req, r
     patch.status = parsed.data.status;
     patch.completedAt = parsed.data.status === "done" ? new Date() : null;
   }
+  let keywordChanged = false;
   if (parsed.data.keyword !== undefined) {
-    patch.keyword = parsed.data.keyword?.trim() || null;
+    const nextKeyword = parsed.data.keyword?.trim() || null;
+    patch.keyword = nextKeyword;
+    // Only treat a real change as one: compare against the stored keyword so
+    // a no-op PATCH doesn't clear the "No search data" measurement.
+    const [current] = await db
+      .select({ keyword: trackedSubmissionsTable.keyword })
+      .from(trackedSubmissionsTable)
+      .where(
+        and(
+          eq(trackedSubmissionsTable.id, id),
+          eq(trackedSubmissionsTable.siteId, site.id),
+        ),
+      )
+      .limit(1);
+    keywordChanged =
+      current !== undefined && (current.keyword ?? null) !== nextKeyword;
+    if (keywordChanged) {
+      // The old keyword's measurement no longer applies — clear it so the
+      // badge never shows stale data, then re-measure in the background.
+      patch.exactImpressions28d = null;
+      patch.exactImpressionsCheckedAt = null;
+    }
   }
   if (Object.keys(patch).length === 0) {
     res.status(400).json({ error: "Nothing to update" });
@@ -204,6 +266,9 @@ router.patch("/tracked-submissions/:id", requireAuth, requireSite, async (req, r
   if (updated.length === 0) {
     res.status(404).json({ error: "Not found" });
     return;
+  }
+  if (keywordChanged) {
+    refreshDeadPhraseInBackground(req.log, site.id, updated);
   }
   res.json(serialize(updated[0]!));
 });

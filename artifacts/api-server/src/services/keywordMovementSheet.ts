@@ -47,6 +47,8 @@ import {
   queryGscDimension,
   pageVariantsRegex,
   keywordContainsRegex,
+  withCache,
+  GSC_CACHE_TTL_MS,
   type GscDimensionRow,
 } from "../integrations/gsc";
 import {
@@ -825,6 +827,77 @@ async function mapWithConcurrency<T, R>(
   const failed = settled.find((s) => s.status === "rejected");
   if (failed && failed.status === "rejected") throw failed.reason;
   return results;
+}
+
+// ---------- Dead-phrase measurement refresh (no sheet involved) ----------
+
+/** Yesterday in Pacific Time (GSC's data day) as an ISO date string. */
+function ptYesterday(): string {
+  const ptToday = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Los_Angeles",
+  }).format(new Date());
+  const end = new Date(`${ptToday}T00:00:00Z`);
+  end.setUTCDate(end.getUTCDate() - 1);
+  return isoDay(end);
+}
+
+/**
+ * Refresh exact_impressions_28d / exact_impressions_checked_at for the given
+ * tracked submissions WITHOUT exporting the sheet — used right after a
+ * keyword is added or changed so the "No search data" badge (and the
+ * rephrasing entry point behind it) never waits for a sheet export or the
+ * next daily sync. Same measurement semantics as the export path: US
+ * traffic, queries containing the keyword as a phrase, trailing 28 days
+ * through yesterday PT, dataState "all". One cached free-quota GSC call per
+ * submission. Submissions without a keyword are skipped (their measurement
+ * should already have been cleared by the caller).
+ *
+ * Propagates GSC errors (e.g. IntegrationNotConnectedError) — callers doing
+ * fire-and-forget must catch and log.
+ */
+export async function refreshExactImpressions(
+  siteId: number,
+  subs: Array<{ id: number; url: string; keyword: string | null }>,
+): Promise<number> {
+  const tracked = subs
+    .map((s) => ({ id: s.id, url: s.url, keyword: (s.keyword ?? "").trim() }))
+    .filter((s) => s.keyword.length > 0);
+  if (tracked.length === 0) return 0;
+
+  const endDate = ptYesterday();
+  const startD = new Date(`${endDate}T00:00:00Z`);
+  startD.setUTCDate(startD.getUTCDate() - 27);
+  const startDate = isoDay(startD);
+
+  await mapWithConcurrency(tracked, 4, async (t) => {
+    const cacheKey = `s${siteId}|dead-phrase:v1:${t.url}:${t.keyword}:${endDate}`;
+    const total = await withCache(cacheKey, GSC_CACHE_TTL_MS, async () => {
+      const rows = await queryGscDimension({
+        siteId,
+        startDate,
+        endDate,
+        dimension: "date",
+        pageRegex: pageVariantsRegex(t.url),
+        queryFilter: {
+          expression: keywordContainsRegex(t.keyword),
+          operator: "includingRegex",
+        },
+        countryFilter: "usa",
+        dataState: "all",
+      });
+      return Math.round(rows.reduce((acc, r) => acc + r.impressions, 0));
+    });
+    await db
+      .update(trackedSubmissionsTable)
+      .set({ exactImpressions28d: total, exactImpressionsCheckedAt: new Date() })
+      .where(
+        and(
+          eq(trackedSubmissionsTable.id, t.id),
+          eq(trackedSubmissionsTable.siteId, siteId),
+        ),
+      );
+  });
+  return tracked.length;
 }
 
 export class NoTrackedKeywordsError extends Error {
