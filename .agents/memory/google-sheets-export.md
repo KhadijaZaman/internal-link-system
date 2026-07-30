@@ -88,3 +88,6 @@ keyword as a whole-word phrase (`keywordContainsRegex`, case-insensitive) — ex
 position blank whenever the exact query string had 0 impressions that day (user asked for positions
 to fill in). `keywordExactRegex` is still used by keyword-report and tracked-submission routes;
 don't "unify" them without asking.
+
+## US-only + exact-query matching (user directive 2026-07-30)
+All GSC reads feeding the keyword-movement sheet use `countryFilter: "usa"` and EXACT query match (not phrase-contains) so the sheet matches the user's GSC UI view (US filter + exact query). Blank daily position cells = zero exact-query impressions that day — expected, not a bug. Do not revert to worldwide/contains without asking.
