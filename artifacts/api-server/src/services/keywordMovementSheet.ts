@@ -240,6 +240,14 @@ const COLOR_RGB: Record<Exclude<CellColor, null>, {
   orange: { red: 0.976, green: 0.796, blue: 0.612 },
 };
 const WHITE = { red: 1, green: 1, blue: 1 };
+// Neutral gray for "dead phrase" keyword cells — deliberately NOT red so it
+// can't be confused with the red "declined" movement color.
+const GRAY = { red: 0.851, green: 0.851, blue: 0.851 };
+
+const DEAD_KEYWORD_NOTE =
+  "No search data: this exact phrase got 0 US Google impressions in the last 28 days — nobody searches this exact wording. Consider rephrasing the target keyword.";
+const DEAD_LEGEND_TEXT =
+  "Gray keyword = no US exact-match impressions in the last 28 days (dead phrasing — consider rephrasing)";
 
 function bgCell(c: CellColor): {
   userEnteredFormat: { backgroundColor: { red: number; green: number; blue: number } };
@@ -260,7 +268,7 @@ function summaryHeaderCols(rangeLabel: string): HeaderCol[] {
   return [
     {
       label: "Target keyword",
-      note: "Tracked keyword from My Submissions. The matching keyword tab holds its day-by-day detail.",
+      note: "Tracked keyword from My Submissions. The matching keyword tab holds its day-by-day detail. Gray cell = 0 US exact-match impressions in the last 28 days (dead phrasing — consider rephrasing).",
     },
     { label: "Page", note: "The page this keyword is tracked against." },
     {
@@ -961,7 +969,7 @@ export async function exportKeywordMovementSheet(
     .where(eq(trackedSubmissionsTable.siteId, siteId));
   const tracked = subs
     .filter((s) => (s.keyword ?? "").trim().length > 0)
-    .map((s) => ({ url: s.url, keyword: (s.keyword ?? "").trim() }));
+    .map((s) => ({ id: s.id, url: s.url, keyword: (s.keyword ?? "").trim() }));
   if (tracked.length === 0) throw new NoTrackedKeywordsError();
 
   // With fresh data (dataState "all") GSC covers through yesterday Pacific
@@ -1024,8 +1032,40 @@ export async function exportKeywordMovementSheet(
       dataState: "all",
     });
     const byDate = new Map(rows.map((r) => [r.key, r]));
-    return { keyword: t.keyword, url: t.url, byDate } satisfies KeywordSeries;
+    return { id: t.id, keyword: t.keyword, url: t.url, byDate };
   });
+
+  // ---- "Dead phrase" detection: US exact-match impressions, trailing 28d ----
+  // Reuses the per-keyword series just fetched (zero extra API calls) and
+  // persists per-submission totals so the dashboard can badge keywords with
+  // no search data. 0 impressions over 28 days = nobody searches this exact
+  // phrasing — it looks like "data not updated" but is really a dead phrase.
+  const last28StartD = new Date(end);
+  last28StartD.setUTCDate(last28StartD.getUTCDate() - 27);
+  const last28Start = isoDay(last28StartD);
+  const checkedAt = new Date();
+  const impressions28ById = new Map<number, number>();
+  for (const s of series) {
+    let sum = 0;
+    for (const [date, row] of s.byDate) {
+      if (date >= last28Start) sum += row.impressions;
+    }
+    impressions28ById.set(s.id, Math.round(sum));
+  }
+  await mapWithConcurrency(series, 4, (s) =>
+    db
+      .update(trackedSubmissionsTable)
+      .set({
+        exactImpressions28d: impressions28ById.get(s.id) ?? 0,
+        exactImpressionsCheckedAt: checkedAt,
+      })
+      .where(
+        and(
+          eq(trackedSubmissionsTable.id, s.id),
+          eq(trackedSubmissionsTable.siteId, siteId),
+        ),
+      ),
+  );
 
   const summaries = series.map((s) =>
     summarize(s, dates, last7Start, prior7Start),
@@ -1049,7 +1089,7 @@ export async function exportKeywordMovementSheet(
   );
 
   const summaryGrid = {
-    rowCount: sortedSummaries.length + 5,
+    rowCount: sortedSummaries.length + 6,
     columnCount: 11,
     frozenRowCount: 1,
   };
@@ -1331,6 +1371,29 @@ export async function exportKeywordMovementSheet(
             fields: "userEnteredFormat.backgroundColor",
           },
         })),
+        // Dead-phrase marking — summary tab: gray background + hover note on
+        // the Target keyword cell for keywords with 0 US exact-match
+        // impressions over the trailing 28 days.
+        ...(sortedSeries.length > 0
+          ? [
+              {
+                updateCells: {
+                  start: { sheetId: summarySheetId, rowIndex: 1, columnIndex: 0 },
+                  rows: sortedSeries.map((s) => ({
+                    values: [
+                      (impressions28ById.get(s.id) ?? 0) === 0
+                        ? {
+                            userEnteredFormat: { backgroundColor: GRAY },
+                            note: DEAD_KEYWORD_NOTE,
+                          }
+                        : { userEnteredFormat: { backgroundColor: WHITE } },
+                    ],
+                  })),
+                  fields: "userEnteredFormat.backgroundColor,note",
+                },
+              },
+            ]
+          : []),
         // Color coding — summary tab: columns F..K (last-7d values + their
         // change vs prior 7d) per keyword row.
         {
@@ -1361,7 +1424,10 @@ export async function exportKeywordMovementSheet(
               rowIndex: sortedSummaries.length + 2,
               columnIndex: 0,
             },
-            rows: LEGEND_ROWS.map((l) => ({ values: [bgCell(l.color)] })),
+            rows: [
+              ...LEGEND_ROWS.map((l) => ({ values: [bgCell(l.color)] })),
+              { values: [{ userEnteredFormat: { backgroundColor: GRAY } }] },
+            ],
             fields: "userEnteredFormat.backgroundColor",
           },
         },
@@ -1378,7 +1444,9 @@ export async function exportKeywordMovementSheet(
     )}?valueInputOption=RAW`,
     {
       method: "PUT",
-      body: { values: LEGEND_ROWS.map((l) => [l.text]) },
+      body: {
+        values: [...LEGEND_ROWS.map((l) => [l.text]), [DEAD_LEGEND_TEXT]],
+      },
     },
   );
 

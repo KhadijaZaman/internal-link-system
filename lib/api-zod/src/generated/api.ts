@@ -1022,7 +1022,9 @@ export const ListTrackedSubmissionsResponseItem = zod.object({
   "note": zod.string().nullish(),
   "status": zod.string(),
   "createdAt": zod.coerce.date(),
-  "completedAt": zod.coerce.date().nullish()
+  "completedAt": zod.coerce.date().nullish(),
+  "exactImpressions28d": zod.number().nullish().describe('US exact-query Google impressions over the trailing 28 days, captured during the keyword-movement sheet export. 0 with a recent checked-at = dead phrasing nobody searches. Null = never measured.'),
+  "exactImpressionsCheckedAt": zod.coerce.date().nullish()
 })
 export const ListTrackedSubmissionsResponse = zod.array(ListTrackedSubmissionsResponseItem)
 
@@ -1065,7 +1067,9 @@ export const UpdateTrackedSubmissionResponse = zod.object({
   "note": zod.string().nullish(),
   "status": zod.string(),
   "createdAt": zod.coerce.date(),
-  "completedAt": zod.coerce.date().nullish()
+  "completedAt": zod.coerce.date().nullish(),
+  "exactImpressions28d": zod.number().nullish().describe('US exact-query Google impressions over the trailing 28 days, captured during the keyword-movement sheet export. 0 with a recent checked-at = dead phrasing nobody searches. Null = never measured.'),
+  "exactImpressionsCheckedAt": zod.coerce.date().nullish()
 })
 
 

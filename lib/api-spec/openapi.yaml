@@ -3421,6 +3421,14 @@ components:
         status: { type: string }
         createdAt: { type: string, format: date-time }
         completedAt: { type: ["string", "null"], format: date-time }
+        exactImpressions28d:
+          type: ["integer", "null"]
+          description: >-
+            US exact-query Google impressions over the trailing 28 days,
+            captured during the keyword-movement sheet export. 0 with a
+            recent checked-at = dead phrasing nobody searches. Null = never
+            measured.
+        exactImpressionsCheckedAt: { type: ["string", "null"], format: date-time }
     TrackedSubmissionCreate:
       type: object
       properties:

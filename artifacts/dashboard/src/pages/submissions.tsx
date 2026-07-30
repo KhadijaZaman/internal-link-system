@@ -40,6 +40,7 @@ import {
   Plus,
   X,
   Search,
+  SearchX,
   LineChart,
   FileSpreadsheet,
 } from "lucide-react";
@@ -79,6 +80,8 @@ interface SubmissionItem {
   type: SubmissionType;
   trackedId?: number;
   keyword?: string | null;
+  /** Keyword measured with 0 US exact-match impressions over trailing ~28d. */
+  noSearchData?: boolean;
   title: string;
   detail: string;
   externalUrl: string | null;
@@ -243,6 +246,10 @@ function mapTracked(t: TrackedSubmission): SubmissionItem {
     type: "tracked",
     trackedId: t.id,
     keyword: t.keyword,
+    noSearchData:
+      (t.keyword ?? "").trim().length > 0 &&
+      t.exactImpressions28d === 0 &&
+      t.exactImpressionsCheckedAt != null,
     title: t.label || pathOf(t.url),
     detail: t.note ? `${pathOf(t.url)} · ${t.note}` : pathOf(t.url),
     externalUrl: t.url,
@@ -932,6 +939,16 @@ function SubmissionRow({
               title={`Target keyword: ${item.keyword}`}
             >
               <Search className="h-3 w-3" /> {item.keyword}
+            </Badge>
+          )}
+          {isTracked && item.noSearchData && (
+            <Badge
+              variant="outline"
+              className="flex-none gap-1 bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30"
+              title="This exact phrase got 0 US Google impressions over the last ~28 days — nobody searches this exact wording. Try rephrasing the target keyword."
+            >
+              <SearchX className="h-3 w-3" /> No search data — consider
+              rephrasing
             </Badge>
           )}
         </div>

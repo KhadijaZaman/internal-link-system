@@ -19,4 +19,11 @@ export interface TrackedSubmission {
   createdAt: Date;
   /** @nullable */
   completedAt?: Date | null;
+  /**
+     * US exact-query Google impressions over the trailing 28 days, captured during the keyword-movement sheet export. 0 with a recent checked-at = dead phrasing nobody searches. Null = never measured.
+     * @nullable
+     */
+  exactImpressions28d?: number | null;
+  /** @nullable */
+  exactImpressionsCheckedAt?: Date | null;
 }

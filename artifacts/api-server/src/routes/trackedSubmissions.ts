@@ -61,6 +61,8 @@ function serialize(t: typeof trackedSubmissionsTable.$inferSelect) {
     status: t.status,
     createdAt: (t.createdAt ?? new Date()).toISOString(),
     completedAt: t.completedAt?.toISOString() ?? null,
+    exactImpressions28d: t.exactImpressions28d,
+    exactImpressionsCheckedAt: t.exactImpressionsCheckedAt?.toISOString() ?? null,
   };
 }
 

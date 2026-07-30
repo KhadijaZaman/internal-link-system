@@ -20,6 +20,14 @@ export const trackedSubmissionsTable = pgTable("tracked_submissions", {
   status: text("status").default("tracking").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
+  // US exact-query-match Google impressions over the trailing 28 days,
+  // captured for free during the keyword-movement sheet export (no extra
+  // paid calls). Null = never measured (no keyword / no export yet).
+  // 0 + a recent checked-at = a dead phrasing nobody searches.
+  exactImpressions28d: integer("exact_impressions_28d"),
+  exactImpressionsCheckedAt: timestamp("exact_impressions_checked_at", {
+    withTimezone: true,
+  }),
 });
 
 export type TrackedSubmission = typeof trackedSubmissionsTable.$inferSelect;
