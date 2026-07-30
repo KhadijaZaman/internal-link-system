@@ -46,6 +46,7 @@ import { canonicalPath } from "../lib/urlCanon";
 import {
   queryGscDimension,
   pageVariantsRegex,
+  keywordContainsRegex,
   type GscDimensionRow,
 } from "../integrations/gsc";
 import {
@@ -219,7 +220,7 @@ function keywordTabValues(
 // the explanation instead of a wider header.
 const KEYWORD_ROW_NOTES: string[] = [
   "One column per day (Pacific Time), through yesterday. The most recent ~2 days are fresh Search Console estimates and can revise upward until Google finalizes them.",
-  "Times the page appeared in US Google results for the exact target keyword that day (matches the GSC UI with a United States country filter + exact-query filter). Blank position = zero impressions for the exact query that day. Orange = new record high up to that day.",
+  "Times the page appeared in US Google results for the target keyword that day, including longer queries containing it (e.g. \"best <keyword>\") — matches the GSC UI with a United States filter + \"Queries containing\". Orange = new record high up to that day.",
   "Impressions vs the day before. Green = up, red = down.",
   "Google clicks for the target keyword that day. Orange = new record high.",
   "Clicks vs the day before. Green = up, red = down.",
@@ -264,7 +265,7 @@ function summaryHeaderCols(rangeLabel: string): HeaderCol[] {
     { label: "Page", note: "The page this keyword is tracked against." },
     {
       label: `Impressions (${rangeLabel})`,
-      note: "US Google impressions for this exact keyword on this page over the whole range (Search Console, United States filter, exact-query match). Range totals are context only — never color-coded.",
+      note: "US Google impressions for this keyword — including longer queries containing it as a phrase — on this page over the whole range (Search Console, United States filter). Range totals are context only — never color-coded.",
     },
     {
       label: `Clicks (${rangeLabel})`,
@@ -769,7 +770,7 @@ const TRACKED_LEGEND: Array<{ color: Exclude<CellColor, null>; text: string }> =
 
 function trackedPagesNotes(data: TrackedPagesData): string[] {
   const notes: string[] = [
-    "Google columns read Search Console for each page across ALL search queries, US traffic only (the Keyword summary tab filters to the exact target keyword, also US-only); includes fresh data — the most recent ~2 days can revise upward.",
+    "Google columns read Search Console for each page across ALL search queries, US traffic only (the Keyword summary tab filters to queries containing the target keyword, also US-only); includes fresh data — the most recent ~2 days can revise upward.",
   ];
   if (data.bingSynced) {
     notes.push(
@@ -1002,11 +1003,12 @@ export async function exportKeywordMovementSheet(
   trackedDataPromise.catch(() => {});
 
   // One GSC call per keyword: daily series for page (incl. #fragment/?query
-  // variants), US traffic only, EXACT query match — deliberately mirrors the
-  // GSC UI with a US country filter + exact-query filter so the sheet and the
-  // console agree (user directive 2026-07-30; previously worldwide +
-  // phrase-contains). Days where the exact query had zero impressions show
-  // blank position cells — that's expected with exact matching.
+  // variants), US traffic only, queries CONTAINING the keyword as a phrase
+  // (case-insensitive) — "best peec ai alternatives" counts toward "peec ai
+  // alternatives". User directive 2026-07-30: US filter matches their GSC
+  // view; exact-only matching was tried and rejected the same day because it
+  // zeroed out keywords whose real traffic arrives via variants. Matches the
+  // GSC UI with US country filter + "Queries containing" (not "Exact query").
   const series = await mapWithConcurrency(tracked, 4, async (t) => {
     const rows = await queryGscDimension({
       siteId,
@@ -1015,8 +1017,8 @@ export async function exportKeywordMovementSheet(
       dimension: "date",
       pageRegex: pageVariantsRegex(t.url),
       queryFilter: {
-        expression: t.keyword,
-        operator: "equals",
+        expression: keywordContainsRegex(t.keyword),
+        operator: "includingRegex",
       },
       countryFilter: "usa",
       dataState: "all",

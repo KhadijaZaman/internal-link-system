@@ -91,3 +91,6 @@ don't "unify" them without asking.
 
 ## US-only + exact-query matching (user directive 2026-07-30)
 All GSC reads feeding the keyword-movement sheet use `countryFilter: "usa"` and EXACT query match (not phrase-contains) so the sheet matches the user's GSC UI view (US filter + exact query). Blank daily position cells = zero exact-query impressions that day — expected, not a bug. Do not revert to worldwide/contains without asking.
+
+### Update (same day): exact-match REVERTED → US + phrase-contains
+Exact matching zeroed out keywords whose traffic arrives via variants ("best <keyword>"), which the user read as "sheet not updated". Final state: `countryFilter: "usa"` + `keywordContainsRegex` includingRegex. Matches GSC UI "Queries containing" + US, NOT "Exact query".
