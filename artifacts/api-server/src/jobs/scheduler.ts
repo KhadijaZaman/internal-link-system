@@ -101,22 +101,61 @@ export async function runJobForAllSites(name: JobName): Promise<void> {
   }
 }
 
-// Daily crons that must not silently fall behind when the server was asleep
-// (dev workspace) or recycled (autoscale) at the scheduled minute. Weekly /
-// monthly jobs are excluded on purpose: a missed weekly run self-heals within
-// days and re-running some of them off-schedule is more surprising than
-// helpful. embed_kb_chunks already sweeps every 10 minutes.
-const DAILY_CATCHUP_JOBS: JobName[] = ["sync_keyword_sheet", "sync_bing_pages"];
+// Scheduled crons that must not silently fall behind when the server was
+// asleep (dev workspace) or recycled (autoscale) at the scheduled minute.
+// Each entry pairs a cron job with a staleness threshold = its cadence plus
+// generous slack, so the sweep only fires when a scheduled run was actually
+// missed, never merely because a run is "due soon". ORDER MATTERS: entries
+// run top-to-bottom per sweep, so gsc_inventory_and_losers precedes
+// sync_ga4_pages (GA4 rollups join onto the pages GSC refreshes), mirroring
+// the Mon 03:00 → 03:30 cron ordering. Spend-sensitive on-demand jobs
+// (optimize_queued_urls, keyword_clustering, analyze_similarity,
+// generate_topical_map, etc.) are deliberately absent — they must never run
+// without an explicit trigger. embed_kb_chunks already sweeps every 10 min.
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 // A healthy daily job runs every 24h; 26h leaves slack for slow runs and DST.
-const CATCHUP_MAX_AGE_MS = 26 * 60 * 60 * 1000;
+const DAILY_MAX_AGE_MS = 26 * HOUR_MS;
+// Weekly jobs get a full extra day of slack (>8 days = a week was missed).
+const WEEKLY_MAX_AGE_MS = 8 * DAY_MS;
+// Monthly re-embed: months vary 28-31 days; 33 days means one was skipped.
+const MONTHLY_MAX_AGE_MS = 33 * DAY_MS;
+
+// `requirePriorRun` (weekly/monthly): a site that has NEVER run the job is
+// not "behind" — the regular cron will pick it up within its cadence. Without
+// this, adding a new site would make the next sweep fire every heavy weekly
+// job plus the monthly re-embed at once. Daily jobs keep the original
+// run-if-never-run behavior (cheap, and a new site wants them same-day).
+const CATCHUP_JOBS: Array<{
+  name: JobName;
+  maxAgeMs: number;
+  requirePriorRun?: boolean;
+}> = [
+  // Daily
+  { name: "sync_keyword_sheet", maxAgeMs: DAILY_MAX_AGE_MS },
+  { name: "sync_bing_pages", maxAgeMs: DAILY_MAX_AGE_MS },
+  // Weekly — GSC inventory MUST come before GA4 (ordering dependency)
+  { name: "crawl_wordpress", maxAgeMs: WEEKLY_MAX_AGE_MS, requirePriorRun: true },
+  { name: "gsc_inventory_and_losers", maxAgeMs: WEEKLY_MAX_AGE_MS, requirePriorRun: true },
+  { name: "sync_ga4_pages", maxAgeMs: WEEKLY_MAX_AGE_MS, requirePriorRun: true },
+  { name: "semantic_linking", maxAgeMs: WEEKLY_MAX_AGE_MS, requirePriorRun: true },
+  { name: "audit_orphans", maxAgeMs: WEEKLY_MAX_AGE_MS, requirePriorRun: true },
+  { name: "audit_over_linked", maxAgeMs: WEEKLY_MAX_AGE_MS, requirePriorRun: true },
+  { name: "audit_broken_links", maxAgeMs: WEEKLY_MAX_AGE_MS, requirePriorRun: true },
+  { name: "crawl_link_map", maxAgeMs: WEEKLY_MAX_AGE_MS, requirePriorRun: true },
+  { name: "weekly_digest", maxAgeMs: WEEKLY_MAX_AGE_MS, requirePriorRun: true },
+  // Monthly
+  { name: "reembed_wordpress", maxAgeMs: MONTHLY_MAX_AGE_MS, requirePriorRun: true },
+];
 
 /**
- * Run any daily job whose last recorded run (per site) is older than ~26h.
- * Called on startup and hourly. Duplicate-safe: recordJobStart bumps
- * last_run_at as soon as a run begins, and runJob's per-(job,site) lock
- * refuses a second concurrent run, so an overlap with the regular cron can
- * never double-run. Stale "running" rows (process died mid-job) have an old
- * last_run_at, so interrupted runs are retried too.
+ * Run any scheduled job whose last recorded run (per site) is older than its
+ * cadence-specific threshold. Called on startup and hourly. Duplicate-safe:
+ * recordJobStart bumps last_run_at as soon as a run begins, and runJob's
+ * per-(job,site) lock refuses a second concurrent run, so an overlap with
+ * the regular cron can never double-run. Stale "running" rows (process died
+ * mid-job) have an old last_run_at, so interrupted runs are retried too.
+ * Jobs run sequentially in list order, preserving the GSC→GA4 dependency.
  */
 export async function runDailyCatchUp(): Promise<void> {
   let sites;
@@ -126,15 +165,16 @@ export async function runDailyCatchUp(): Promise<void> {
     logger.error({ err: e }, "Catch-up: failed to list sites");
     return;
   }
-  for (const name of DAILY_CATCHUP_JOBS) {
+  for (const { name, maxAgeMs, requirePriorRun } of CATCHUP_JOBS) {
     for (const site of sites) {
       try {
         const last = await lastRunAt(name, site.id);
+        if (!last && requirePriorRun) continue;
         const age = last ? Date.now() - last.getTime() : Infinity;
-        if (age <= CATCHUP_MAX_AGE_MS) continue;
+        if (age <= maxAgeMs) continue;
         logger.info(
           { jobName: name, siteId: site.id, lastRunAt: last ?? null },
-          "Catch-up: daily job is overdue; running now",
+          "Catch-up: scheduled job is overdue; running now",
         );
         const result = await runJob(name, site);
         if (result.started) {
@@ -202,10 +242,11 @@ export function startScheduler(): void {
   // Daily 04:00 UTC — Bing Webmaster stats (free API, one key; full-window
   // delete+reinsert so daily cadence just keeps the rolling window fresh).
   cron.schedule("0 4 * * *", all("sync_bing_pages"), { timezone: "UTC" });
-  // Hourly catch-up sweep: reruns any daily job whose last run is >26h old,
-  // covering servers that were asleep/recycled at the scheduled minute. Also
-  // fired once on startup (index.ts). Cheap when nothing is overdue (one
-  // SELECT per daily job per site).
+  // Hourly catch-up sweep: reruns any scheduled job whose last run exceeds
+  // its cadence threshold (daily >26h, weekly >8d, monthly >33d), covering
+  // servers that were asleep/recycled at the scheduled minute. Also fired
+  // once on startup (index.ts). Cheap when nothing is overdue (one SELECT
+  // per catch-up job per site).
   cron.schedule("17 * * * *", () => void runDailyCatchUp(), { timezone: "UTC" });
   logger.info(
     "Cron schedules registered (UTC: Sun02 WP crawl, Mon03 GSC, Tue06 semantic_linking, " +
