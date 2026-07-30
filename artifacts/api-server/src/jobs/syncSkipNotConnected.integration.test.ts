@@ -13,6 +13,7 @@ import { runSyncBingPages } from "./syncBingPages";
 import { runSyncGa4Pages } from "./syncGa4Pages";
 import { runGscInventoryAndLosers } from "./gscInventory";
 import { runSyncKeywordSheet } from "./syncKeywordSheet";
+import { runCrawlWordpress } from "./crawlWordpress";
 import type { SiteContext } from "../lib/site";
 
 /**
@@ -47,6 +48,11 @@ const SYNC_JOBS: Array<{ name: JobName; fn: (site: SiteContext) => Promise<void>
   { name: "sync_ga4_pages", fn: runSyncGa4Pages },
   { name: "gsc_inventory_and_losers", fn: runGscInventoryAndLosers },
   { name: "sync_keyword_sheet", fn: runSyncKeywordSheet },
+  // The weekly content crawl skips quietly too: a site with no sitemapUrl
+  // (never connected WordPress / a content source) raises
+  // IntegrationNotConnectedError from the fetch stage, which the job treats
+  // as a configuration state (status ok), not a failure.
+  { name: "crawl_wordpress", fn: runCrawlWordpress },
 ];
 
 const suffix = `${Date.now()}-${process.pid}`;

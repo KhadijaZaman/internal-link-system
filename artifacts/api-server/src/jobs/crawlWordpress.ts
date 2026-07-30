@@ -15,6 +15,7 @@ import {
 } from "../lib/urlCanon";
 import { sectionFor } from "../lib/sections";
 import { type SiteContext } from "../lib/site";
+import { IntegrationNotConnectedError } from "../lib/siteIntegrations";
 import { budgetForSite } from "../lib/jobBudget";
 import { embedText } from "../integrations/openaiEmbed";
 import {
@@ -59,7 +60,23 @@ export async function runCrawlWordpress(
 ): Promise<void> {
   const budget = budgetForSite(site);
   logger.info("Content crawl: starting (sitemap source)");
-  const rawItems = await fetchAllSitemapContent(site);
+  let rawItems: Awaited<ReturnType<typeof fetchAllSitemapContent>>;
+  try {
+    rawItems = await fetchAllSitemapContent(site);
+  } catch (e) {
+    // Graceful skip (status ok): a site that never connected a content
+    // source (no sitemap / WordPress) is a configuration state, not an
+    // error — recording an error run would make the weekly cron and the
+    // catch-up sweep look broken for a perfectly healthy site.
+    if (e instanceof IntegrationNotConnectedError) {
+      logger.info(
+        { siteId: site.id },
+        "crawl_wordpress skipped — content source not connected",
+      );
+      return;
+    }
+    throw e;
+  }
 
   // URL hygiene: every URL entering wp_posts / link_graph is canonicalized
   // (no fragment/query/trailing slash, lowercase) and blocklisted paths are

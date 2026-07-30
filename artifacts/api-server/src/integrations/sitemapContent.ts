@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import { logger } from "../lib/logger";
 import { LEGACY_SITE_ID } from "../lib/site";
+import { IntegrationNotConnectedError } from "../lib/siteIntegrations";
 import {
   classifyPlacement,
   placementRank,
@@ -324,9 +325,10 @@ export async function fetchAllSitemapContent(site: {
     (site.id === LEGACY_SITE_ID
       ? getSitemap()
       : (() => {
-          throw new Error(
-            `Site ${site.id} (${site.host}) has no sitemapUrl configured; cannot crawl content`,
-          );
+          // No sitemap configured means the site never connected a content
+          // source — a configuration state, not a failure. Callers (the
+          // weekly crawl job) catch this and skip quietly with status ok.
+          throw new IntegrationNotConnectedError("wp", site.id);
         })());
   const entries = await fetchSitemapEntries(sitemap, domain);
   logger.info({ count: entries.length }, "Sitemap content: urls discovered");
