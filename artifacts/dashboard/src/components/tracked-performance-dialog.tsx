@@ -43,6 +43,7 @@ import {
   FileSearch,
   Globe,
   Search,
+  SearchX,
   Swords,
   Target,
   TrendingUp,
@@ -60,6 +61,10 @@ import {
   RANGE_OPTIONS,
   COUNTRY_OPTIONS,
 } from "@/components/perf-blocks";
+
+function normQuery(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, " ").trim();
+}
 
 function pathOf(url: string): string {
   try {
@@ -469,6 +474,32 @@ export function TrackedPerformanceDialog({
     },
   });
 
+  // One-click swap of the tracked keyword to a suggested query.
+  const adoptKeyword = (query: string) => {
+    const next = query.trim();
+    if (next.length === 0) return;
+    updateMutation.mutate(
+      { id: trackedId, data: { keyword: next } },
+      {
+        onSuccess: () => {
+          setEffectiveKeyword(next);
+          setKeywordDraft(next);
+          setEditingKeyword(false);
+          toast({ title: `Keyword updated: “${next}”` });
+          queryClient.invalidateQueries({
+            queryKey: getListTrackedSubmissionsQueryKey(),
+          });
+          // Path-only key: invalidates every cached days-range for this URL.
+          queryClient.invalidateQueries({
+            queryKey: [`/api/tracked-submissions/${trackedId}/report`],
+          });
+        },
+        onError: () =>
+          toast({ variant: "destructive", title: "Couldn't update keyword" }),
+      },
+    );
+  };
+
   const saveKeyword = () => {
     const next = keywordDraft.trim();
     updateMutation.mutate(
@@ -506,6 +537,24 @@ export function TrackedPerformanceDialog({
 
   const d: TrackedReport | undefined = reportQ.data;
   const gsc = d?.gsc.data ?? null;
+  // Dead phrase: a keyword is set but Google recorded zero impressions for
+  // it in this range. Offer real queries the page already shows up for.
+  const keywordIsDead =
+    d?.gsc.status === "ok" &&
+    d.keyword != null &&
+    gsc != null &&
+    (gsc.keywordTotals?.impressions ?? 0) === 0;
+  const rephraseSuggestions =
+    keywordIsDead && gsc
+      ? gsc.topQueries
+          .filter(
+            (q) =>
+              q.impressions > 0 &&
+              !q.isTracked &&
+              normQuery(q.query) !== normQuery(d?.keyword ?? ""),
+          )
+          .slice(0, 3)
+      : [];
   const trackedShare =
     gsc && gsc.keywordTotals && gsc.overallTotals.impressions > 0
       ? (gsc.keywordTotals.impressions / gsc.overallTotals.impressions) * 100
@@ -699,6 +748,52 @@ export function TrackedPerformanceDialog({
           </div>
         ) : d ? (
           <div className="space-y-4">
+            {/* ---------- Dead-phrase rephrasing suggestions ---------- */}
+            {keywordIsDead && rephraseSuggestions.length > 0 && (
+              <div
+                className="rounded-lg border border-orange-500/30 bg-orange-500/5 p-3 space-y-2"
+                data-testid="rephrase-suggestions"
+              >
+                <div className="flex items-center gap-1.5">
+                  <SearchX className="h-4 w-4 text-orange-600 dark:text-orange-400 shrink-0" />
+                  <span className="text-sm font-medium">
+                    Nobody searches “{d.keyword}” — try one of these instead
+                  </span>
+                  <InfoTip>
+                    Your exact keyword got 0 Google impressions in this range,
+                    but the page does show up for these real searches. Picking
+                    one replaces the tracked keyword — no data is lost, and you
+                    can edit it back anytime.
+                  </InfoTip>
+                </div>
+                <div className="space-y-1.5">
+                  {rephraseSuggestions.map((q) => (
+                    <div
+                      key={q.query}
+                      className="flex items-center gap-2 rounded-md border border-border/60 bg-background px-3 py-1.5"
+                      data-testid={`rephrase-option-${q.query}`}
+                    >
+                      <span className="text-sm truncate">{q.query}</span>
+                      <span className="ml-auto text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                        {q.impressions.toLocaleString()} impressions ·{" "}
+                        {q.clicks.toLocaleString()} clicks · pos {fmtPos(q.position)}
+                      </span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-xs shrink-0"
+                        disabled={updateMutation.isPending}
+                        onClick={() => adoptKeyword(q.query)}
+                      >
+                        Use this keyword
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* ---------- 0. At a glance ---------- */}
             <SnapshotOverview d={d} days={days} onOpenSection={openSection} />
 

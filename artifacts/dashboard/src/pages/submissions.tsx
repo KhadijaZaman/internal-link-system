@@ -945,7 +945,7 @@ function SubmissionRow({
             <Badge
               variant="outline"
               className="flex-none gap-1 bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30"
-              title="This exact phrase got 0 US Google impressions over the last ~28 days — nobody searches this exact wording. Try rephrasing the target keyword."
+              title="This exact phrase got 0 US Google impressions over the last ~28 days — nobody searches this exact wording. Open Performance to see real searches this page shows up for and swap the keyword in one click."
             >
               <SearchX className="h-3 w-3" /> No search data — consider
               rephrasing
