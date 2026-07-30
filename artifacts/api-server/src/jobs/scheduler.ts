@@ -1,5 +1,5 @@
 import cron from "node-cron";
-import { registerJob, runJob, type JobName } from "./runner";
+import { registerJob, runJob, lastRunAt, type JobName } from "./runner";
 import { runCrawlLinkMap } from "./crawlLinkMap";
 import { runGscInventoryAndLosers } from "./gscInventory";
 import { runOptimizeQueuedUrls } from "./optimizeUrls";
@@ -101,6 +101,60 @@ export async function runJobForAllSites(name: JobName): Promise<void> {
   }
 }
 
+// Daily crons that must not silently fall behind when the server was asleep
+// (dev workspace) or recycled (autoscale) at the scheduled minute. Weekly /
+// monthly jobs are excluded on purpose: a missed weekly run self-heals within
+// days and re-running some of them off-schedule is more surprising than
+// helpful. embed_kb_chunks already sweeps every 10 minutes.
+const DAILY_CATCHUP_JOBS: JobName[] = ["sync_keyword_sheet", "sync_bing_pages"];
+// A healthy daily job runs every 24h; 26h leaves slack for slow runs and DST.
+const CATCHUP_MAX_AGE_MS = 26 * 60 * 60 * 1000;
+
+/**
+ * Run any daily job whose last recorded run (per site) is older than ~26h.
+ * Called on startup and hourly. Duplicate-safe: recordJobStart bumps
+ * last_run_at as soon as a run begins, and runJob's per-(job,site) lock
+ * refuses a second concurrent run, so an overlap with the regular cron can
+ * never double-run. Stale "running" rows (process died mid-job) have an old
+ * last_run_at, so interrupted runs are retried too.
+ */
+export async function runDailyCatchUp(): Promise<void> {
+  let sites;
+  try {
+    sites = await listSchedulableSites();
+  } catch (e) {
+    logger.error({ err: e }, "Catch-up: failed to list sites");
+    return;
+  }
+  for (const name of DAILY_CATCHUP_JOBS) {
+    for (const site of sites) {
+      try {
+        const last = await lastRunAt(name, site.id);
+        const age = last ? Date.now() - last.getTime() : Infinity;
+        if (age <= CATCHUP_MAX_AGE_MS) continue;
+        logger.info(
+          { jobName: name, siteId: site.id, lastRunAt: last ?? null },
+          "Catch-up: daily job is overdue; running now",
+        );
+        const result = await runJob(name, site);
+        if (result.started) {
+          await result.completion;
+        } else {
+          logger.info(
+            { jobName: name, siteId: site.id, reason: result.reason },
+            "Catch-up: job not started",
+          );
+        }
+      } catch (e) {
+        logger.error(
+          { err: e, jobName: name, siteId: site.id },
+          "Catch-up: site run failed",
+        );
+      }
+    }
+  }
+}
+
 export function startScheduler(): void {
   const all = (name: JobName) => () => void runJobForAllSites(name);
   // Sunday 02:00 UTC — WordPress crawl (replaces sitemap-only crawl)
@@ -148,6 +202,11 @@ export function startScheduler(): void {
   // Daily 04:00 UTC — Bing Webmaster stats (free API, one key; full-window
   // delete+reinsert so daily cadence just keeps the rolling window fresh).
   cron.schedule("0 4 * * *", all("sync_bing_pages"), { timezone: "UTC" });
+  // Hourly catch-up sweep: reruns any daily job whose last run is >26h old,
+  // covering servers that were asleep/recycled at the scheduled minute. Also
+  // fired once on startup (index.ts). Cheap when nothing is overdue (one
+  // SELECT per daily job per site).
+  cron.schedule("17 * * * *", () => void runDailyCatchUp(), { timezone: "UTC" });
   logger.info(
     "Cron schedules registered (UTC: Sun02 WP crawl, Mon03 GSC, Tue06 semantic_linking, " +
       "Thu07/08/09 audits (orphans/over_linked/broken_links), Sat02 sitemap, monthly-01 reembed). " +

@@ -1,7 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { resyncSerialSequences } from "./lib/sequenceResync";
-import { setupJobs, startScheduler } from "./jobs/scheduler";
+import { setupJobs, startScheduler, runDailyCatchUp } from "./jobs/scheduler";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -41,6 +41,10 @@ void resyncSerialSequences().then(async () => {
   await bootstrapAdmin();
   setupJobs();
   startScheduler();
+  // If the server was asleep when a daily cron should have fired (dev
+  // workspace, autoscale recycle), run overdue daily jobs now instead of
+  // waiting for tomorrow's slot. runDailyCatchUp never throws.
+  void runDailyCatchUp();
 });
 
 app.listen(port, (err) => {

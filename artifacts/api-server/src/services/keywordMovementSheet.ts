@@ -995,6 +995,11 @@ export async function exportKeywordMovementSheet(
     last7Start,
     prior7Start,
   );
+  // Observe the rejection now: if the per-keyword GSC calls below throw first
+  // (e.g. GSC not connected), this function exits before the `await` at the
+  // end and an unobserved rejection here would crash the whole process on
+  // Node 24. The real error still propagates at the awaited use site.
+  trackedDataPromise.catch(() => {});
 
   // One GSC call per keyword: daily series for page (incl. #fragment/?query
   // variants), US traffic only, EXACT query match — deliberately mirrors the
