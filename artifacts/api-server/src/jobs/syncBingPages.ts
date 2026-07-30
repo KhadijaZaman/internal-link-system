@@ -13,6 +13,7 @@ import {
 } from "../lib/urlCanon";
 import { withDbRetry } from "../lib/dbRetry";
 import type { SiteContext } from "../lib/site";
+import { IntegrationNotConnectedError } from "../lib/siteIntegrations";
 import { logger } from "../lib/logger";
 
 /**
@@ -29,11 +30,28 @@ import { logger } from "../lib/logger";
  * — Bing pages never grow the registry.
  */
 export async function runSyncBingPages(site: SiteContext): Promise<void> {
-  const [pageRows, queryRows, blockRegexes] = await Promise.all([
-    fetchBingPageStats(site.id, site.host),
-    fetchBingQueryStats(site.id, site.host),
-    loadBlockRegexes(site.id),
-  ]);
+  let pageRows: Awaited<ReturnType<typeof fetchBingPageStats>>;
+  let queryRows: Awaited<ReturnType<typeof fetchBingQueryStats>>;
+  let blockRegexes: Awaited<ReturnType<typeof loadBlockRegexes>>;
+  try {
+    [pageRows, queryRows, blockRegexes] = await Promise.all([
+      fetchBingPageStats(site.id, site.host),
+      fetchBingQueryStats(site.id, site.host),
+      loadBlockRegexes(site.id),
+    ]);
+  } catch (e) {
+    // Graceful skip (status ok): a site without a Bing connection is a
+    // configuration state, not an error — recording an error run would make
+    // the daily catch-up sweep retry it pointlessly forever.
+    if (e instanceof IntegrationNotConnectedError) {
+      logger.info(
+        { siteId: site.id },
+        "sync_bing_pages skipped — Bing not connected",
+      );
+      return;
+    }
+    throw e;
+  }
   const now = new Date();
 
   // Collapse page rows per (bucketDate, canonicalPath).

@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { queryGa4Pages } from "../integrations/ga4";
 import { withDbRetry } from "../lib/dbRetry";
 import type { SiteContext } from "../lib/site";
+import { IntegrationNotConnectedError } from "../lib/siteIntegrations";
 import { logger } from "../lib/logger";
 
 function dateOffset(days: number): string {
@@ -23,7 +24,21 @@ export async function runSyncGa4Pages(site: SiteContext): Promise<void> {
   const endDate = dateOffset(1);
   // channel:"all" — stored rollups are all-channel totals; the per-channel
   // split stays a live-view concern.
-  const { rows } = await queryGa4Pages({ startDate, endDate, channel: "all", site });
+  let rows: Awaited<ReturnType<typeof queryGa4Pages>>["rows"];
+  try {
+    ({ rows } = await queryGa4Pages({ startDate, endDate, channel: "all", site }));
+  } catch (e) {
+    // Graceful skip (status ok): no GA4 connection is a configuration state,
+    // not an error — don't fill job_runs with error rows every week.
+    if (e instanceof IntegrationNotConnectedError) {
+      logger.info(
+        { siteId: site.id },
+        "sync_ga4_pages skipped — GA4 not connected",
+      );
+      return;
+    }
+    throw e;
+  }
   const now = new Date();
 
   // One transaction: reset (so pages that stopped converting don't keep

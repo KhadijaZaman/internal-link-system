@@ -15,6 +15,7 @@ import {
 } from "../lib/urlCanon";
 import { sectionFor } from "../lib/sections";
 import type { SiteContext } from "../lib/site";
+import { IntegrationNotConnectedError } from "../lib/siteIntegrations";
 import { chainActionQueueRecompute } from "../services/actionQueue";
 import { logger } from "../lib/logger";
 
@@ -112,11 +113,27 @@ export async function runGscInventoryAndLosers(site: SiteContext): Promise<void>
   const prevEnd = dateOffset(10);
   logger.info({ currStart, currEnd, prevStart, prevEnd }, "GSC: pulling rows");
 
-  const [currRaw, prevRaw, block] = await Promise.all([
-    queryGsc({ siteId: site.id, startDate: currStart, endDate: currEnd }),
-    queryGsc({ siteId: site.id, startDate: prevStart, endDate: prevEnd }),
-    loadBlockRegexes(site.id),
-  ]);
+  let currRaw: GscRow[];
+  let prevRaw: GscRow[];
+  let block: Awaited<ReturnType<typeof loadBlockRegexes>>;
+  try {
+    [currRaw, prevRaw, block] = await Promise.all([
+      queryGsc({ siteId: site.id, startDate: currStart, endDate: currEnd }),
+      queryGsc({ siteId: site.id, startDate: prevStart, endDate: prevEnd }),
+      loadBlockRegexes(site.id),
+    ]);
+  } catch (e) {
+    // Graceful skip (status ok): no GSC connection is a configuration state,
+    // not an error — don't fill job_runs with error rows every week.
+    if (e instanceof IntegrationNotConnectedError) {
+      logger.info(
+        { siteId: site.id },
+        "gsc_inventory_and_losers skipped — GSC not connected",
+      );
+      return;
+    }
+    throw e;
+  }
   const curr = collapseRows(currRaw, block, site.host);
   const prev = collapseRows(prevRaw, block, site.host);
   logger.info(
