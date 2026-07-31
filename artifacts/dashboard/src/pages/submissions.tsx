@@ -82,6 +82,8 @@ interface SubmissionItem {
   keyword?: string | null;
   /** Keyword measured with 0 US exact-match impressions over trailing ~28d. */
   noSearchData?: boolean;
+  /** When the exact-impressions check last ran (ISO), if ever. */
+  exactCheckedAt?: string | null;
   title: string;
   detail: string;
   externalUrl: string | null;
@@ -93,6 +95,27 @@ interface SubmissionItem {
   priority?: string;
   isTopic?: boolean;
 }
+
+/** Days since the check ran, or null if never/unparseable. */
+function daysSince(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  return Math.max(0, (Date.now() - t) / 86_400_000);
+}
+
+/** "checked just now" / "checked 5h ago" / "checked 3d ago". */
+function checkedAgoLabel(iso: string | null | undefined): string | null {
+  const days = daysSince(iso);
+  if (days == null) return null;
+  const hours = days * 24;
+  if (hours < 1) return "checked just now";
+  if (hours < 24) return `checked ${Math.round(hours)}h ago`;
+  return `checked ${Math.round(days)}d ago`;
+}
+
+/** A check older than 3 days likely missed a refresh (e.g. GSC disconnect). */
+const STALE_CHECK_DAYS = 3;
 
 const STATUS_META: Record<NormStatus, { label: string; className: string }> = {
   pending: {
@@ -250,6 +273,7 @@ function mapTracked(t: TrackedSubmission): SubmissionItem {
       (t.keyword ?? "").trim().length > 0 &&
       t.exactImpressions28d === 0 &&
       t.exactImpressionsCheckedAt != null,
+    exactCheckedAt: t.exactImpressionsCheckedAt,
     title: t.label || pathOf(t.url),
     detail: t.note ? `${pathOf(t.url)} · ${t.note}` : pathOf(t.url),
     externalUrl: t.url,
@@ -941,16 +965,39 @@ function SubmissionRow({
               <Search className="h-3 w-3" /> {item.keyword}
             </Badge>
           )}
-          {isTracked && item.noSearchData && (
-            <Badge
-              variant="outline"
-              className="flex-none gap-1 bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30"
-              title="This exact phrase got 0 US Google impressions over the last ~28 days — nobody searches this exact wording. Open Performance to see real searches this page shows up for and swap the keyword in one click."
-            >
-              <SearchX className="h-3 w-3" /> No search data — consider
-              rephrasing
-            </Badge>
-          )}
+          {isTracked && item.noSearchData && (() => {
+            const checkedDays = daysSince(item.exactCheckedAt);
+            const stale = checkedDays != null && checkedDays > STALE_CHECK_DAYS;
+            const ago = checkedAgoLabel(item.exactCheckedAt);
+            return (
+              <Badge
+                variant="outline"
+                className={`flex-none gap-1 ${
+                  stale
+                    ? "bg-muted text-muted-foreground border-border"
+                    : "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30"
+                }`}
+                title={`This exact phrase got 0 US Google impressions over the last ~28 days — nobody searches this exact wording. Open Performance to see real searches this page shows up for and swap the keyword in one click.${
+                  ago
+                    ? ` Last ${ago.replace("checked ", "checked: ")}${
+                        stale
+                          ? " — this check looks stale; it normally refreshes daily (a Search Console disconnect can pause it)."
+                          : "."
+                      }`
+                    : ""
+                }`}
+              >
+                <SearchX className="h-3 w-3" /> No search data — consider
+                rephrasing
+                {ago && (
+                  <span className={stale ? "opacity-80" : "opacity-70"}>
+                    · {ago}
+                    {stale ? " ⚠" : ""}
+                  </span>
+                )}
+              </Badge>
+            );
+          })()}
         </div>
         <div className="text-xs text-muted-foreground font-mono truncate">
           {item.detail}
