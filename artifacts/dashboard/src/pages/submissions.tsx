@@ -998,6 +998,18 @@ function SubmissionRow({
               </Badge>
             );
           })()}
+          {isTracked &&
+            (item.keyword ?? "").trim().length > 0 &&
+            item.exactCheckedAt == null && (
+              <Badge
+                variant="outline"
+                className="flex-none gap-1 bg-muted text-muted-foreground border-border font-normal"
+                title="This keyword hasn't been measured against Search Console yet — it's usually checked within a day of being added (connecting Search Console is required). Until then, we can't tell whether anyone searches this exact phrase."
+              >
+                <Search className="h-3 w-3 opacity-60" /> Keyword not checked
+                yet
+              </Badge>
+            )}
         </div>
         <div className="text-xs text-muted-foreground font-mono truncate">
           {item.detail}
