@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { google } from "googleapis";
-import { db, siteIntegrationsTable, sitesTable } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { db, siteIntegrationsTable, sitesTable, trackedSubmissionsTable } from "@workspace/db";
+import { and, eq, isNull } from "drizzle-orm";
 import {
   ConnectBingBody,
   ConnectGa4Body,
@@ -27,8 +27,48 @@ import {
   IntegrationNotConnectedError,
   type IntegrationProvider,
 } from "../lib/siteIntegrations";
+import { refreshExactImpressions } from "../services/keywordMovementSheet";
 
 const router: IRouter = Router();
+
+/**
+ * Fire-and-forget: when GSC becomes usable for a site (connect/reconnect with
+ * a matched property, or the owner picks a property), immediately measure any
+ * tracked rows still showing "Keyword not checked yet"
+ * (exactImpressionsCheckedAt is null) so the badge clears within minutes
+ * instead of waiting for the next daily sync. Failures are logged and
+ * swallowed — the daily job self-heals.
+ */
+function refreshUnmeasuredKeywordsInBackground(
+  log: { info: (obj: unknown, msg: string) => void; error: (obj: unknown, msg: string) => void },
+  siteId: number,
+): void {
+  void (async () => {
+    const rows = await db
+      .select({
+        id: trackedSubmissionsTable.id,
+        url: trackedSubmissionsTable.url,
+        keyword: trackedSubmissionsTable.keyword,
+      })
+      .from(trackedSubmissionsTable)
+      .where(
+        and(
+          eq(trackedSubmissionsTable.siteId, siteId),
+          isNull(trackedSubmissionsTable.exactImpressionsCheckedAt),
+        ),
+      );
+    const withKeyword = rows.filter((r) => (r.keyword ?? "").trim().length > 0);
+    if (withKeyword.length === 0) return;
+    const count = await refreshExactImpressions(siteId, withKeyword);
+    log.info({ siteId, count }, "refreshed exact-impressions after GSC connect");
+  })().catch((err: unknown) => {
+    if (err instanceof IntegrationNotConnectedError) {
+      log.info({ siteId }, "post-connect exact-impressions refresh skipped — GSC not usable yet");
+      return;
+    }
+    log.error({ err, siteId }, "post-connect exact-impressions refresh failed");
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Per-site data-source connections.
@@ -233,6 +273,12 @@ router.get("/integrations/gsc/callback", async (req, res, next) => {
       { siteId: verified.siteId, property, propertyCount: properties.length },
       "GSC connected",
     );
+    // A matched property means GSC is immediately usable — measure any
+    // tracked keywords that were waiting for it. (No property yet → the
+    // property-pick route below triggers the same refresh.)
+    if (property) {
+      refreshUnmeasuredKeywordsInBackground(req.log, verified.siteId);
+    }
     res.redirect(`${dashboardUrl}?gsc=${property ? "connected" : "pick-property"}`);
   } catch (err) {
     req.log.error({ err }, "GSC OAuth callback failed");
@@ -288,6 +334,9 @@ router.post("/integrations/gsc/property", requireAuth, requireSite, async (req, 
       ...row.config,
       property: parsed.data.property,
     });
+    // Picking a property is the moment GSC becomes queryable for sites whose
+    // host didn't auto-match — clear any waiting "not checked yet" keywords.
+    refreshUnmeasuredKeywordsInBackground(req.log, site.id);
     res.json({ ok: true });
   } catch (err) {
     next(err);
