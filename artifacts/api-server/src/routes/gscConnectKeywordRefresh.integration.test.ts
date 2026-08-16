@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import request from "supertest";
+import { createHmac } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
 import {
   db,
@@ -33,6 +34,38 @@ vi.mock("../integrations/gsc", async (importOriginal) => {
     ...actual,
     queryGscDimension: queryGscDimensionMock,
   };
+});
+
+// The OAuth callback path needs Google's token exchange + sites.list mocked.
+// Only OAuth2 (via a prototype-preserving Proxy on google.auth) and
+// searchconsole are faked — everything else on googleapis stays real.
+const { getTokenMock, sitesListMock } = vi.hoisted(() => ({
+  getTokenMock: vi.fn<(code: string) => Promise<{ tokens: Record<string, unknown> }>>(),
+  sitesListMock: vi.fn<() => Promise<{ data: { siteEntry?: unknown[] } }>>(),
+}));
+vi.mock("googleapis", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("googleapis")>();
+  class FakeOAuth2 {
+    getToken = getTokenMock;
+    setCredentials = vi.fn();
+    generateAuthUrl = vi.fn(() => "https://accounts.google.com/fake");
+  }
+  const auth = new Proxy(actual.google.auth, {
+    get(target, prop, receiver) {
+      if (prop === "OAuth2") return FakeOAuth2;
+      const v = Reflect.get(target, prop, receiver);
+      return typeof v === "function" ? v.bind(target) : v;
+    },
+  });
+  const googleFake = new Proxy(actual.google, {
+    get(target, prop, receiver) {
+      if (prop === "auth") return auth;
+      if (prop === "searchconsole") return () => ({ sites: { list: sitesListMock } });
+      const v = Reflect.get(target, prop, receiver);
+      return typeof v === "function" ? v.bind(target) : v;
+    },
+  });
+  return { ...actual, google: googleFake };
 });
 
 vi.mock("@clerk/express", () => ({
@@ -134,6 +167,22 @@ async function seedGscIntegration(forSiteId: number): Promise<void> {
   invalidateIntegrationCache(forSiteId, "gsc");
 }
 
+/** Mirror integrations.ts's signState — HMAC over {siteId, userId, exp}. */
+function signState(payload: { siteId: number; userId: string; exp: number }): string {
+  const secret = process.env["SESSION_SECRET"] || process.env["CLERK_SECRET_KEY"];
+  if (!secret) throw new Error("SESSION_SECRET or CLERK_SECRET_KEY must be set for this test");
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const sig = createHmac("sha256", secret).update(body).digest("base64url");
+  return `${body}.${sig}`;
+}
+
+function callbackWithState() {
+  const state = signState({ siteId, userId: USER, exp: Date.now() + 60_000 });
+  return request(app)
+    .get("/api/integrations/gsc/callback")
+    .query({ code: `test-code-${RUN}`, state });
+}
+
 function pickProperty() {
   return request(app)
     .post("/api/integrations/gsc/property")
@@ -183,6 +232,14 @@ afterAll(async () => {
 beforeEach(async () => {
   queryGscDimensionMock.mockReset();
   queryGscDimensionMock.mockResolvedValue(gscRows([3, 4]));
+  getTokenMock.mockReset();
+  getTokenMock.mockResolvedValue({
+    tokens: { refresh_token: `cb-refresh-${RUN}`, access_token: "at" },
+  });
+  sitesListMock.mockReset();
+  sitesListMock.mockResolvedValue({
+    data: { siteEntry: [{ siteUrl: PROPERTY, permissionLevel: "siteOwner" }] },
+  });
   // Fresh unmeasured rows per test would collide across tests — instead each
   // test seeds its own rows and the property pick re-runs the refresh, so
   // clear the site's tracked rows between tests.
@@ -283,6 +340,83 @@ describe("POST /api/integrations/gsc/property triggers the waiting-keyword refre
     expect(res.status).toBe(200);
 
     await new Promise((r) => setTimeout(r, 300));
+    const after = await readSub(waiting.id);
+    expect(after.exactImpressionsCheckedAt).toBeNull();
+  });
+});
+
+describe("GET /api/integrations/gsc/callback triggers the refresh when a property auto-matches", () => {
+  it("auto-match: measures waiting rows immediately after the OAuth callback", async () => {
+    const waiting = await seedSub({ keyword: `callback kw ${RUN}` });
+    const alreadyChecked = await seedSub({
+      keyword: `callback checked ${RUN}`,
+      impressions: 42,
+      checkedAt: new Date("2026-07-01T00:00:00Z"),
+    });
+
+    const res = await callbackWithState();
+    expect(res.status).toBe(302);
+    expect(res.headers["location"]).toContain("gsc=connected");
+    expect(getTokenMock).toHaveBeenCalledWith(`test-code-${RUN}`);
+
+    // The waiting row gets measured within seconds — not "up to a day".
+    const after = await waitForMeasurement(waiting.id);
+    expect(after.exactImpressions28d).toBe(7); // 3 + 4
+    expect(after.exactImpressionsCheckedAt).not.toBeNull();
+
+    expect(queryGscDimensionMock).toHaveBeenCalledTimes(1);
+    const call = queryGscDimensionMock.mock.calls[0]![0] as { siteId: number };
+    expect(call.siteId).toBe(siteId);
+
+    // The already-measured row keeps its original measurement.
+    const checkedAfter = await readSub(alreadyChecked.id);
+    expect(checkedAfter.exactImpressions28d).toBe(42);
+    expect(checkedAfter.exactImpressionsCheckedAt?.getTime()).toBe(
+      new Date("2026-07-01T00:00:00Z").getTime(),
+    );
+
+    // The integration row stored the matched property from the callback.
+    const [integ] = await db
+      .select()
+      .from(siteIntegrationsTable)
+      .where(eq(siteIntegrationsTable.siteId, siteId));
+    expect((integ!.config as Record<string, unknown>)["property"]).toBe(PROPERTY);
+  });
+
+  it("no match: redirects to pick-property and does NOT refresh", async () => {
+    const waiting = await seedSub({ keyword: `callback nomatch ${RUN}` });
+    sitesListMock.mockResolvedValue({
+      data: {
+        siteEntry: [
+          { siteUrl: `sc-domain:unrelated-${RUN}.example.org`, permissionLevel: "siteOwner" },
+        ],
+      },
+    });
+
+    const res = await callbackWithState();
+    expect(res.status).toBe(302);
+    expect(res.headers["location"]).toContain("gsc=pick-property");
+
+    // No property matched → GSC isn't queryable yet → no refresh fired.
+    await new Promise((r) => setTimeout(r, 300));
+    expect(queryGscDimensionMock).not.toHaveBeenCalled();
+    const after = await readSub(waiting.id);
+    expect(after.exactImpressions28d).toBeNull();
+    expect(after.exactImpressionsCheckedAt).toBeNull();
+  });
+
+  it("unverified-permission properties are ignored for auto-matching", async () => {
+    const waiting = await seedSub({ keyword: `callback unverified ${RUN}` });
+    sitesListMock.mockResolvedValue({
+      data: { siteEntry: [{ siteUrl: PROPERTY, permissionLevel: "siteUnverifiedUser" }] },
+    });
+
+    const res = await callbackWithState();
+    expect(res.status).toBe(302);
+    expect(res.headers["location"]).toContain("gsc=pick-property");
+
+    await new Promise((r) => setTimeout(r, 300));
+    expect(queryGscDimensionMock).not.toHaveBeenCalled();
     const after = await readSub(waiting.id);
     expect(after.exactImpressionsCheckedAt).toBeNull();
   });
