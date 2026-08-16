@@ -10,16 +10,28 @@ import {
   gscSiteUrl,
 } from "../integrations/gsc";
 import { fetchCrux } from "../integrations/crux";
+import { queryGa4Pages } from "../integrations/ga4";
+import type { SiteContext } from "../lib/site";
+import { db, bingPageStatsTable } from "@workspace/db";
+import { and, eq, desc, inArray } from "drizzle-orm";
 
 const router: IRouter = Router();
 
 const CHAT_MODEL = "gpt-4o-mini";
 
 function getOpenAI(): OpenAI {
-  const key = process.env["OPENAI_API_KEY"]?.trim();
-  if (!key) throw new Error("OPENAI_API_KEY is required for GSC chat");
+  // Prefer the Replit AI-integrations proxy (billed via Replit, no separate
+  // OpenAI credits needed); fall back to a direct key if the proxy env vars
+  // are absent. The direct OPENAI_API_KEY ran out of credits 2026-07-30.
+  const proxyKey = process.env["AI_INTEGRATIONS_OPENAI_API_KEY"]?.trim();
+  const proxyUrl = process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"]?.trim();
   // timeout caps each attempt so a stuck upstream surfaces as an error the
   // client can show, instead of an SSE stream that hangs on "thinking" forever.
+  if (proxyKey && proxyUrl) {
+    return new OpenAI({ apiKey: proxyKey, baseURL: proxyUrl, timeout: 60_000, maxRetries: 1 });
+  }
+  const key = process.env["OPENAI_API_KEY"]?.trim();
+  if (!key) throw new Error("OPENAI_API_KEY is required for GSC chat");
   return new OpenAI({ apiKey: key, timeout: 60_000, maxRetries: 1 });
 }
 
@@ -34,7 +46,7 @@ function isBrandedQuery(q: string): boolean {
 }
 
 const SYSTEM = `You are a senior SEO analyst embedded in Wellows' GSC dashboard. Wellows is an AI visibility SaaS.
-You read the user's question and the GSC slice provided, then answer plainly and tactically.
+You read the user's question and the data slice provided (Google Search Console, plus GA4 organic-landing-page metrics and Bing Webmaster weekly stats when present), then answer plainly and tactically. When a source shows a notice instead of data, say it isn't connected rather than guessing.
 
 Voice rules:
 - Conversational casual, plain vocabulary, confident not hedgy.
@@ -97,7 +109,94 @@ function trim<T extends { impressions: number; clicks: number; ctr: number; posi
     }));
 }
 
-async function buildContext(opts: ContextOpts, siteId: number): Promise<string> {
+/**
+ * Bing weekly stats already synced by sync_bing_pages — no external call.
+ * Returns the two most recent weekly buckets so the model can talk movement.
+ */
+async function bingSummary(siteId: number, url: string | null | undefined) {
+  const buckets = await db
+    .selectDistinct({ bucketDate: bingPageStatsTable.bucketDate })
+    .from(bingPageStatsTable)
+    .where(eq(bingPageStatsTable.siteId, siteId))
+    .orderBy(desc(bingPageStatsTable.bucketDate))
+    .limit(2);
+  if (buckets.length === 0) return null;
+  const dates = buckets.map((b) => b.bucketDate);
+  const path = url ? new URL(url).pathname : null;
+  const rows = await db
+    .select()
+    .from(bingPageStatsTable)
+    .where(
+      and(
+        eq(bingPageStatsTable.siteId, siteId),
+        inArray(bingPageStatsTable.bucketDate, dates),
+        ...(path ? [eq(bingPageStatsTable.path, path)] : []),
+      ),
+    );
+  const byBucket = (d: string) => rows.filter((r) => r.bucketDate === d);
+  const total = (list: typeof rows) => ({
+    clicks: list.reduce((s, r) => s + r.clicks, 0),
+    impressions: list.reduce((s, r) => s + r.impressions, 0),
+  });
+  const latest = byBucket(dates[0]!);
+  return {
+    note: "Bing Webmaster weekly buckets (site-synced); latestWeek vs priorWeek shows movement.",
+    latestWeek: { bucketDate: dates[0], ...total(latest) },
+    priorWeek: dates[1] ? { bucketDate: dates[1], ...total(byBucket(dates[1]!)) } : null,
+    topPages: latest
+      .slice()
+      .sort((a, b) => b.impressions - a.impressions)
+      .slice(0, 15)
+      .map((r) => ({
+        path: r.path,
+        clicks: r.clicks,
+        impressions: r.impressions,
+        position: r.position != null ? Number(r.position.toFixed(1)) : null,
+      })),
+  };
+}
+
+async function ga4Summary(site: SiteContext, startDate: string, endDate: string, url: string | null | undefined) {
+  const { rows, totals } = await queryGa4Pages({ startDate, endDate, channel: "organic", site });
+  const path = url ? new URL(url).pathname : null;
+  const scoped = path ? rows.filter((r) => r.path === path || r.path === `${path}/`) : rows;
+  // When the chat is scoped to one page, totals must come from the scoped
+  // rows — site-wide totals next to a page-filtered GSC slice mislead the model.
+  const scopedTotals = path
+    ? {
+        sessions: scoped.reduce((s, r) => s + r.sessions, 0),
+        engagementRate:
+          scoped.reduce((s, r) => s + r.sessions, 0) > 0
+            ? scoped.reduce((s, r) => s + r.engagedSessions, 0) /
+              scoped.reduce((s, r) => s + r.sessions, 0)
+            : 0,
+        keyEvents: scoped.reduce((s, r) => s + r.keyEvents, 0),
+        aiSessions: scoped.reduce((s, r) => s + r.aiSessions, 0),
+      }
+    : totals;
+  const round = (r: (typeof rows)[number]) => ({
+    path: r.path,
+    sessions: r.sessions,
+    engagementRate: Number(r.engagementRate.toFixed(3)),
+    avgEngagementTimeSec: Number(r.avgEngagementTime.toFixed(0)),
+    keyEvents: r.keyEvents,
+    aiSessions: r.aiSessions,
+  });
+  return {
+    note: "GA4 organic-channel landing pages; keyEvents = conversions; aiSessions = sessions referred by AI assistants.",
+    totals: {
+      scope: path ? "selected page only" : "site-wide organic",
+      sessions: scopedTotals.sessions,
+      engagementRate: Number(scopedTotals.engagementRate.toFixed(3)),
+      keyEvents: scopedTotals.keyEvents,
+      aiSessions: scopedTotals.aiSessions,
+    },
+    topPages: scoped.slice(0, 15).map(round),
+  };
+}
+
+async function buildContext(opts: ContextOpts, site: SiteContext): Promise<string> {
+  const siteId = site.id;
   const { startDate, endDate, url } = opts;
   const prev = previousRange(startDate, endDate);
   const property = await gscSiteUrl(siteId);
@@ -114,13 +213,19 @@ async function buildContext(opts: ContextOpts, siteId: number): Promise<string> 
     }
   }
 
-  const [queries, pages, dates, prevDates, sitemapsResult, cruxResult] = await Promise.all([
+  const [queries, pages, dates, prevDates, sitemapsResult, cruxResult, ga4Result, bingResult] = await Promise.all([
     queryGscDimension({ siteId, startDate, endDate, dimension: "query", pageFilter: url ?? undefined, rowLimit: 50 }),
     url ? Promise.resolve([]) : queryGscDimension({ siteId, startDate, endDate, dimension: "page", rowLimit: 30 }),
     queryGscDimension({ siteId, startDate, endDate, dimension: "date", pageFilter: url ?? undefined, rowLimit: 5000 }),
     queryGscDimension({ siteId, startDate: prev.startDate, endDate: prev.endDate, dimension: "date", pageFilter: url ?? undefined, rowLimit: 5000 }),
     withCache(`s${siteId}|ctx|sitemaps`, 30 * 60 * 1000, () => listSitemaps(siteId).catch(() => [])),
     withCache(`s${siteId}|ctx|cwv|${url ?? cruxTarget.origin ?? "?"}`, 60 * 60 * 1000, () => fetchCrux(cruxTarget)),
+    // GA4/Bing grounding is best-effort: if the source isn't connected the
+    // chat still answers from GSC alone, with an explicit notice.
+    withCache(`s${siteId}|ctx|ga4|${startDate}|${endDate}|${url ?? ""}`, 30 * 60 * 1000, () =>
+      ga4Summary(site, startDate, endDate, url).catch(() => null),
+    ),
+    bingSummary(siteId, url).catch(() => null),
   ]);
 
   const totals = aggregateTotals(dates);
@@ -211,6 +316,8 @@ async function buildContext(opts: ContextOpts, siteId: number): Promise<string> 
       dailyPoints: dates.length,
       indexing: indexingSummary,
       coreWebVitals: cwvSummary.length > 0 ? cwvSummary : { notice: cruxResult.notice },
+      ga4: ga4Result ?? { notice: "GA4 not connected or unavailable for this site/range." },
+      bing: bingResult ?? { notice: "Bing Webmaster data not synced for this site." },
     },
     null,
     2,
@@ -229,7 +336,7 @@ function buildPromptMessages(messages: ChatMessage[], includeDefault: boolean, c
   const first = prompt[0];
   if (!first) return null;
   return [
-    { role: first.role, content: `GSC SLICE (JSON):\n${contextJson}\n\nQUESTION:\n${first.content}` },
+    { role: first.role, content: `DATA SLICE (GSC + GA4 + Bing, JSON):\n${contextJson}\n\nQUESTION:\n${first.content}` },
     ...prompt.slice(1),
   ];
 }
@@ -282,12 +389,36 @@ function parseChatBody(req: { body: unknown }): {
 
   let url: string | null = null;
   if (typeof body["url"] === "string" && body["url"].length > 0) {
-    if (body["url"].length > 2048 || !/^https?:\/\//i.test(body["url"])) {
+    if (body["url"].length > 2048) return { error: "url too long" };
+    let parsed: URL;
+    try {
+      parsed = new URL(body["url"]);
+    } catch {
       return { error: "url must be a valid http(s):// URL" };
     }
-    url = body["url"];
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return { error: "url must be a valid http(s):// URL" };
+    }
+    // Normalize: drop fragment/query so cache keys and downstream matching
+    // are canonical (GSC page queries still match variants via regex).
+    parsed.hash = "";
+    parsed.search = "";
+    url = parsed.href;
   }
   return { startDate, endDate, url, messages, includeDefault };
+}
+
+const stripWww = (h: string) => h.toLowerCase().replace(/^www\./, "");
+
+/** The chat's page filter must belong to the selected site — otherwise an
+ * authenticated user could burn shared CrUX quota on arbitrary hosts and get
+ * mixed-source answers about pages that aren't theirs. */
+function urlBelongsToSite(url: string, site: SiteContext): boolean {
+  try {
+    return stripWww(new URL(url).host) === stripWww(site.host);
+  } catch {
+    return false;
+  }
 }
 
 router.post("/gsc/chat", requireAuth, requireSite, async (req, res) => {
@@ -297,9 +428,13 @@ router.post("/gsc/chat", requireAuth, requireSite, async (req, res) => {
     res.status(400).json({ error: parsed.error });
     return;
   }
+  if (parsed.url && !urlBelongsToSite(parsed.url, site)) {
+    res.status(400).json({ error: "url must be a page on this site" });
+    return;
+  }
 
   try {
-    const contextJson = await buildContext(parsed, site.id);
+    const contextJson = await buildContext(parsed, site);
     const withCtx = buildPromptMessages(parsed.messages, parsed.includeDefault, contextJson);
     if (!withCtx) {
       res.status(400).json({ error: "no messages" });
@@ -330,6 +465,10 @@ router.post("/gsc/chat/stream", requireAuth, requireSite, async (req, res) => {
   const parsed = parseChatBody(req);
   if ("error" in parsed) {
     res.status(400).json({ error: parsed.error });
+    return;
+  }
+  if (parsed.url && !urlBelongsToSite(parsed.url, site)) {
+    res.status(400).json({ error: "url must be a page on this site" });
     return;
   }
 
@@ -366,7 +505,7 @@ router.post("/gsc/chat/stream", requireAuth, requireSite, async (req, res) => {
   }, 15_000);
 
   try {
-    const contextJson = await buildContext(parsed, site.id);
+    const contextJson = await buildContext(parsed, site);
     const withCtx = buildPromptMessages(parsed.messages, parsed.includeDefault, contextJson);
     if (!withCtx) {
       send("error", { error: "no messages" });
