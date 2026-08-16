@@ -83,6 +83,7 @@ vi.mock("@clerk/express", () => ({
 // Import AFTER the mocks so app.ts / the service pick up the fakes.
 const { default: app } = await import("../app");
 const { invalidateIntegrationCache } = await import("../lib/siteIntegrations");
+const { invalidateSiteCache } = await import("../lib/site");
 
 const RUN = `${Date.now()}-${process.pid}`;
 const USER = `test-user-gscconnect-${RUN}`;
@@ -537,5 +538,130 @@ describe("GET /api/integrations/gsc/callback — security rejections", () => {
     expect(after.length).toBe(before.length);
     const creds = after[0]?.credentials as Record<string, unknown> | undefined;
     expect(creds?.["refreshToken"]).toBe(`test-refresh-${RUN}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Security: POST /integrations/gsc/property must block non-owners
+// ---------------------------------------------------------------------------
+
+describe("POST /api/integrations/gsc/property — ownership guard", () => {
+  // A distinct user who has no ownership of the test site.
+  const USER_B = `test-user-gscconnect-b-${RUN}`;
+
+  async function readIntegrationRow() {
+    const [row] = await db
+      .select()
+      .from(siteIntegrationsTable)
+      .where(eq(siteIntegrationsTable.siteId, siteId));
+    return row;
+  }
+
+  it("returns 403 when a non-owner tries to pick a property and leaves the integration row unchanged", async () => {
+    const before = await readIntegrationRow();
+    // Sanity: the seeded row has property: null so we can detect any unwanted write.
+    expect((before?.config as Record<string, unknown> | undefined)?.["property"]).toBeNull();
+
+    const res = await request(app)
+      .post("/api/integrations/gsc/property")
+      .set("x-test-user", USER_B)
+      .set("x-site-id", String(siteId))
+      .send({ property: PROPERTY });
+
+    expect(res.status).toBe(403);
+
+    // The integration row must be completely untouched.
+    const after = await readIntegrationRow();
+    const creds = after?.credentials as Record<string, unknown> | undefined;
+    expect(creds?.["refreshToken"]).toBe(`test-refresh-${RUN}`);
+    const config = after?.config as Record<string, unknown> | undefined;
+    expect(config?.["property"]).toBeNull();
+
+    // No background GSC query should have been triggered.
+    await new Promise((r) => setTimeout(r, 200));
+    expect(queryGscDimensionMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 200 when the actual site owner picks a property", async () => {
+    const res = await request(app)
+      .post("/api/integrations/gsc/property")
+      .set("x-test-user", USER)
+      .set("x-site-id", String(siteId))
+      .send({ property: PROPERTY });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+
+    // The integration row now reflects the chosen property.
+    const row = await readIntegrationRow();
+    const config = row?.config as Record<string, unknown> | undefined;
+    expect(config?.["property"]).toBe(PROPERTY);
+  });
+
+  /**
+   * Former-owner scenario: USER_B owns the site, makes a successful request
+   * (warming the site-owner cache), then ownership is transferred back to USER
+   * via the same DB-update + invalidateSiteCache path that production code
+   * uses. The former owner (USER_B) must be denied on the very next request —
+   * before the 30-second TTL would naturally expire — and the new owner (USER)
+   * must be allowed.
+   */
+  it("former owner is immediately denied after ownership transfer, new owner is allowed", async () => {
+    // ── Step 1: transfer ownership to USER_B so it becomes the current owner.
+    await db
+      .update(sitesTable)
+      .set({ ownerUserId: USER_B })
+      .where(eq(sitesTable.id, siteId));
+    invalidateSiteCache(siteId);
+
+    // ── Step 2: USER_B (now the owner) warms the site cache with a successful pick.
+    const firstRes = await request(app)
+      .post("/api/integrations/gsc/property")
+      .set("x-test-user", USER_B)
+      .set("x-site-id", String(siteId))
+      .send({ property: PROPERTY });
+    expect(firstRes.status).toBe(200);
+
+    // Re-seed the integration with property: null so we can detect any
+    // unwanted write in the following assertion.
+    await seedGscIntegration(siteId);
+
+    // ── Step 3: transfer ownership back to USER (simulating a site transfer).
+    // This is the same code path any ownership-change route would take.
+    await db
+      .update(sitesTable)
+      .set({ ownerUserId: USER })
+      .where(eq(sitesTable.id, siteId));
+    invalidateSiteCache(siteId);
+
+    // ── Step 4: USER_B (former owner) immediately tries to pick a property.
+    // The cache was just invalidated so requireSite must re-fetch from the DB
+    // and deny USER_B without waiting for the 30-second TTL.
+    const deniedRes = await request(app)
+      .post("/api/integrations/gsc/property")
+      .set("x-test-user", USER_B)
+      .set("x-site-id", String(siteId))
+      .send({ property: PROPERTY });
+
+    expect(deniedRes.status).toBe(403);
+
+    // Integration row must be unchanged (property still null from re-seed).
+    const afterDenied = await readIntegrationRow();
+    const deniedConfig = afterDenied?.config as Record<string, unknown> | undefined;
+    expect(deniedConfig?.["property"]).toBeNull();
+
+    // ── Step 5: the new owner (USER) must still be allowed.
+    const allowedRes = await request(app)
+      .post("/api/integrations/gsc/property")
+      .set("x-test-user", USER)
+      .set("x-site-id", String(siteId))
+      .send({ property: PROPERTY });
+
+    expect(allowedRes.status).toBe(200);
+    expect(allowedRes.body).toEqual({ ok: true });
+
+    const afterAllowed = await readIntegrationRow();
+    const allowedConfig = afterAllowed?.config as Record<string, unknown> | undefined;
+    expect(allowedConfig?.["property"]).toBe(PROPERTY);
   });
 });
