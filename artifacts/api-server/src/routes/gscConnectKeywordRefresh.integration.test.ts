@@ -421,3 +421,121 @@ describe("GET /api/integrations/gsc/callback triggers the refresh when a propert
     expect(after.exactImpressionsCheckedAt).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Security: forged / expired / misowned state must never attach an account
+// ---------------------------------------------------------------------------
+
+describe("GET /api/integrations/gsc/callback — security rejections", () => {
+  /** Return the current integration rows for the test site (seeded in beforeEach). */
+  async function getIntegrationRows() {
+    return db
+      .select()
+      .from(siteIntegrationsTable)
+      .where(eq(siteIntegrationsTable.siteId, siteId));
+  }
+
+  it("rejects a tampered state signature → ?gsc=invalid, no DB row written", async () => {
+    const goodState = signState({ siteId, userId: USER, exp: Date.now() + 60_000 });
+    const [body] = goodState.split(".");
+    // Replace the real signature with garbage of the same base64url alphabet.
+    const tamperedState = `${body}.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA`;
+
+    const before = await getIntegrationRows();
+
+    const res = await request(app)
+      .get("/api/integrations/gsc/callback")
+      .query({ code: `test-code-${RUN}`, state: tamperedState });
+
+    expect(res.status).toBe(302);
+    expect(res.headers["location"]).toMatch(/[?&]gsc=invalid/);
+
+    // No token exchange ever reached Google.
+    expect(getTokenMock).not.toHaveBeenCalled();
+    // The integration row is unchanged (no upsert occurred).
+    const after = await getIntegrationRows();
+    expect(after.length).toBe(before.length);
+    const creds = after[0]?.credentials as Record<string, unknown> | undefined;
+    expect(creds?.["refreshToken"]).toBe(`test-refresh-${RUN}`);
+  });
+
+  it("rejects an expired state token → ?gsc=invalid, no DB row written", async () => {
+    const expiredState = signState({ siteId, userId: USER, exp: Date.now() - 1 });
+
+    const before = await getIntegrationRows();
+
+    const res = await request(app)
+      .get("/api/integrations/gsc/callback")
+      .query({ code: `test-code-${RUN}`, state: expiredState });
+
+    expect(res.status).toBe(302);
+    expect(res.headers["location"]).toMatch(/[?&]gsc=invalid/);
+    expect(getTokenMock).not.toHaveBeenCalled();
+
+    const after = await getIntegrationRows();
+    expect(after.length).toBe(before.length);
+    const creds = after[0]?.credentials as Record<string, unknown> | undefined;
+    expect(creds?.["refreshToken"]).toBe(`test-refresh-${RUN}`);
+  });
+
+  it("rejects a state whose userId no longer owns the site → ?gsc=invalid, no DB row written", async () => {
+    // The state is validly signed but carries a userId that is NOT the site owner.
+    const intruderState = signState({
+      siteId,
+      userId: `intruder-user-${RUN}`,
+      exp: Date.now() + 60_000,
+    });
+
+    const before = await getIntegrationRows();
+
+    const res = await request(app)
+      .get("/api/integrations/gsc/callback")
+      .query({ code: `test-code-${RUN}`, state: intruderState });
+
+    expect(res.status).toBe(302);
+    expect(res.headers["location"]).toMatch(/[?&]gsc=invalid/);
+    expect(getTokenMock).not.toHaveBeenCalled();
+
+    const after = await getIntegrationRows();
+    expect(after.length).toBe(before.length);
+    const creds = after[0]?.credentials as Record<string, unknown> | undefined;
+    expect(creds?.["refreshToken"]).toBe(`test-refresh-${RUN}`);
+  });
+
+  it("rejects a missing code parameter → ?gsc=invalid, no DB row written", async () => {
+    const validState = signState({ siteId, userId: USER, exp: Date.now() + 60_000 });
+
+    const before = await getIntegrationRows();
+
+    // No `code` query param at all.
+    const res = await request(app)
+      .get("/api/integrations/gsc/callback")
+      .query({ state: validState });
+
+    expect(res.status).toBe(302);
+    expect(res.headers["location"]).toMatch(/[?&]gsc=invalid/);
+    expect(getTokenMock).not.toHaveBeenCalled();
+
+    const after = await getIntegrationRows();
+    expect(after.length).toBe(before.length);
+    const creds = after[0]?.credentials as Record<string, unknown> | undefined;
+    expect(creds?.["refreshToken"]).toBe(`test-refresh-${RUN}`);
+  });
+
+  it("?error=access_denied redirects to ?gsc=denied without touching the DB", async () => {
+    const before = await getIntegrationRows();
+
+    const res = await request(app)
+      .get("/api/integrations/gsc/callback")
+      .query({ error: "access_denied" });
+
+    expect(res.status).toBe(302);
+    expect(res.headers["location"]).toMatch(/[?&]gsc=denied/);
+    expect(getTokenMock).not.toHaveBeenCalled();
+
+    const after = await getIntegrationRows();
+    expect(after.length).toBe(before.length);
+    const creds = after[0]?.credentials as Record<string, unknown> | undefined;
+    expect(creds?.["refreshToken"]).toBe(`test-refresh-${RUN}`);
+  });
+});
