@@ -22,9 +22,20 @@ const STREAM_URL = `${import.meta.env.BASE_URL}api/gsc/chat/stream`.replace(/\/+
 const SUGGESTIONS = [
   "What changed versus the previous period?",
   "Which pages are my biggest winners and losers?",
+  "How many organic sessions and conversions did GA4 record?",
+  "How is Bing performing versus Google for this range?",
+  "How much traffic are AI assistants sending us?",
   "What are my top non-branded queries?",
   "Which queries am I ranking on page 2 for?",
   "What should I fix this week?",
+];
+
+// Shown when a URL filter is active — page-scoped grounding kicks in.
+const URL_SUGGESTIONS = [
+  "Give me the full performance picture for this page",
+  "How many internal links point to this page, and with what anchors?",
+  "Is this page converting? Show GA4 sessions and key events",
+  "How does this page do on Bing vs Google?",
 ];
 
 const DEFAULT_USER_MESSAGE =
@@ -214,14 +225,16 @@ function AskBody() {
   return (
     <div className="space-y-4">
       <HowThisWorks
-        summary="Chat with an AI analyst about your Search Console data — it has direct read access to the same metrics powering the other tabs and pulls GSC live as you ask follow-ups."
+        summary="Chat with an AI analyst grounded in your real data — Google Search Console, GA4 (organic sessions, conversions, AI-assistant traffic), and Bing Webmaster. Every number it cites comes from those sources."
         steps={[
           { title: "Default analysis auto-runs", body: "When you change the date range or URL filter, the assistant automatically runs a default summary (winners, losers, branded vs unbranded, top actions) so you don't start with a blank chat." },
-          { title: "Ask follow-up questions", body: "Type any question or tap a suggested prompt — the assistant reads the GSC slice for the selected range (queries / pages / countries / devices) and answers with the numbers." },
+          { title: "Ask follow-up questions", body: "Type any question or tap a suggested prompt — it answers from GSC, GA4, and Bing for the selected range. Ask about traffic, conversions, AI-assistant referrals, Bing vs Google, indexing, or Core Web Vitals." },
+          { title: "Drill into one page", body: "Set the URL filter to a page, and the assistant gets that page's full picture: GSC clicks/impressions and queries, GA4 sessions and conversions, Bing clicks, and its internal links (inbound count + anchors)." },
           { title: "Iterate", body: "Replies stream in live and the assistant keeps full conversation context, so you can refine ('now show me only branded', 'compare to prior 28 days', etc.)." },
         ]}
         faqs={[
-          { title: "Can it edit my site or trigger jobs?", body: "No. It only reads from GSC. Any action it suggests is a recommendation you carry out yourself." },
+          { title: "What data can it see?", body: "GSC (queries, pages, clicks, impressions, position, indexing, CWV), GA4 (organic sessions, engagement, key events, AI-assistant sessions), Bing Webmaster (weekly clicks/impressions), and the internal-link graph for a selected page. Nothing else — it will say so if asked beyond that." },
+          { title: "Can it edit my site or trigger jobs?", body: "No. It only reads data. Any action it suggests is a recommendation you carry out yourself." },
           { title: "Why won't it answer about a future date?", body: "GSC has a ~48h reporting lag and no future data — the assistant will say so rather than guess." },
         ]}
       />
@@ -268,7 +281,7 @@ function AskBody() {
 
           <div className="border-t">
             <div className="flex gap-2 overflow-x-auto px-3 pt-3 pb-1">
-              {SUGGESTIONS.map((s) => (
+              {(range.urlFilter ? URL_SUGGESTIONS : SUGGESTIONS).map((s) => (
                 <button
                   key={s}
                   type="button"
@@ -287,7 +300,7 @@ function AskBody() {
               <Textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask anything about this GSC slice..."
+                placeholder="Ask about traffic, conversions, Bing, AI referrals, or a specific page..."
                 rows={2}
                 className="resize-none"
                 onKeyDown={(e) => {

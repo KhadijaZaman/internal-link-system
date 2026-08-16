@@ -12,7 +12,7 @@ import {
 import { fetchCrux } from "../integrations/crux";
 import { queryGa4Pages } from "../integrations/ga4";
 import type { SiteContext } from "../lib/site";
-import { db, bingPageStatsTable } from "@workspace/db";
+import { db, bingPageStatsTable, linkGraphTable } from "@workspace/db";
 import { and, eq, desc, inArray } from "drizzle-orm";
 
 const router: IRouter = Router();
@@ -46,7 +46,19 @@ function isBrandedQuery(q: string): boolean {
 }
 
 const SYSTEM = `You are a senior SEO analyst embedded in Wellows' GSC dashboard. Wellows is an AI visibility SaaS.
-You read the user's question and the data slice provided (Google Search Console, plus GA4 organic-landing-page metrics and Bing Webmaster weekly stats when present), then answer plainly and tactically. When a source shows a notice instead of data, say it isn't connected rather than guessing.
+You read the user's question and the data slice provided (Google Search Console, GA4 organic-landing-page metrics, Bing Webmaster weekly stats, and — when a page is selected — its internal-link graph), then answer plainly and tactically.
+
+Grounding rules (strict):
+- Every number you state must come from the slice. Never estimate, extrapolate, or use outside knowledge about the site.
+- When a source shows a notice instead of data, say it isn't connected rather than guessing.
+- If the slice can't answer the question, say exactly what's missing (e.g. "pick that page in the URL filter and ask again").
+
+When the user asks about a specific URL/page, structure the answer around:
+1. GSC: clicks, impressions, CTR, average position, top queries for that page, trend vs previous period
+2. GA4: organic sessions, engagement, key events (conversions), AI-assistant-referred sessions
+3. Bing: latest-week clicks and impressions
+4. Internal links: inbound/outbound in-content link counts and notable anchors
+5. One overall read: what these sources together say is happening, and one action.
 
 Voice rules:
 - Conversational casual, plain vocabulary, confident not hedgy.
@@ -107,6 +119,57 @@ function trim<T extends { impressions: number; clicks: number; ctr: number; posi
       ctr: Number(r.ctr.toFixed(4)),
       position: Number(r.position.toFixed(2)),
     }));
+}
+
+/** All reasonable URL spellings of one page (scheme/www/trailing-slash), for
+ * matching link_graph target_url rows which store full crawled URLs. */
+function urlVariants(url: string): string[] {
+  const u = new URL(url);
+  const hosts = u.host.startsWith("www.") ? [u.host, u.host.slice(4)] : [u.host, `www.${u.host}`];
+  const paths = u.pathname.endsWith("/") && u.pathname !== "/"
+    ? [u.pathname, u.pathname.slice(0, -1)]
+    : [u.pathname, `${u.pathname}/`];
+  const out: string[] = [];
+  for (const scheme of ["https", "http"]) for (const h of hosts) for (const p of paths) out.push(`${scheme}://${h}${p}`);
+  return out;
+}
+
+/** Internal links pointing AT the selected page, from the crawled link graph.
+ * Sidebar/nav placements are excluded — same rule as the SEO activity counts. */
+async function internalLinksSummary(siteId: number, url: string) {
+  const variants = urlVariants(url);
+  const rows = await db
+    .select({
+      sourceUrl: linkGraphTable.sourceUrl,
+      anchorText: linkGraphTable.anchorText,
+    })
+    .from(linkGraphTable)
+    .where(
+      and(
+        eq(linkGraphTable.siteId, siteId),
+        eq(linkGraphTable.placement, "content"),
+        inArray(linkGraphTable.targetUrl, variants),
+      ),
+    );
+  const outbound = await db
+    .select({ targetUrl: linkGraphTable.targetUrl })
+    .from(linkGraphTable)
+    .where(
+      and(
+        eq(linkGraphTable.siteId, siteId),
+        eq(linkGraphTable.placement, "content"),
+        inArray(linkGraphTable.sourceUrl, variants),
+      ),
+    );
+  return {
+    note: "In-content internal links from the latest crawl (nav/sidebar excluded).",
+    inboundCount: rows.length,
+    outboundCount: outbound.length,
+    inboundLinks: rows.slice(0, 20).map((r) => ({
+      fromPath: (() => { try { return new URL(r.sourceUrl).pathname; } catch { return r.sourceUrl; } })(),
+      anchor: r.anchorText ?? null,
+    })),
+  };
 }
 
 /**
@@ -213,11 +276,11 @@ async function buildContext(opts: ContextOpts, site: SiteContext): Promise<strin
     }
   }
 
-  const [queries, pages, dates, prevDates, sitemapsResult, cruxResult, ga4Result, bingResult] = await Promise.all([
-    queryGscDimension({ siteId, startDate, endDate, dimension: "query", pageFilter: url ?? undefined, rowLimit: 50 }),
+  const [queries, pages, dates, prevDates, sitemapsResult, cruxResult, ga4Result, bingResult, linksResult] = await Promise.all([
+    queryGscDimension({ siteId, startDate, endDate, dimension: "query", pageRegex: url ? gscPageRegex(url) : undefined, rowLimit: 50 }),
     url ? Promise.resolve([]) : queryGscDimension({ siteId, startDate, endDate, dimension: "page", rowLimit: 30 }),
-    queryGscDimension({ siteId, startDate, endDate, dimension: "date", pageFilter: url ?? undefined, rowLimit: 5000 }),
-    queryGscDimension({ siteId, startDate: prev.startDate, endDate: prev.endDate, dimension: "date", pageFilter: url ?? undefined, rowLimit: 5000 }),
+    queryGscDimension({ siteId, startDate, endDate, dimension: "date", pageRegex: url ? gscPageRegex(url) : undefined, rowLimit: 5000 }),
+    queryGscDimension({ siteId, startDate: prev.startDate, endDate: prev.endDate, dimension: "date", pageRegex: url ? gscPageRegex(url) : undefined, rowLimit: 5000 }),
     withCache(`s${siteId}|ctx|sitemaps`, 30 * 60 * 1000, () => listSitemaps(siteId).catch(() => [])),
     withCache(`s${siteId}|ctx|cwv|${url ?? cruxTarget.origin ?? "?"}`, 60 * 60 * 1000, () => fetchCrux(cruxTarget)),
     // GA4/Bing grounding is best-effort: if the source isn't connected the
@@ -226,6 +289,7 @@ async function buildContext(opts: ContextOpts, site: SiteContext): Promise<strin
       ga4Summary(site, startDate, endDate, url).catch(() => null),
     ),
     bingSummary(siteId, url).catch(() => null),
+    url ? internalLinksSummary(siteId, url).catch(() => null) : Promise.resolve(null),
   ]);
 
   const totals = aggregateTotals(dates);
@@ -318,6 +382,9 @@ async function buildContext(opts: ContextOpts, site: SiteContext): Promise<strin
       coreWebVitals: cwvSummary.length > 0 ? cwvSummary : { notice: cruxResult.notice },
       ga4: ga4Result ?? { notice: "GA4 not connected or unavailable for this site/range." },
       bing: bingResult ?? { notice: "Bing Webmaster data not synced for this site." },
+      ...(url
+        ? { internalLinks: linksResult ?? { notice: "No crawl data for this page yet." } }
+        : {}),
     },
     null,
     2,
@@ -399,6 +466,11 @@ function parseChatBody(req: { body: unknown }): {
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       return { error: "url must be a valid http(s):// URL" };
     }
+    // Embedded credentials would flow into cache keys, CrUX requests, and
+    // logs — reject rather than strip so the caller notices.
+    if (parsed.username || parsed.password) {
+      return { error: "url must not contain credentials" };
+    }
     // Normalize: drop fragment/query so cache keys and downstream matching
     // are canonical (GSC page queries still match variants via regex).
     parsed.hash = "";
@@ -409,6 +481,17 @@ function parseChatBody(req: { body: unknown }): {
 }
 
 const stripWww = (h: string) => h.toLowerCase().replace(/^www\./, "");
+
+/** RE2 page regex matching all GSC spellings of one page: optional www,
+ * optional trailing slash, plus #fragment variants (GSC splits those into
+ * separate page rows — they must be summed, not missed). */
+function gscPageRegex(url: string): string {
+  const u = new URL(url);
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const host = esc(stripWww(u.host));
+  const path = esc(u.pathname.replace(/\/$/, ""));
+  return `^https?://(www\\.)?${host}${path}/?(#.*)?$`;
+}
 
 /** The chat's page filter must belong to the selected site — otherwise an
  * authenticated user could burn shared CrUX quota on arbitrary hosts and get
