@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { google } from "googleapis";
 import { db, siteIntegrationsTable, sitesTable, trackedSubmissionsTable } from "@workspace/db";
 import { and, eq, isNull } from "drizzle-orm";
@@ -94,13 +94,88 @@ function stateSecret(): string {
   return s;
 }
 
-function signState(payload: { siteId: number; userId: string; exp: number }): string {
-  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const sig = createHmac("sha256", stateSecret()).update(body).digest("base64url");
-  return `${body}.${sig}`;
+// ---------------------------------------------------------------------------
+// Per-site current-flow nonce store
+//
+// Only ONE OAuth flow is live per site at a time.  When the owner clicks
+// "Connect GSC" (POST /integrations/gsc/auth-url) a fresh nonce is generated
+// and recorded here as the site's "active" nonce.  Any previous active nonce
+// is silently superseded — the older in-flight callback will be rejected when
+// it arrives because its nonce no longer matches.
+//
+// The callback first does a fast in-memory verifyFlowNonce check, then after
+// the async Google token exchange it performs an atomic conditional DB UPDATE
+// WHERE flow_nonce = $nonce.  A disconnect (DELETE) removes the row including
+// flow_nonce, so any stale in-flight callback finds 0 matching rows and is
+// rejected without writing credentials.
+//
+// The Map is keyed siteId → { nonce, exp }.  No background cleanup is
+// required: entries are either consumed by the callback or expire naturally
+// after STATE_TTL_MS (15 min); expired entries are pruned lazily.
+// ---------------------------------------------------------------------------
+const activeFlowNonce = new Map<number, { nonce: string; exp: number }>();
+
+/**
+ * Register a new active-flow nonce for a site, superseding any previous one.
+ */
+function registerFlowNonce(siteId: number, nonce: string, exp: number): void {
+  activeFlowNonce.set(siteId, { nonce, exp });
 }
 
-function verifyState(state: string): { siteId: number; userId: string } | null {
+/**
+ * Fast in-process nonce check at the top of the callback.
+ *
+ * The in-memory map is a performance optimisation — an optional fast-reject
+ * path for callbacks whose nonce is definitively wrong within the current
+ * process (e.g. two rapid reconnects on the same instance).  It is NOT
+ * authoritative: on a map miss (empty after a restart, or the callback was
+ * routed to a different instance) we return true and let the DB conditional
+ * write decide.  Only a positive MISMATCH (we have an entry but it doesn't
+ * match) is grounds for an early rejection here.
+ *
+ * The authoritative check is the UPDATE … WHERE flow_nonce = $nonce at the
+ * end of the callback, which closes the race at the DB level regardless of
+ * in-process state.
+ */
+function verifyFlowNonce(siteId: number, nonce: string): boolean {
+  const entry = activeFlowNonce.get(siteId);
+  if (!entry) return true; // map miss — let the DB conditional write decide
+  return entry.nonce === nonce && entry.exp >= Date.now();
+}
+
+/**
+ * Remove the in-memory nonce entry for a site ONLY when it still matches the
+ * presented nonce.  Called after a successful conditional DB write so that a
+ * replayed callback sees no entry in the fast early-rejection path.
+ *
+ * A mismatch (the entry was already superseded by a new auth-url) is a no-op:
+ * the new nonce must remain in the map for the legitimate new-flow callback.
+ */
+function consumeFlowNonce(siteId: number, nonce: string): void {
+  const entry = activeFlowNonce.get(siteId);
+  if (entry && entry.nonce === nonce) {
+    activeFlowNonce.delete(siteId);
+  }
+}
+
+/**
+ * Invalidate any pending GSC OAuth flow for a site (called on disconnect).
+ */
+function invalidateFlowNonce(siteId: number): void {
+  activeFlowNonce.delete(siteId);
+}
+
+function signState(payload: { siteId: number; userId: string; exp: number }): {
+  state: string;
+  nonce: string;
+} {
+  const nonce = randomBytes(16).toString("hex");
+  const body = Buffer.from(JSON.stringify({ ...payload, nonce })).toString("base64url");
+  const sig = createHmac("sha256", stateSecret()).update(body).digest("base64url");
+  return { state: `${body}.${sig}`, nonce };
+}
+
+function verifyState(state: string): { siteId: number; userId: string; nonce: string; exp: number } | null {
   const parts = state.split(".");
   if (parts.length !== 2) return null;
   const [body, sig] = parts;
@@ -113,16 +188,19 @@ function verifyState(state: string): { siteId: number; userId: string } | null {
       siteId?: number;
       userId?: string;
       exp?: number;
+      nonce?: string;
     };
     if (
       typeof payload.siteId !== "number" ||
       typeof payload.userId !== "string" ||
       typeof payload.exp !== "number" ||
+      typeof payload.nonce !== "string" ||
+      !payload.nonce ||
       payload.exp < Date.now()
     ) {
       return null;
     }
-    return { siteId: payload.siteId, userId: payload.userId };
+    return { siteId: payload.siteId, userId: payload.userId, nonce: payload.nonce, exp: payload.exp };
   } catch {
     return null;
   }
@@ -194,11 +272,34 @@ router.post("/integrations/gsc/auth-url", requireAuth, requireSite, async (req, 
     const app = gscOauthApp();
     const redirectUri = gscRedirectUri();
     const oauth = new google.auth.OAuth2(app.clientId, app.clientSecret, redirectUri);
-    const state = signState({
+    const exp = Date.now() + STATE_TTL_MS;
+    const { state, nonce } = signState({
       siteId: site.id,
       userId: site.ownerUserId!,
-      exp: Date.now() + STATE_TTL_MS,
+      exp,
     });
+    // Register this nonce as the only valid active flow for this site.
+    // Any previously pending flow (e.g. from before a disconnect) is superseded.
+    registerFlowNonce(site.id, nonce, exp);
+    // Also persist the nonce to the DB.  The callback's credential write is a
+    // conditional UPDATE WHERE flow_nonce = $nonce, so the "flow still active"
+    // check and the credential write are atomic at the DB level.  A disconnect
+    // (DELETE) removes the nonce along with the row, so any stale in-flight
+    // callback that races past the in-memory check will find 0 matching rows.
+    await db
+      .insert(siteIntegrationsTable)
+      .values({
+        siteId: site.id,
+        provider: "gsc",
+        credentials: {},
+        config: { property: null, availableProperties: [] },
+        flowNonce: nonce,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [siteIntegrationsTable.siteId, siteIntegrationsTable.provider],
+        set: { flowNonce: nonce, updatedAt: new Date() },
+      });
     const url = oauth.generateAuthUrl({
       access_type: "offline",
       prompt: "consent",
@@ -223,6 +324,19 @@ router.get("/integrations/gsc/callback", async (req, res, next) => {
     }
     const verified = state ? verifyState(state) : null;
     if (!code || !verified) {
+      res.redirect(`${dashboardUrl}?gsc=invalid`);
+      return;
+    }
+
+    // Early nonce check (non-destructive): reject callbacks whose nonce is
+    // already wrong before starting any async work.  Does NOT consume the
+    // entry so a concurrent new-flow callback carrying the correct nonce can
+    // still succeed.
+    if (!verifyFlowNonce(verified.siteId, verified.nonce)) {
+      req.log.warn(
+        { siteId: verified.siteId },
+        "GSC OAuth: flow nonce invalid or superseded — callback rejected",
+      );
       res.redirect(`${dashboardUrl}?gsc=invalid`);
       return;
     }
@@ -263,12 +377,51 @@ router.get("/integrations/gsc/callback", async (req, res, next) => {
     }
     const property = matchProperty(properties, rows[0].host);
 
-    await upsertIntegration(
-      verified.siteId,
-      "gsc",
-      { refreshToken },
-      { property, availableProperties: properties.slice(0, 100) },
-    );
+    // Atomic credential write: UPDATE WHERE flow_nonce = $nonce.
+    //
+    // This is the race-proof replacement for a separate nonce check + upsert.
+    // A disconnect (DELETE) removes the row — including flow_nonce — so a
+    // stale in-flight callback that raced past the early verifyFlowNonce check
+    // finds 0 matching rows here and is rejected without writing anything.
+    // A new auth-url (reconnect) overwrites flow_nonce with a new value, so
+    // this UPDATE's WHERE clause also fails for the old callback.
+    //
+    // The returning() call confirms how many rows were updated; 0 rows means
+    // the flow was superseded or the site was disconnected during the async
+    // token-exchange / property-discovery above.
+    const written = await db
+      .update(siteIntegrationsTable)
+      .set({
+        credentials: { refreshToken },
+        config: { property, availableProperties: properties.slice(0, 100) },
+        flowNonce: null, // consume: clear after a successful write
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(siteIntegrationsTable.siteId, verified.siteId),
+          eq(siteIntegrationsTable.provider, "gsc"),
+          eq(siteIntegrationsTable.flowNonce, verified.nonce),
+        ),
+      )
+      .returning({ id: siteIntegrationsTable.id });
+
+    if (written.length === 0) {
+      req.log.warn(
+        { siteId: verified.siteId },
+        "GSC OAuth: flow superseded or disconnected during token exchange — conditional write found 0 rows",
+      );
+      res.redirect(`${dashboardUrl}?gsc=invalid`);
+      return;
+    }
+    // Sync the in-memory nonce store: remove this nonce so a replayed callback
+    // fails the fast early-rejection check instead of reaching the DB.
+    // consumeFlowNonce is a no-op when a new flow already registered a
+    // different nonce (e.g. a reconnect happened between verifyFlowNonce and
+    // the DB write above — the DB correctly rejected it via flow_nonce mismatch
+    // so the new nonce must stay in the map for the new-flow callback).
+    consumeFlowNonce(verified.siteId, verified.nonce);
+    invalidateIntegrationCache(verified.siteId, "gsc");
     req.log.info(
       { siteId: verified.siteId, property, propertyCount: properties.length },
       "GSC connected",
@@ -544,6 +697,11 @@ router.delete("/integrations/:provider", requireAuth, requireSite, async (req, r
         ),
       );
     invalidateIntegrationCache(site.id, provider);
+    // Invalidate any pending GSC OAuth flow so a stale in-flight callback
+    // that arrives after the disconnect cannot attach the old Google account.
+    if (provider === "gsc") {
+      invalidateFlowNonce(site.id);
+    }
     req.log.info({ siteId: site.id, provider }, "integration disconnected");
     res.json({ ok: true });
   } catch (err) {

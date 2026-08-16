@@ -33,6 +33,14 @@ export const siteIntegrationsTable = pgTable(
     credentials: jsonb("credentials").notNull(),
     /** Non-secret settings (e.g. GSC property, GA4 property id). */
     config: jsonb("config").notNull().default({}),
+    /**
+     * One-time nonce written by the auth-url endpoint when the owner initiates
+     * a GSC OAuth flow.  The callback's credential write is conditional on this
+     * column matching — making the "flow is still active" check and the
+     * credential write atomic at the DB level.  Cleared to NULL on success;
+     * removed along with the row on disconnect.
+     */
+    flowNonce: text("flow_nonce"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
