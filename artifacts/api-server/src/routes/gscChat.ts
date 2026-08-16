@@ -60,6 +60,10 @@ When the user asks about a specific URL/page, structure the answer around:
 4. Internal links: inbound/outbound in-content link counts and notable anchors
 5. One overall read: what these sources together say is happening, and one action.
 
+You have two tools available:
+- get_page_metrics: fetch GSC data for any page on this site. Use it when the user asks about a page not in the initial context.
+- get_query_metrics: fetch GSC data for any search query. Use it when the user asks about a keyword not visible in the initial context.
+
 Voice rules:
 - Conversational casual, plain vocabulary, confident not hedgy.
 - No emojis, no GPT openers ("In today's...", "Let's dive in").
@@ -504,7 +508,7 @@ function urlBelongsToSite(url: string, site: SiteContext): boolean {
   }
 }
 
-router.post("/gsc/chat", requireAuth, requireSite, async (req, res) => {
+const MAX_TOOL_CALLS = 5;
   const site = getSite(req);
   const parsed = parseChatBody(req);
   if ("error" in parsed) {
@@ -520,10 +524,17 @@ router.post("/gsc/chat", requireAuth, requireSite, async (req, res) => {
     const contextJson = await buildContext(parsed, site);
     const withCtx = buildPromptMessages(parsed.messages, parsed.includeDefault, contextJson);
     if (!withCtx) {
-      res.status(400).json({ error: "no messages" });
+      send("error", { error: "no messages" });
+      res.end();
       return;
     }
+    send("meta", {
+      contextSummary: `Analyzed ${parsed.startDate} → ${parsed.endDate}${parsed.url ? ` for ${parsed.url}` : ""}`,
+    });
+
     const openai = getOpenAI();
+
+    const toolOpts = { startDate: parsed.startDate, endDate: parsed.endDate, siteId: site.id, site };
     const completion = await openai.chat.completions.create({
       model: CHAT_MODEL,
       max_tokens: 1400,
@@ -600,35 +611,226 @@ router.post("/gsc/chat/stream", requireAuth, requireSite, async (req, res) => {
     });
 
     const openai = getOpenAI();
-    const stream = await openai.chat.completions.create({
-      model: CHAT_MODEL,
-      max_tokens: 1400,
-      stream: true,
-      messages: [
-        { role: "system", content: SYSTEM },
-        ...withCtx,
-      ],
-    });
 
-    for await (const chunk of stream) {
-      if (closed) break;
-      const delta = chunk.choices[0]?.delta?.content;
-      if (delta) send("delta", { text: delta });
-    }
+    const toolOpts = { startDate: parsed.startDate, endDate: parsed.endDate, siteId: site.id, site };
+      const stream = await openai.chat.completions.create({
+        model: CHAT_MODEL,
+        max_tokens: 1400,
+        stream: true,
+        tools: TOOLS,
+        tool_choice: toolCallsUsed >= MAX_TOOL_CALLS ? "none" : "auto",
+        messages: apiMessages,
+      });
 
-    if (!closed) {
-      send("done", { ok: true });
-      res.end();
-    }
-  } catch (err) {
-    req.log.error({ err }, "GSC chat stream failed");
-    if (!closed) {
-      send("error", { error: "OpenAI streaming failed" });
-      res.end();
-    }
-  } finally {
-    clearInterval(keepalive);
-  }
-});
+      let assistantText = "";
+        const delta = choice.delta;
 
+            const idx = tc.index ?? 0;
 export default router;
+
+/**
+ * Execute a tool call from the model. Returns a JSON string (the tool result).
+ */
+async function executeTool(
+  name: string,
+  args: Record<string, unknown>,
+  opts: { startDate: string; endDate: string; siteId: number; site: SiteContext },
+): Promise<string> {
+  const { startDate, endDate, siteId, site } = opts;
+
+  if (name === "get_page_metrics") {
+    const raw = typeof args["page_url"] === "string" ? args["page_url"].trim() : "";
+    if (!raw) return JSON.stringify({ error: "page_url is required" });
+    const pageUrl = resolvePageUrl(raw, site);
+    if (!pageUrl) {
+      return JSON.stringify({ error: `page_url must be a page on this site (${site.host})` });
+    }
+    try {
+      const [queries, dates] = await Promise.all([
+        queryGscDimension({
+          siteId,
+          startDate,
+          endDate,
+          dimension: "query",
+          pageRegex: pageVariantsRegex(pageUrl),
+          rowLimit: 25,
+        }),
+        queryGscDimension({
+          siteId,
+          startDate,
+          endDate,
+          dimension: "date",
+          pageRegex: pageVariantsRegex(pageUrl),
+          rowLimit: 5000,
+        }),
+      ]);
+      const totals = aggregateTotals(dates);
+      return JSON.stringify({
+        page: pageUrl,
+        range: { startDate, endDate },
+        totals: {
+          clicks: totals.clicks,
+          impressions: totals.impressions,
+          ctr: Number(totals.ctr.toFixed(4)),
+          position: Number(totals.position.toFixed(2)),
+        },
+        topQueries: trim(queries, 20),
+      });
+    } catch (err) {
+      return JSON.stringify({ error: "GSC query failed", detail: String(err) });
+    }
+  }
+
+  if (name === "get_query_metrics") {
+    const query = typeof args["query"] === "string" ? args["query"].trim().slice(0, 500) : "";
+    if (!query) return JSON.stringify({ error: "query is required" });
+    try {
+      const pages = await queryGscDimension({
+        siteId,
+        startDate,
+        endDate,
+        dimension: "page",
+        queryFilter: { expression: query.toLowerCase(), operator: "equals" },
+        rowLimit: 20,
+      });
+      const totals = aggregateTotals(pages);
+      return JSON.stringify({
+        query,
+        range: { startDate, endDate },
+        totals: {
+          clicks: totals.clicks,
+          impressions: totals.impressions,
+          ctr: Number(totals.ctr.toFixed(4)),
+          position: Number(totals.position.toFixed(2)),
+        },
+        topPages: trim(pages, 15),
+      });
+    } catch (err) {
+      return JSON.stringify({ error: "GSC query failed", detail: String(err) });
+    }
+  }
+
+  return JSON.stringify({ error: `Unknown tool: ${name}` });
+}
+
+/** Human-readable label for a tool call, shown in the UI while data loads. */
+function toolLabel(name: string, args: Record<string, unknown>): string {
+  if (name === "get_page_metrics") {
+    const raw = typeof args["page_url"] === "string" ? args["page_url"] : "?";
+    // Show just the path portion if it's a full URL
+    try { return new URL(raw).pathname; } catch { return raw; }
+  }
+  if (name === "get_query_metrics") {
+    return typeof args["query"] === "string" ? `"${args["query"]}"` : "?";
+  }
+  return name;
+}
+
+      const toolCallsForMsg = Object.values(toolCallAccum);
+
+          const label = toolLabel(tc.name, args);
+
+    const apiMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      { role: "system", content: SYSTEM },
+      ...withCtx,
+    ];
+
+      let finishReason: string | null = null;
+
+          let args: Record<string, unknown> = {};
+
+    let toolCallsUsed = 0;
+
+        const choice = chunk.choices[0];
+
+/**
+ * Resolve a page_url arg from the model to a full URL that belongs to the site.
+ * Accepts paths (/pricing) or full URLs. Returns null if it can't be resolved
+ * to a site-owned URL.
+ */
+function resolvePageUrl(raw: string, site: SiteContext): string | null {
+  // Already a full URL?
+  try {
+    const u = new URL(raw);
+    if (u.protocol === "http:" || u.protocol === "https:") {
+      u.hash = "";
+      u.search = "";
+      if (!urlBelongsToSite(u.href, site)) return null;
+      return u.href;
+    }
+  } catch {
+    // fall through
+  }
+  // Path only: prepend site origin
+  if (raw.startsWith("/")) {
+    try {
+      return `https://${site.host}${raw}`;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+    let continueLoop = true;
+
+      const assistantMsg: OpenAI.Chat.ChatCompletionMessageParam = {
+        role: "assistant",
+        content: assistantText || null,
+        ...(toolCallsForMsg.length > 0
+          ? {
+              tool_calls: toolCallsForMsg.map((tc) => ({
+                id: tc.id,
+                type: "function" as const,
+                function: { name: tc.name, arguments: tc.argsJson },
+              })),
+            }
+          : {}),
+      };
+
+            const result = await executeTool(tc.name, args, toolOpts);
+
+      const toolCallAccum: Record<
+        number,
+        { id: string; name: string; argsJson: string }
+      > = {};
+
+const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
+  {
+    type: "function",
+    function: {
+      name: "get_page_metrics",
+      description:
+        "Fetch GSC performance data (clicks, impressions, CTR, position, top queries) for a specific page on this site. Use when the user asks about a page not already in the data slice.",
+      parameters: {
+        type: "object",
+        properties: {
+          page_url: {
+            type: "string",
+            description:
+              "The URL path of the page (e.g. /pricing, /blog/my-post) or a full URL. Must be a page on this site.",
+          },
+        },
+        required: ["page_url"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_query_metrics",
+      description:
+        "Fetch GSC metrics for a specific search query — which pages it drives traffic to, and the overall clicks / impressions / CTR / position. Use when the user asks about a keyword not visible in the initial context.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "The exact search query to look up (e.g. 'wellows seo tool').",
+          },
+        },
+        required: ["query"],
+      },
+    },
+  },
+];

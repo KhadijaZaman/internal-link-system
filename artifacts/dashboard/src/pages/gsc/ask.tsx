@@ -6,15 +6,19 @@ import { useGscRange } from "@/components/gsc/range-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Bot, Send, Sparkles } from "lucide-react";
+import { Bot, Send, Sparkles, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getActiveSiteId } from "@/lib/site-context";
 import { InfoTip } from "@/components/info-tip";
 import { HowThisWorks } from "@/components/how-this-works";
 
 interface Msg {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool_use";
   content: string;
+  /** Human-readable label for tool_use messages (e.g. "/pricing" or '"wellows seo"') */
+  toolLabel?: string;
+  /** Tool name for tool_use messages */
+  toolName?: string;
 }
 
 const STREAM_URL = `${import.meta.env.BASE_URL}api/gsc/chat/stream`.replace(/\/+api/, "/api");
@@ -49,10 +53,16 @@ interface StreamArgs {
   includeDefault: boolean;
   signal: AbortSignal;
   onDelta: (text: string) => void;
+  onToolUse: (name: string, label: string) => void;
 }
 
 async function streamChat(args: StreamArgs): Promise<void> {
   const siteId = getActiveSiteId();
+  // Only send user/assistant messages to the API — tool_use messages are UI-only.
+  const apiMessages = args.messages
+    .filter((m): m is Msg & { role: "user" | "assistant" } => m.role === "user" || m.role === "assistant")
+    .map(({ role, content }) => ({ role, content }));
+
   const res = await fetch(STREAM_URL, {
     method: "POST",
     credentials: "include",
@@ -61,7 +71,7 @@ async function streamChat(args: StreamArgs): Promise<void> {
       ...(siteId != null ? { "x-site-id": String(siteId) } : {}),
     },
     body: JSON.stringify({
-      messages: args.messages,
+      messages: apiMessages,
       startDate: args.startDate,
       endDate: args.endDate,
       url: args.url,
@@ -96,6 +106,10 @@ async function streamChat(args: StreamArgs): Promise<void> {
     const obj = parsed as Record<string, unknown>;
     if (eventName === "delta" && typeof obj["text"] === "string") {
       args.onDelta(obj["text"]);
+    } else if (eventName === "tool_use") {
+      const name = typeof obj["name"] === "string" ? obj["name"] : "";
+      const label = typeof obj["label"] === "string" ? obj["label"] : "";
+      args.onToolUse(name, label);
     } else if (eventName === "error") {
       streamError = typeof obj["error"] === "string" ? obj["error"] : "stream error";
     }
@@ -134,6 +148,11 @@ function TypingDots() {
   );
 }
 
+function toolUseDescription(name: string, label: string): string {
+  if (name === "get_page_metrics") return `Fetching page data for ${label}`;
+  if (name === "get_query_metrics") return `Fetching query data for ${label}`;
+  return `Fetching ${label}`;
+}
 function AskBody() {
   const { range } = useGscRange();
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -164,16 +183,26 @@ function AskBody() {
       includeDefault,
       signal: ctrl.signal,
       onDelta: (text) => {
-        // Ignore deltas from a stream that has been superseded by a newer one.
         if (abortRef.current !== ctrl) return;
         setMessages((prev) => {
           const next = prev.slice();
-          const last = next[next.length - 1];
-          if (last && last.role === "assistant") {
-            next[next.length - 1] = { role: "assistant", content: last.content + text };
+          // Scan backwards to find the last assistant message and append to it.
+          // tool_use messages may appear between assistant turns after tool calls.
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i]!.role === "assistant") {
+              next[i] = { role: "assistant", content: next[i]!.content + text };
+              break;
+            }
           }
           return next;
         });
+      },
+      onToolUse: (name, label) => {
+        if (abortRef.current !== ctrl) return;
+        setMessages((prev) => [
+          ...prev,
+          { role: "tool_use", content: "", toolName: name, toolLabel: label },
+        ]);
       },
     })
       .then(() => {
@@ -183,12 +212,15 @@ function AskBody() {
         if (ctrl.signal.aborted || abortRef.current !== ctrl) return;
         setMessages((prev) => {
           const next = prev.slice();
-          const last = next[next.length - 1];
-          if (last && last.role === "assistant" && last.content === "") {
-            next[next.length - 1] = {
-              role: "assistant",
-              content: `Couldn't reach the AI service (${String(err)}). Try again in a moment.`,
-            };
+          // Find the last empty assistant message and replace it with an error.
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i]!.role === "assistant" && next[i]!.content === "") {
+              next[i] = {
+                role: "assistant",
+                content: `Couldn't reach the AI service (${String(err)}). Try again in a moment.`,
+              };
+              break;
+            }
           }
           return next;
         });
@@ -228,7 +260,7 @@ function AskBody() {
         summary="Chat with an AI analyst grounded in your real data — Google Search Console, GA4 (organic sessions, conversions, AI-assistant traffic), and Bing Webmaster. Every number it cites comes from those sources."
         steps={[
           { title: "Default analysis auto-runs", body: "When you change the date range or URL filter, the assistant automatically runs a default summary (winners, losers, branded vs unbranded, top actions) so you don't start with a blank chat." },
-          { title: "Ask follow-up questions", body: "Type any question or tap a suggested prompt — it answers from GSC, GA4, and Bing for the selected range. Ask about traffic, conversions, AI-assistant referrals, Bing vs Google, indexing, or Core Web Vitals." },
+          { title: "Ask about any page or keyword", body: "Ask about any page or keyword on your site — even ones not in the current filter. The assistant fetches a fresh GSC slice on demand and answers with the actual numbers." },
           { title: "Drill into one page", body: "Set the URL filter to a page, and the assistant gets that page's full picture: GSC clicks/impressions and queries, GA4 sessions and conversions, Bing clicks, and its internal links (inbound count + anchors)." },
           { title: "Iterate", body: "Replies stream in live and the assistant keeps full conversation context, so you can refine ('now show me only branded', 'compare to prior 28 days', etc.)." },
         ]}
@@ -236,6 +268,7 @@ function AskBody() {
           { title: "What data can it see?", body: "GSC (queries, pages, clicks, impressions, position, indexing, CWV), GA4 (organic sessions, engagement, key events, AI-assistant sessions), Bing Webmaster (weekly clicks/impressions), and the internal-link graph for a selected page. Nothing else — it will say so if asked beyond that." },
           { title: "Can it edit my site or trigger jobs?", body: "No. It only reads data. Any action it suggests is a recommendation you carry out yourself." },
           { title: "Why won't it answer about a future date?", body: "GSC has a ~48h reporting lag and no future data — the assistant will say so rather than guess." },
+          { title: "How many follow-up data fetches can it do?", body: "Up to 5 live data lookups per conversation to keep costs bounded. After that it answers from what it already has." },
         ]}
       />
       <Card className="border-border/50">
@@ -249,6 +282,18 @@ function AskBody() {
             )}
             {messages.map((m, i) => {
               const isLast = i === messages.length - 1;
+
+              if (m.role === "tool_use") {
+                return (
+                  <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground ml-10">
+                    <Search className="h-3 w-3 shrink-0 animate-pulse" />
+                    <span className="italic">
+                      {toolUseDescription(m.toolName ?? "", m.toolLabel ?? "")}…
+                    </span>
+                  </div>
+                );
+              }
+
               if (m.role === "user") {
                 return (
                   <div
@@ -259,6 +304,7 @@ function AskBody() {
                   </div>
                 );
               }
+
               return (
                 <div key={i} className="flex gap-3 mr-auto max-w-[88%]">
                   <div className="h-7 w-7 shrink-0 rounded-full bg-primary/10 text-primary flex items-center justify-center mt-0.5">
@@ -310,7 +356,7 @@ function AskBody() {
                   }
                 }}
               />
-              <InfoTip>Send your question to the assistant. It has access to the current GSC date range, URL filter, and all GSC data sections.</InfoTip>
+              <InfoTip>Send your question to the assistant. It has access to the current GSC date range, URL filter, and all GSC data sections. Ask about any page or keyword — it fetches fresh data on demand.</InfoTip>
               <Button type="submit" disabled={!input.trim() || pending}>
                 <Send className="h-4 w-4" />
               </Button>
