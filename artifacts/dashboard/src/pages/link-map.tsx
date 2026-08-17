@@ -35,6 +35,21 @@ function isFullUrl(s: string): boolean {
   return /^https?:\/\//i.test(s.trim());
 }
 
+function relativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 2) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "yesterday";
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.floor(months / 12)}y ago`;
+}
+
 const DIR_COLOR: Record<LinkGraphFocusNeighbor["direction"], string> = {
   inbound: "#16a34a",
   outbound: "#0554F2",
@@ -865,6 +880,11 @@ export default function LinkMap() {
                         <ExternalLink className="h-4 w-4" />
                         <span className="sr-only">Open Sheet</span>
                       </a>
+                    )}
+                    {sheetInfoQ.data?.lastSyncedAt && (
+                      <span className="text-xs text-muted-foreground whitespace-nowrap" title={new Date(sheetInfoQ.data.lastSyncedAt).toLocaleString()}>
+                        Synced {relativeTime(sheetInfoQ.data.lastSyncedAt)}
+                      </span>
                     )}
                   </div>
                 )}

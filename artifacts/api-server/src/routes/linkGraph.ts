@@ -9,6 +9,7 @@ import { GetLinkGraphFocusQueryParams } from "@workspace/api-zod";
 import {
   exportLinkMapSheet,
   getStoredLinkMapSheetUrl,
+  getStoredLinkMapSheetSyncedAt,
   isLinkMapSheetShared,
   NoLinkDataError,
 } from "../services/linkMapSheet";
@@ -89,11 +90,12 @@ router.get("/link-graph", requireAuth, requireSite, async (req, res) => {
 
 router.get("/link-graph/sheet-info", requireAuth, requireSite, async (req, res) => {
   const site = getSite(req);
-  const [url, sheetShared] = await Promise.all([
+  const [url, sheetShared, lastSyncedAt] = await Promise.all([
     getStoredLinkMapSheetUrl(site.id),
     isLinkMapSheetShared(site.id),
+    getStoredLinkMapSheetSyncedAt(site.id),
   ]);
-  res.json({ url, sheetShared });
+  res.json({ url, sheetShared, lastSyncedAt });
 });
 
 router.post("/link-graph/export-sheet", requireAuth, requireSite, async (req, res) => {

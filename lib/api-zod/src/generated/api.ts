@@ -525,7 +525,8 @@ export const GetLinkGraphResponse = zod.object({
  */
 export const GetLinkMapSheetInfoResponse = zod.object({
   "url": zod.string().nullable(),
-  "sheetShared": zod.boolean().describe('True when the sheet is link-viewable (anyone with the link)')
+  "sheetShared": zod.boolean().describe('True when the sheet is link-viewable (anyone with the link)'),
+  "lastSyncedAt": zod.string().nullable().optional().describe('ISO timestamp of the last successful automatic sync, or null if never synced')
 })
 
 

@@ -2978,6 +2978,10 @@ components:
         sheetShared:
           type: boolean
           description: True when the sheet is link-viewable (anyone with the link)
+        lastSyncedAt:
+          type: ["string", "null"]
+          format: date-time
+          description: ISO timestamp of the last successful automatic sync, or null if never synced
     LinkMapSheetExportInput:
       type: object
       properties:

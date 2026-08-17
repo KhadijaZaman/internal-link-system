@@ -35,6 +35,33 @@ function sharedStateKey(siteId: number): string {
   return `${sheetStateKey(siteId)}:shared`;
 }
 
+function syncedAtStateKey(siteId: number): string {
+  return `${BASE_KEY}:${siteId}:synced_at`;
+}
+
+async function storeLinkMapSheetSyncedAt(siteId: number, at: Date): Promise<void> {
+  await db
+    .insert(appStateTable)
+    .values({ key: syncedAtStateKey(siteId), value: at.toISOString(), updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: appStateTable.key,
+      set: { value: at.toISOString(), updatedAt: new Date() },
+    });
+}
+
+/**
+ * ISO timestamp of the last time exportLinkMapSheet completed a successful
+ * write for this site, or null if no export has ever succeeded.
+ */
+export async function getStoredLinkMapSheetSyncedAt(siteId: number): Promise<string | null> {
+  const [row] = await db
+    .select()
+    .from(appStateTable)
+    .where(eq(appStateTable.key, syncedAtStateKey(siteId)))
+    .limit(1);
+  return row?.value ?? null;
+}
+
 async function loadStoredSheetId(siteId: number): Promise<string | null> {
   const [row] = await db
     .select()
@@ -390,6 +417,10 @@ export async function exportLinkMapSheet(
 
   // 7. Best-effort share (anyone with the link can view).
   const sheetShared = await ensureSheetShared(spreadsheetId, siteId);
+
+  // 8. Record the successful write time. This is only reached when the sheet
+  //    was actually written — failed or skipped runs never get here.
+  await storeLinkMapSheetSyncedAt(siteId, new Date());
 
   const cleanUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
   return { url: cleanUrl, title: sheetTitle, rowCount: dataRows.length, sheetShared };
