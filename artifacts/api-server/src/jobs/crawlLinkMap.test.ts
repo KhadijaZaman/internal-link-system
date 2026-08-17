@@ -104,12 +104,22 @@ vi.mock("../lib/site", () => ({
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-/** Minimal fetch-compatible Response stub */
+/** Minimal fetch-compatible Response stub (no content-type) */
 function makeResponse(status: number, body: string): Response {
   return {
     ok: status >= 200 && status < 300,
     status,
     headers: { get: (_name: string) => null },
+    text: () => Promise.resolve(body),
+  } as unknown as Response;
+}
+
+/** HTML Response stub — sets content-type so fetchPage parses links. */
+function makeHtmlResponse(body: string): Response {
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: (name: string) => (name === "content-type" ? "text/html" : null) },
     text: () => Promise.resolve(body),
   } as unknown as Response;
 }
@@ -155,6 +165,8 @@ const fakeSite = {
 // ── import after mocks ────────────────────────────────────────────────────────
 
 import { runCrawlLinkMap } from "./crawlLinkMap";
+import { logger } from "../lib/logger";
+import { db } from "@workspace/db";
 
 // ── tests ─────────────────────────────────────────────────────────────────────
 
@@ -314,5 +326,103 @@ describe("crawlLinkMap — fetchWithSafeRedirects SSRF guard", () => {
       );
 
     await expect(runCrawlLinkMap(fakeSite)).rejects.toThrow("not allowed for domain");
+  });
+});
+
+// ── page-level fetch failure isolation ───────────────────────────────────────
+
+/**
+ * These tests confirm that individual page fetch errors (DNS timeouts, SSL
+ * failures, connection resets) are isolated inside fetchPage and do NOT
+ * propagate out of runCrawlLinkMap.
+ *
+ * Three contracts are verified:
+ *   1. The crawl resolves (does not throw) when one page fetch throws.
+ *   2. A warning is logged for the failing page URL, not silently swallowed.
+ *   3. Pages that fetched successfully are still recorded in the DB.
+ */
+describe("crawlLinkMap — page-fetch failure isolation", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+    vi.mocked(logger.warn).mockClear();
+    vi.mocked(db.insert).mockClear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("resolves when one page fetch throws a DNS timeout", async () => {
+    // Leaf sitemap → 2 pages. First page fetch throws; second succeeds.
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(makeResponse(200, LEAF_SITEMAP_XML)) // sitemap
+      .mockRejectedValueOnce(new TypeError("getaddrinfo ENOTFOUND example.com")) // page-a
+      .mockResolvedValue(makeResponse(200, "<html><body></body></html>")); // page-b + fallback
+
+    // Must resolve, not reject — the DNS error is contained inside fetchPage.
+    await expect(runCrawlLinkMap(fakeSite)).resolves.toBeUndefined();
+  });
+
+  it("logs a warning for the page that threw rather than silently dropping it", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(makeResponse(200, LEAF_SITEMAP_XML))
+      .mockRejectedValueOnce(new TypeError("getaddrinfo ENOTFOUND example.com"))
+      .mockResolvedValue(makeResponse(200, "<html><body></body></html>"));
+
+    await runCrawlLinkMap(fakeSite);
+
+    // fetchPage must log a warning that includes both the failed URL and the
+    // error message so operators can identify which page timed out.
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://example.com/page-a/",
+        err: "getaddrinfo ENOTFOUND example.com",
+      }),
+      "Page fetch failed",
+    );
+  });
+
+  it("still records the page that succeeded in the DB when a sibling page throws", async () => {
+    // page-a: DNS failure (returns null from fetchPage — no DB row written).
+    // page-b: real HTML with a same-domain link so fetchPage returns a full
+    //         PageData object and runCrawlLinkMap upserts a pagesTable row.
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(makeResponse(200, LEAF_SITEMAP_XML))
+      .mockRejectedValueOnce(new TypeError("SSL_ERROR_RX_RECORD_TOO_LONG"))
+      .mockResolvedValue(
+        makeHtmlResponse('<html><body><a href="/page-a/">back to A</a></body></html>'),
+      );
+
+    await runCrawlLinkMap(fakeSite);
+
+    // All db.insert() calls share one mock chain because mockReturnValue
+    // reuses the same stub object.  Collect every payload passed to .values()
+    // and confirm that page-b's canonical URL was among them — proving
+    // runCrawlLinkMap did NOT skip the page whose sibling threw.
+    const sharedChain = vi.mocked(db.insert).mock.results[0]!.value as {
+      values: ReturnType<typeof vi.fn>;
+    };
+    const allValuePayloads: unknown[] = sharedChain.values.mock.calls.map(([p]) => p);
+    const pageBRow = allValuePayloads.find(
+      (p): p is Record<string, unknown> =>
+        typeof p === "object" &&
+        p !== null &&
+        (p as Record<string, unknown>).url === "https://example.com/page-b/",
+    );
+    expect(pageBRow).toBeDefined();
+  });
+
+  it("resolves and logs a warning when a page fetch throws a connection reset", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(makeResponse(200, LEAF_SITEMAP_XML))
+      .mockRejectedValueOnce(new Error("ECONNRESET"))
+      .mockResolvedValue(makeHtmlResponse("<html><body></body></html>"));
+
+    await expect(runCrawlLinkMap(fakeSite)).resolves.toBeUndefined();
+
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.objectContaining({ err: "ECONNRESET" }),
+      "Page fetch failed",
+    );
   });
 });
