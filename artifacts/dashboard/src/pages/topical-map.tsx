@@ -38,7 +38,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
-import { rowsToTsv, copyToClipboard, type Cell } from "@/lib/clipboard";
+import { rowsToTsv, tsvToCsv, copyToClipboard, type Cell } from "@/lib/clipboard";
 import { useLocation } from "wouter";
 import {
   AlertTriangle,
@@ -184,16 +184,7 @@ export default function TopicalMapPage() {
   function downloadTableCsv() {
     if (!detail) return;
     const tsv = rowsToTsv(EXPORT_HEADERS, buildExportRows());
-    // Use comma-separated for .csv; replace tabs with commas and quote fields containing commas.
-    const csv = tsv
-      .split("\n")
-      .map((line) =>
-        line
-          .split("\t")
-          .map((cell) => (cell.includes(",") || cell.includes('"') ? `"${cell.replace(/"/g, '""')}"` : cell))
-          .join(","),
-      )
-      .join("\n");
+    const csv = tsvToCsv(tsv);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);

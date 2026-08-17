@@ -47,3 +47,24 @@ export function rowsToTsv(headers: string[], rows: Cell[][]): string {
   ];
   return lines.join("\n");
 }
+
+/**
+ * Convert a tab-separated string (as produced by rowsToTsv) into RFC 4180
+ * CSV. Cells that contain a comma or a double-quote are wrapped in double
+ * quotes; any internal double-quote is escaped by doubling it.
+ */
+export function tsvToCsv(tsv: string): string {
+  return tsv
+    .split("\n")
+    .map((line) =>
+      line
+        .split("\t")
+        .map((cell) =>
+          cell.includes(",") || cell.includes('"')
+            ? `"${cell.replace(/"/g, '""')}"`
+            : cell,
+        )
+        .join(","),
+    )
+    .join("\n");
+}
