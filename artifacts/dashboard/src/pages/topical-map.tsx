@@ -458,6 +458,7 @@ export default function TopicalMapPage() {
   const hoverRef = useRef<number | null>(null);
   const selectedNodeRef = useRef<number | null>(null);
   const statusFilterRef = useRef(statusFilter);
+  const priorityFilterRef = useRef(priorityFilter);
   const showBridgesRef = useRef(showBridges);
   const drawRef = useRef<() => void>(() => {});
   // Pans/zooms the canvas so the given node lands in the center (set up in the
@@ -466,11 +467,12 @@ export default function TopicalMapPage() {
 
   selectedNodeRef.current = selectedNodeId;
   statusFilterRef.current = statusFilter;
+  priorityFilterRef.current = priorityFilter;
   showBridgesRef.current = showBridges;
 
   useEffect(() => {
     drawRef.current();
-  }, [selectedNodeId, statusFilter, showBridges]);
+  }, [selectedNodeId, statusFilter, priorityFilter, showBridges]);
 
   useEffect(() => {
     if (!layout || !canvasRef.current || !containerRef.current) return;
@@ -499,12 +501,16 @@ export default function TopicalMapPage() {
       const sel = selectedNodeRef.current;
       const hov = hoverRef.current;
       const filt = statusFilterRef.current;
+      const priFilt = priorityFilterRef.current;
       const showBr = showBridgesRef.current;
+
+      const isNodeVisible = (n: LaidOutNode) =>
+        filt[n.status] && priFilt[n.priority as "high" | "medium" | "low"];
 
       // Tree edges
       ctx.setLineDash([]);
       for (const e of edges) {
-        if (!filt[e.to.status]) continue;
+        if (!isNodeVisible(e.to)) continue;
         ctx.beginPath();
         ctx.moveTo(e.from.x, e.from.y);
         ctx.lineTo(e.to.x, e.to.y);
@@ -537,9 +543,9 @@ export default function TopicalMapPage() {
       ctx.fillStyle = "#0f172a";
       ctx.fill();
 
-      // Nodes (hidden statuses stay as faint ghosts so the tree shape is readable)
+      // Nodes (hidden statuses/priorities stay as faint ghosts so the tree shape is readable)
       for (const n of nodes) {
-        const hidden = !filt[n.status];
+        const hidden = !isNodeVisible(n);
         const isSel = !hidden && n.id === sel;
         const isHov = !hidden && n.id === hov;
         ctx.beginPath();
@@ -569,7 +575,7 @@ export default function TopicalMapPage() {
       ctx.textAlign = "left";
       ctx.font = `${11 / t.k}px Inter, system-ui, sans-serif`;
       for (const n of nodes) {
-        if (!filt[n.status]) continue;
+        if (!isNodeVisible(n)) continue;
         const always = n.level === "pillar" || n.level === "core_topic";
         const zoomedIn = t.k >= 2.2;
         if (!always && !zoomedIn && n.id !== sel && n.id !== hov) continue;
@@ -608,11 +614,12 @@ export default function TopicalMapPage() {
     const findNode = (mx: number, my: number): LaidOutNode | undefined => {
       const t = transformRef.current;
       const filt = statusFilterRef.current;
+      const priFilt = priorityFilterRef.current;
       const [x, y] = t.invert([mx, my]);
       let best: LaidOutNode | undefined;
       let bestDist = Infinity;
       for (const n of nodes) {
-        if (!filt[n.status]) continue;
+        if (!filt[n.status] || !priFilt[n.priority as "high" | "medium" | "low"]) continue;
         const dist = Math.hypot(n.x - x, n.y - y);
         if (dist <= n.r + 6 / t.k && dist < bestDist) {
           best = n;
