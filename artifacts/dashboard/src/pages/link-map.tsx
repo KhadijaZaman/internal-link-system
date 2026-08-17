@@ -1044,7 +1044,7 @@ export default function LinkMap() {
             </div>
           </DrawerHeader>
           <div className="px-4 pb-6 overflow-y-auto">
-            <div className="space-y-3 max-w-4xl mx-auto">
+            <div className="space-y-3 max-w-4xl mx-auto" data-testid="drawer-flagged-list">
               {visibleFlagged.length === 0 && (
                 <div className="border rounded-lg border-dashed p-8 text-center text-sm text-muted-foreground">
                   No links with this flag.

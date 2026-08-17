@@ -28,11 +28,12 @@
  */
 
 import React from "react";
-import { describe, it, expect, vi, beforeAll, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, cleanup, within, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import LinkMap from "./link-map";
+import { useGetLinkGraph } from "@workspace/api-client-react";
 
 // ---------------------------------------------------------------------------
 // Patch SVGSVGElement so D3 reads non-zero dimensions in jsdom.
@@ -111,7 +112,7 @@ const noopMutation = () => ({
 });
 
 vi.mock("@workspace/api-client-react", () => ({
-  useGetLinkGraph: () => ({ data: MOCK_GRAPH, isLoading: false }),
+  useGetLinkGraph: vi.fn(() => ({ data: MOCK_GRAPH, isLoading: false })),
   useGetInventoryPage: () => ({ data: null, isLoading: false }),
   useGetLinkGraphFocus: () => ({ data: null, isLoading: false, error: null }),
   useGetJobStatus: () => ({ data: [], isLoading: false }),
@@ -377,5 +378,159 @@ describe("LinkMap — placement toggles update the Table view", () => {
       fireEvent.click(container.querySelector("[data-testid='switch-placement-nav']")!);
     });
     await waitFor(() => { expect(globalTableRowCount(container)).toBe(3); });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Audit graph fixture — has two flagged edges and a populated audit summary.
+// Edge flags:
+//   a→b : off_topic  (similarity 0.2)
+//   b→c : tier_violation (similarity 0.5)
+// No generic_anchor edges → that filter shows the zero-state.
+// ---------------------------------------------------------------------------
+const MOCK_AUDIT_GRAPH = {
+  nodes: MOCK_NODES,
+  edges: [
+    {
+      source: "https://example.com/a",
+      target: "https://example.com/b",
+      placement: "content",
+      anchorText: "unrelated anchor",
+      auditFlags: ["off_topic"],
+      auditSimilarity: 0.2,
+    },
+    {
+      source: "https://example.com/b",
+      target: "https://example.com/c",
+      placement: "content",
+      anchorText: "see C",
+      auditFlags: ["tier_violation"],
+      auditSimilarity: 0.5,
+    },
+  ],
+  audit: {
+    auditedAt: "2026-08-17T10:00:00.000Z",
+    auditedEdges: 2,
+    contentEdges: 2,
+    offTopic: 1,
+    tierViolations: 1,
+    genericAnchors: 0,
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Flagged-links audit drawer tests
+// ---------------------------------------------------------------------------
+
+describe("LinkMap — flagged-links audit drawer", () => {
+  beforeEach(() => {
+    vi.mocked(useGetLinkGraph).mockReturnValue({ data: MOCK_AUDIT_GRAPH, isLoading: false } as any);
+  });
+
+  afterEach(() => {
+    vi.mocked(useGetLinkGraph).mockReturnValue({ data: MOCK_GRAPH, isLoading: false } as any);
+    cleanup();
+  });
+
+  it("clicking the off-topic count row opens the drawer filtered to off_topic", async () => {
+    const { container } = renderPage();
+
+    // The off-topic summary row must be enabled (offTopic = 1).
+    const offTopicRow = container.querySelector("[data-testid='row-quality-off-topic']");
+    expect(offTopicRow).toBeTruthy();
+    expect((offTopicRow as HTMLButtonElement).disabled).toBe(false);
+
+    await act(async () => {
+      fireEvent.click(offTopicRow!);
+    });
+
+    // The flagged-links drawer opens; its filter chips render into a portal
+    // (document.body).  Wait for the off_topic chip to appear.
+    await waitFor(() => {
+      const chip = document.body.querySelector("[data-testid='filter-flag-off_topic']");
+      expect(chip).toBeTruthy();
+    });
+
+    // Drawer title should name the active filter.
+    expect(document.body.textContent).toContain("Off-topic links");
+
+    // The off_topic chip should be the active one (variant="default" renders
+    // without an "outline" class in shadcn Button).
+    const offTopicChip = document.body.querySelector("[data-testid='filter-flag-off_topic']");
+    // The active chip has variant="default" — all other chips have "outline".
+    const allChip = document.body.querySelector("[data-testid='filter-flag-all']");
+    expect(allChip).toBeTruthy();
+    // Active chip class list differs from inactive: simplest signal is that
+    // the off_topic chip does NOT carry "outline" in its class while the
+    // "all" chip does (shadcn Button adds "border" for the outline variant).
+    expect(offTopicChip!.className).not.toContain("border-input");
+    expect(allChip!.className).toContain("border");
+
+    // The drawer list should show only the off-topic edge.
+    // "unrelated anchor" belongs to the off_topic edge; "see C" belongs only
+    // to the tier_violation edge and must be absent under this filter.
+    const list = document.body.querySelector("[data-testid='drawer-flagged-list']")!;
+    expect(list).toBeTruthy();
+    expect(list.textContent).toContain("unrelated anchor");
+    expect(list.textContent).not.toContain("see C");
+  });
+
+  it("clicking the Tier violations chip in the drawer switches the visible list", async () => {
+    const { container } = renderPage();
+
+    // Open the drawer pre-filtered to off_topic.
+    const offTopicRow = container.querySelector("[data-testid='row-quality-off-topic']")!;
+    await act(async () => { fireEvent.click(offTopicRow); });
+
+    await waitFor(() => {
+      expect(document.body.querySelector("[data-testid='filter-flag-tier_violation']")).toBeTruthy();
+    });
+
+    // Initially showing off_topic items; the tier_violation chip should be
+    // present but inactive.
+    expect(document.body.textContent).toContain("Off-topic links");
+
+    // Click the Tier violations chip.
+    const tierChip = document.body.querySelector("[data-testid='filter-flag-tier_violation']")!;
+    await act(async () => { fireEvent.click(tierChip); });
+
+    // Drawer title should update to "Tier violation links" (FLAG_META label is singular).
+    await waitFor(() => {
+      expect(document.body.textContent).toContain("Tier violation links");
+    });
+
+    // Drawer list must show the tier_violation edge's anchor ("see C") and
+    // must NOT show the off_topic edge's anchor ("unrelated anchor"), proving
+    // that the filter actually restricts the visible items.
+    const list = document.body.querySelector("[data-testid='drawer-flagged-list']")!;
+    expect(list).toBeTruthy();
+    expect(list.textContent).toContain("see C");
+    expect(list.textContent).not.toContain("unrelated anchor");
+  });
+
+  it("switching to generic_anchor filter shows the zero-state when no links match", async () => {
+    const { container } = renderPage();
+
+    // Open the drawer (any entry point; use the off-topic row).
+    const offTopicRow = container.querySelector("[data-testid='row-quality-off-topic']")!;
+    await act(async () => { fireEvent.click(offTopicRow); });
+
+    await waitFor(() => {
+      expect(document.body.querySelector("[data-testid='filter-flag-generic_anchor']")).toBeTruthy();
+    });
+
+    // Switch to generic_anchor — our fixture has no such edges.
+    const genericChip = document.body.querySelector("[data-testid='filter-flag-generic_anchor']")!;
+    await act(async () => { fireEvent.click(genericChip); });
+
+    // Zero-state: the drawer list must show the empty message and must not
+    // contain either of the flagged-edge anchors from the other filter types.
+    await waitFor(() => {
+      const list = document.body.querySelector("[data-testid='drawer-flagged-list']")!;
+      expect(list).toBeTruthy();
+      expect(list.textContent).toContain("No links with this flag.");
+      expect(list.textContent).not.toContain("unrelated anchor");
+      expect(list.textContent).not.toContain("see C");
+    });
   });
 });
