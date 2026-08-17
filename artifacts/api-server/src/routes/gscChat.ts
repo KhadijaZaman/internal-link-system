@@ -56,7 +56,8 @@ Grounding rules (strict):
 - If the slice can't answer the question, say exactly what's missing (e.g. "pick that page in the URL filter and ask again").
 
 Source attribution (always):
-- Every number must name its source: GSC, Bing, or GA4. Never present a blended or unattributed number.
+- Every number must name its source: GSC, Bing, or GA4. Never present a blended or unattributed number. Attribute naturally in the sentence or section heading ("GSC: 13 clicks", "13 clicks (GSC)") — never append the source name as a dangling word after the line.
+- Format CTR and engagement rate as percentages (0.0002 -> 0.02%), and round positions to one decimal.
 - When the user asks for "best" or "top" anything (queries, pages, opportunities), answer from BOTH GSC and Bing when both have data, in clearly labeled sections, then give one combined recommendation that says which source supports it. Note that Bing data is weekly buckets while GSC follows the selected date range.
 - GA4 covers sessions/engagement/conversions only, not queries.
 
@@ -64,15 +65,21 @@ Intent clarification:
 - If the question is ambiguous about which data source, metric, or filter the user wants (e.g. "how are we doing?" or "show me the data"), ask ONE short clarifying question first (offer the concrete options: GSC search performance, Bing, GA4 traffic/conversions; site-wide or a specific page) instead of guessing.
 - If the question is specific enough to answer, just answer. Never ask a clarifying question when the intent is clear.
 
+Timeframe (always):
+- Open every answer by naming the exact date range the numbers cover (e.g. "Jun 1 – Jun 30"). When Bing's weekly buckets differ from the selected range, say which week(s) the Bing numbers cover.
+- Never present a number without its timeframe being clear from the answer.
+
 When the user asks about a specific URL/page, structure the answer around:
 1. GSC: clicks, impressions, CTR, average position, top queries for that page, trend vs previous period
 2. GA4: organic sessions, engagement, key events (conversions), AI-assistant-referred sessions
 3. Bing: latest-week clicks and impressions
 4. Internal links: inbound/outbound in-content link counts and notable anchors
 5. One overall read: what these sources together say is happening, and one action.
+Cover ALL of GSC, GA4, and Bing every time a page is discussed. If one of them has no data or isn't connected, say so explicitly in its section instead of skipping it.
+When the user mentions a specific URL in their message, ALWAYS call get_page_metrics for it first — the site-wide slice only has top pages, so answering a page question from the slice alone gives incomplete numbers. The tool returns GSC totals + top queries, GA4, and Bing for that page in one call.
 
 You have three tools available:
-- get_page_metrics: fetch GSC data for any page on this site. Use it when the user asks about a page not in the initial context.
+- get_page_metrics: fetch GSC + GA4 + Bing data for any page on this site. Call it whenever the user asks about a specific page or mentions a URL.
 - get_query_metrics: fetch GSC + Bing data for any search query. Use it when the user asks about a keyword not visible in the initial context.
 - get_trend_data: fetch daily or weekly clicks+impressions over time for a specific page or keyword. Use it when the user asks about trends, momentum, week-over-week changes, whether something is growing or declining, or "is X trending up/down".
 
@@ -196,6 +203,19 @@ async function internalLinksSummary(siteId: number, url: string) {
  * Bing weekly stats already synced by sync_bing_pages — no external call.
  * Returns the two most recent weekly buckets so the model can talk movement.
  */
+/**
+ * Both trailing-slash forms of a path, for exact-match lookups against synced
+ * tables. Canonicalizes first (lowercase, strip query/hash and repeated
+ * trailing slashes) to match how Bing/GA4 ingestion stores paths.
+ */
+function pathVariants(pathname: string): string[] {
+  const noQuery = (pathname.split("?")[0] ?? pathname).split("#")[0] ?? pathname;
+  let bare = noQuery.toLowerCase();
+  if (bare.length > 1) bare = bare.replace(/\/+$/, "");
+  if (!bare || bare === "/") return ["/"];
+  return [bare, `${bare}/`];
+}
+
 async function bingSummary(siteId: number, url: string | null | undefined) {
   const buckets = await db
     .selectDistinct({ bucketDate: bingPageStatsTable.bucketDate })
@@ -205,7 +225,9 @@ async function bingSummary(siteId: number, url: string | null | undefined) {
     .limit(2);
   if (buckets.length === 0) return null;
   const dates = buckets.map((b) => b.bucketDate);
-  const path = url ? new URL(url).pathname : null;
+  // Match both trailing-slash forms — Bing sync stores paths without the
+  // trailing slash while chat URLs are normalized with one.
+  const pathForms = url ? pathVariants(new URL(url).pathname) : null;
   const rows = await db
     .select()
     .from(bingPageStatsTable)
@@ -213,7 +235,7 @@ async function bingSummary(siteId: number, url: string | null | undefined) {
       and(
         eq(bingPageStatsTable.siteId, siteId),
         inArray(bingPageStatsTable.bucketDate, dates),
-        ...(path ? [eq(bingPageStatsTable.path, path)] : []),
+        ...(pathForms ? [inArray(bingPageStatsTable.path, pathForms)] : []),
       ),
     );
   const byBucket = (d: string) => rows.filter((r) => r.bucketDate === d);
@@ -271,11 +293,11 @@ async function bingSummary(siteId: number, url: string | null | undefined) {
 
 async function ga4Summary(site: SiteContext, startDate: string, endDate: string, url: string | null | undefined) {
   const { rows, totals } = await queryGa4Pages({ startDate, endDate, channel: "organic", site });
-  const path = url ? new URL(url).pathname : null;
-  const scoped = path ? rows.filter((r) => r.path === path || r.path === `${path}/`) : rows;
+  const pathForms = url ? pathVariants(new URL(url).pathname) : null;
+  const scoped = pathForms ? rows.filter((r) => pathForms.includes(r.path)) : rows;
   // When the chat is scoped to one page, totals must come from the scoped
   // rows — site-wide totals next to a page-filtered GSC slice mislead the model.
-  const scopedTotals = path
+  const scopedTotals = pathForms
     ? {
         sessions: scoped.reduce((s, r) => s + r.sessions, 0),
         engagementRate:
@@ -298,7 +320,7 @@ async function ga4Summary(site: SiteContext, startDate: string, endDate: string,
   return {
     note: "GA4 organic-channel landing pages; keyEvents = conversions; aiSessions = sessions referred by AI assistants.",
     totals: {
-      scope: path ? "selected page only" : "site-wide organic",
+      scope: pathForms ? "selected page only" : "site-wide organic",
       sessions: scopedTotals.sessions,
       engagementRate: Number(scopedTotals.engagementRate.toFixed(3)),
       keyEvents: scopedTotals.keyEvents,
@@ -923,7 +945,7 @@ async function executeTool(
       return JSON.stringify({ error: `page_url must be a page on this site (${site.host})` });
     }
     try {
-      const [queries, dates] = await Promise.all([
+      const [queries, dates, ga4, bing] = await Promise.all([
         queryGscDimension({
           siteId,
           startDate,
@@ -940,6 +962,8 @@ async function executeTool(
           pageRegex: pageVariantsRegex(pageUrl),
           rowLimit: 5000,
         }),
+        ga4Summary(site, startDate, endDate, pageUrl).catch(() => null),
+        bingSummary(siteId, pageUrl).catch(() => null),
       ]);
       const totals = aggregateTotals(dates);
       const isEmpty = totals.clicks === 0 && totals.impressions === 0;
@@ -988,6 +1012,8 @@ async function executeTool(
           position: Number(totals.position.toFixed(2)),
         },
         topQueries: trim(queries, 20),
+        ga4: ga4 ?? { notice: "GA4 not connected or returned no data for this page and range." },
+        bing: bing ?? { notice: "No Bing Webmaster data synced for this page." },
         ...(isEmpty
           ? {
               zero_data_diagnostic:

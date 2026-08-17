@@ -270,6 +270,79 @@ export interface ProspectDiscoveryInput {
   competitors: string[];
 }
 
+export interface RunBacklinkAuditInput {
+  /** @maxItems 5 */
+  competitors?: string[];
+  refresh?: boolean;
+}
+
+export interface BacklinkSummary {
+  target: string;
+  /** @nullable */
+  rank?: number | null;
+  backlinks: number;
+  referringDomains: number;
+  referringMainDomains: number;
+  brokenBacklinks: number;
+  referringIps: number;
+  dofollow: number;
+  nofollow: number;
+  /** @nullable */
+  firstSeen?: string | null;
+}
+
+export interface BacklinkAnchor {
+  anchor: string;
+  backlinks: number;
+  referringDomains: number;
+  dofollow: number;
+  nofollow: number;
+}
+
+export interface TopBacklink {
+  urlFrom: string;
+  urlTo: string;
+  domainFrom: string;
+  /** @nullable */
+  pageFromTitle?: string | null;
+  /** @nullable */
+  anchor?: string | null;
+  dofollow: boolean;
+  /** @nullable */
+  rank?: number | null;
+  /** @nullable */
+  domainFromRank?: number | null;
+  /** @nullable */
+  firstSeen?: string | null;
+  /** @nullable */
+  lastSeen?: string | null;
+}
+
+export interface AuditReferringDomain {
+  domain: string;
+  backlinks: number;
+  /** @nullable */
+  rank?: number | null;
+  /** @nullable */
+  firstSeen?: string | null;
+  /** @nullable */
+  lastSeen?: string | null;
+}
+
+export interface BacklinkAudit {
+  fetchedAt: string;
+  target: string;
+  summary?: BacklinkSummary | null;
+  anchors: BacklinkAnchor[];
+  topBacklinks: TopBacklink[];
+  referringDomains: AuditReferringDomain[];
+  competitors: BacklinkSummary[];
+}
+
+export interface BacklinkAuditResponse {
+  audit: BacklinkAudit | null;
+}
+
 export type ProspectUpdateInputStatus = typeof ProspectUpdateInputStatus[keyof typeof ProspectUpdateInputStatus];
 
 
@@ -743,7 +816,10 @@ export interface LinkMapSheetInfo {
   url: string | null;
   /** True when the sheet is link-viewable (anyone with the link) */
   sheetShared: boolean;
-  /** ISO timestamp of the last successful automatic sync, or null if never synced */
+  /**
+     * ISO timestamp of the last successful automatic sync, or null if never synced
+     * @nullable
+     */
   lastSyncedAt?: string | null;
 }
 
@@ -2722,10 +2798,19 @@ export interface AnchorPage {
   tier?: number | null;
 }
 
+export type DemandQueryIntent = typeof DemandQueryIntent[keyof typeof DemandQueryIntent];
+
+
+export const DemandQueryIntent = {
+  bofu: 'bofu',
+  commercial: 'commercial',
+} as const;
+
 export interface DemandQuery {
   query: string;
   impressions: number;
   similarity: number;
+  intent: DemandQueryIntent;
 }
 
 export interface SnapshotHealth {
@@ -2756,6 +2841,8 @@ export interface SnapshotDemandSplit {
 
 export interface SnapshotDemand {
   queriesAnalyzed: number;
+  /** Informational/junk queries excluded from the demand analysis (only BOFU and commercial-intent queries are analyzed). */
+  informationalExcluded?: number;
   totalImpressions: number;
   onCore: SnapshotDemandSplit;
   offCore: SnapshotDemandSplit;

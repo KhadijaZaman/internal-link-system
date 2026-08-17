@@ -28,6 +28,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { HowThisWorks } from "@/components/how-this-works";
+import { BacklinkAuditSection } from "@/components/backlink-audit";
+import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { Link2, Search, ExternalLink } from "lucide-react";
 
@@ -244,6 +246,10 @@ export default function BacklinksPage() {
           </CardContent>
         </Card>
       )}
+
+      <Separator className="my-2" />
+
+      <BacklinkAuditSection />
     </div>
   );
 }

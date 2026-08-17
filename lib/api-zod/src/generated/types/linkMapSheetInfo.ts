@@ -11,6 +11,9 @@ export interface LinkMapSheetInfo {
   url: string | null;
   /** True when the sheet is link-viewable (anyone with the link) */
   sheetShared: boolean;
-  /** ISO timestamp of the last successful automatic sync, or null if never synced */
-  lastSyncedAt?: string | null;
+  /**
+     * ISO timestamp of the last successful automatic sync, or null if never synced
+     * @nullable
+     */
+  lastSyncedAt?: Date | null;
 }

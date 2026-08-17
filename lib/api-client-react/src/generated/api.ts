@@ -30,6 +30,7 @@ import type {
   AuditReport,
   AuthSession,
   AuthoritySnapshot,
+  BacklinkAuditResponse,
   BacklinkProspect,
   BacklinkProspectList,
   BingPagesReport,
@@ -136,6 +137,7 @@ import type {
   PruningReport,
   QueryInsights,
   ResearchRunResponse,
+  RunBacklinkAuditInput,
   SeoInsightsResponse,
   SeoReportResponse,
   SetGscPropertyInput,
@@ -1647,6 +1649,154 @@ export const useDiscoverBacklinkProspects = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getDiscoverBacklinkProspectsMutationOptions(options));
+    }
+
+export const getGetBacklinkAuditUrl = () => {
+
+
+
+
+  return `/api/backlinks/audit`
+}
+
+/**
+ * @summary Get the saved backlink audit (own profile + competitor benchmarks)
+ */
+export const getBacklinkAudit = async ( options?: RequestInit): Promise<BacklinkAuditResponse> => {
+
+  return customFetch<BacklinkAuditResponse>(getGetBacklinkAuditUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBacklinkAuditQueryKey = () => {
+    return [
+    `/api/backlinks/audit`
+    ] as const;
+    }
+
+
+export const getGetBacklinkAuditQueryOptions = <TData = Awaited<ReturnType<typeof getBacklinkAudit>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBacklinkAudit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBacklinkAuditQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBacklinkAudit>>> = ({ signal }) => getBacklinkAudit({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBacklinkAudit>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBacklinkAuditQueryResult = NonNullable<Awaited<ReturnType<typeof getBacklinkAudit>>>
+export type GetBacklinkAuditQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the saved backlink audit (own profile + competitor benchmarks)
+ */
+
+export function useGetBacklinkAudit<TData = Awaited<ReturnType<typeof getBacklinkAudit>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBacklinkAudit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBacklinkAuditQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getRunBacklinkAuditUrl = () => {
+
+
+
+
+  return `/api/backlinks/audit`
+}
+
+/**
+ * @summary Run or refresh the backlink audit via DataForSEO (paid; cached 24h)
+ */
+export const runBacklinkAudit = async (runBacklinkAuditInput: RunBacklinkAuditInput, options?: RequestInit): Promise<BacklinkAuditResponse> => {
+
+  return customFetch<BacklinkAuditResponse>(getRunBacklinkAuditUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      runBacklinkAuditInput,)
+  }
+);}
+
+
+
+
+export const getRunBacklinkAuditMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runBacklinkAudit>>, TError,{data: BodyType<RunBacklinkAuditInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runBacklinkAudit>>, TError,{data: BodyType<RunBacklinkAuditInput>}, TContext> => {
+
+const mutationKey = ['runBacklinkAudit'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runBacklinkAudit>>, {data: BodyType<RunBacklinkAuditInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  runBacklinkAudit(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunBacklinkAuditMutationResult = NonNullable<Awaited<ReturnType<typeof runBacklinkAudit>>>
+    export type RunBacklinkAuditMutationBody = BodyType<RunBacklinkAuditInput>
+    export type RunBacklinkAuditMutationError = ErrorType<void>
+
+    /**
+ * @summary Run or refresh the backlink audit via DataForSEO (paid; cached 24h)
+ */
+export const useRunBacklinkAudit = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runBacklinkAudit>>, TError,{data: BodyType<RunBacklinkAuditInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runBacklinkAudit>>,
+        TError,
+        {data: BodyType<RunBacklinkAuditInput>},
+        TContext
+      > => {
+      return useMutation(getRunBacklinkAuditMutationOptions(options));
     }
 
 export const getUpdateBacklinkProspectUrl = (prospectId: number,) => {

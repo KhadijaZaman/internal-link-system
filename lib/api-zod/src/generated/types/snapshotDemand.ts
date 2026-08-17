@@ -10,6 +10,8 @@ import type { SnapshotDemandSplit } from './snapshotDemandSplit';
 
 export interface SnapshotDemand {
   queriesAnalyzed: number;
+  /** Informational/junk queries excluded from the demand analysis (only BOFU and commercial-intent queries are analyzed). */
+  informationalExcluded?: number;
   totalImpressions: number;
   onCore: SnapshotDemandSplit;
   offCore: SnapshotDemandSplit;

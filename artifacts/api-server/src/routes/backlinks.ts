@@ -1,14 +1,23 @@
 import { Router, type IRouter } from "express";
-import { db, backlinkProspectsTable } from "@workspace/db";
-import { and, eq, desc, sql } from "drizzle-orm";
+import { db, backlinkProspectsTable, backlinkAuditsTable } from "@workspace/db";
+import { and, eq, desc, sql, inArray } from "drizzle-orm";
 import {
   DiscoverBacklinkProspectsBody,
+  RunBacklinkAuditBody,
   UpdateBacklinkProspectBody,
 } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth";
 import { requireSite, getSite } from "../lib/site";
 import { withCache } from "../integrations/gsc";
-import { fetchTopReferringDomains, type ReferringDomain } from "../integrations/dataforseo";
+import {
+  fetchTopReferringDomains,
+  fetchBacklinkSummary,
+  fetchBacklinkAnchors,
+  fetchTopBacklinks,
+  isDataForSeoOutOfFunds,
+  type ReferringDomain,
+  type BacklinkSummary,
+} from "../integrations/dataforseo";
 
 const router: IRouter = Router();
 
@@ -137,6 +146,178 @@ router.post("/backlinks/prospects", requireAuth, requireSite, async (req, res, n
       "Backlink prospect discovery complete",
     );
     res.json(await listProspects(site.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- Backlink audit (comprehensive profile, persisted) ----------
+
+/** Audit pulls are paid; refresh at most once a day unless data is missing. */
+const AUDIT_TTL_MS = 24 * 60 * 60 * 1000;
+
+async function loadAudit(siteId: number) {
+  const rows = await db
+    .select()
+    .from(backlinkAuditsTable)
+    .where(eq(backlinkAuditsTable.siteId, siteId));
+  if (rows.length === 0) return null;
+  const own = rows.find((r) => r.kind === "own_profile");
+  if (!own) return null;
+  const competitorRows = rows.filter((r) => r.kind === "competitor_summary");
+  const payload = own.payload as {
+    summary: BacklinkSummary | null;
+    anchors: unknown[];
+    topBacklinks: unknown[];
+    referringDomains: unknown[];
+  };
+  return {
+    fetchedAt: own.fetchedAt.toISOString(),
+    target: own.target,
+    summary: payload.summary,
+    anchors: payload.anchors,
+    topBacklinks: payload.topBacklinks,
+    referringDomains: payload.referringDomains,
+    competitors: competitorRows
+      .map((r) => ({ ...(r.payload as BacklinkSummary), target: r.target }))
+      .sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0)),
+  };
+}
+
+router.get("/backlinks/audit", requireAuth, requireSite, async (req, res, next) => {
+  try {
+    const site = getSite(req);
+    const audit = await loadAudit(site.id);
+    res.json({ audit });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/backlinks/audit", requireAuth, requireSite, async (req, res, next) => {
+  try {
+    const site = getSite(req);
+    const parsed = RunBacklinkAuditBody.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid request body" });
+      return;
+    }
+    const ownHost = site.host.replace(/^www\./, "").toLowerCase();
+    const competitors = [
+      ...new Set(
+        (parsed.data.competitors ?? [])
+          .map(normalizeDomain)
+          .filter((d): d is string => d !== null && d !== ownHost),
+      ),
+    ].slice(0, 5);
+
+    const refresh = !!parsed.data.refresh;
+    const staleBefore = Date.now() - AUDIT_TTL_MS;
+
+    // Current persisted state, per row so freshness is per component.
+    const rows = await db
+      .select({
+        target: backlinkAuditsTable.target,
+        kind: backlinkAuditsTable.kind,
+        fetchedAt: backlinkAuditsTable.fetchedAt,
+      })
+      .from(backlinkAuditsTable)
+      .where(eq(backlinkAuditsTable.siteId, site.id));
+    const ownRow = rows.find((r) => r.kind === "own_profile");
+    const compFetchedAt = new Map(
+      rows.filter((r) => r.kind === "competitor_summary").map((r) => [r.target, r.fetchedAt.getTime()]),
+    );
+
+    // If competitors were provided, they define the benchmark set: drop rows
+    // outside it. If omitted, keep the existing benchmark set as-is.
+    const benchmarkSet = competitors.length > 0 ? competitors : [...compFetchedAt.keys()];
+    const obsolete = [...compFetchedAt.keys()].filter((t) => !benchmarkSet.includes(t));
+    if (obsolete.length > 0) {
+      await db
+        .delete(backlinkAuditsTable)
+        .where(
+          and(
+            eq(backlinkAuditsTable.siteId, site.id),
+            eq(backlinkAuditsTable.kind, "competitor_summary"),
+            inArray(backlinkAuditsTable.target, obsolete),
+          ),
+        );
+    }
+
+    const needOwn = refresh || !ownRow || ownRow.fetchedAt.getTime() < staleBefore;
+    const compTargets = benchmarkSet.filter((c) => {
+      const at = compFetchedAt.get(c);
+      return refresh || at === undefined || at < staleBefore;
+    });
+
+    if (!needOwn && compTargets.length === 0) {
+      res.json({ audit: await loadAudit(site.id) });
+      return;
+    }
+
+    // All-or-nothing per unit: the own profile persists only if all four legs
+    // succeed; each competitor summary persists independently. A 402 anywhere
+    // surfaces as 402 — a 200 never hides a failed leg.
+    try {
+      const now = new Date();
+      if (needOwn) {
+        const settled = await Promise.allSettled([
+          fetchBacklinkSummary(ownHost),
+          fetchBacklinkAnchors(ownHost, 30),
+          fetchTopBacklinks(ownHost, 50),
+          fetchTopReferringDomains(ownHost, 100),
+        ]);
+        const failed = settled.filter((s) => s.status === "rejected");
+        if (failed.length > 0) {
+          const outOfFunds = failed.find((f) => isDataForSeoOutOfFunds(f.reason));
+          throw outOfFunds ? outOfFunds.reason : (failed[0] as PromiseRejectedResult).reason;
+        }
+        const [summary, anchors, topBacklinks, referringDomains] = settled.map(
+          (s) => (s as PromiseFulfilledResult<unknown>).value,
+        );
+        await db
+          .insert(backlinkAuditsTable)
+          .values({
+            siteId: site.id,
+            target: ownHost,
+            kind: "own_profile",
+            payload: { summary, anchors, topBacklinks, referringDomains },
+            fetchedAt: now,
+          })
+          .onConflictDoUpdate({
+            target: [backlinkAuditsTable.siteId, backlinkAuditsTable.target, backlinkAuditsTable.kind],
+            set: {
+              payload: { summary, anchors, topBacklinks, referringDomains },
+              fetchedAt: now,
+            },
+          });
+      }
+      for (const target of compTargets) {
+        const s = await fetchBacklinkSummary(target);
+        if (!s) continue;
+        await db
+          .insert(backlinkAuditsTable)
+          .values({ siteId: site.id, target, kind: "competitor_summary", payload: s, fetchedAt: now })
+          .onConflictDoUpdate({
+            target: [backlinkAuditsTable.siteId, backlinkAuditsTable.target, backlinkAuditsTable.kind],
+            set: { payload: s, fetchedAt: now },
+          });
+      }
+      req.log.info(
+        { siteId: site.id, ownRefreshed: needOwn, competitorsFetched: compTargets, removed: obsolete },
+        "Backlink audit complete",
+      );
+    } catch (err) {
+      if (isDataForSeoOutOfFunds(err)) {
+        res.status(402).json({
+          error:
+            "DataForSEO is out of funds. Top up your balance at app.dataforseo.com, then run the audit again.",
+        });
+        return;
+      }
+      throw err;
+    }
+    res.json({ audit: await loadAudit(site.id) });
   } catch (err) {
     next(err);
   }

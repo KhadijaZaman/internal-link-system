@@ -37,4 +37,5 @@ export * from "./similarityRuns";
 export * from "./topicalMaps";
 export * from "./researchRuns";
 export * from "./linkMapRuns";
+export * from "./backlinkAudits";
 export * from "./backlinkProspects";

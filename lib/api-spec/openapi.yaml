@@ -434,6 +434,37 @@ paths:
                 $ref: "#/components/schemas/BacklinkProspectList"
         "400":
           description: Invalid competitor list
+  /backlinks/audit:
+    get:
+      operationId: getBacklinkAudit
+      tags: [backlinks]
+      summary: Get the saved backlink audit (own profile + competitor benchmarks)
+      responses:
+        "200":
+          description: Saved audit, or null when none has been run yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BacklinkAuditResponse"
+    post:
+      operationId: runBacklinkAudit
+      tags: [backlinks]
+      summary: Run or refresh the backlink audit via DataForSEO (paid; cached 24h)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunBacklinkAuditInput"
+      responses:
+        "200":
+          description: Audit result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BacklinkAuditResponse"
+        "402":
+          description: DataForSEO out of funds
   /backlinks/prospects/{prospectId}:
     patch:
       operationId: updateBacklinkProspect
@@ -2537,6 +2568,102 @@ components:
           items: { type: string, minLength: 3 }
           minItems: 1
           maxItems: 5
+    RunBacklinkAuditInput:
+      type: object
+      properties:
+        competitors:
+          type: array
+          items: { type: string, minLength: 3 }
+          maxItems: 5
+        refresh: { type: boolean }
+    BacklinkSummary:
+      type: object
+      required:
+        - target
+        - backlinks
+        - referringDomains
+        - referringMainDomains
+        - brokenBacklinks
+        - referringIps
+        - dofollow
+        - nofollow
+      properties:
+        target: { type: string }
+        rank: { type: ["integer", "null"] }
+        backlinks: { type: integer }
+        referringDomains: { type: integer }
+        referringMainDomains: { type: integer }
+        brokenBacklinks: { type: integer }
+        referringIps: { type: integer }
+        dofollow: { type: integer }
+        nofollow: { type: integer }
+        firstSeen: { type: ["string", "null"] }
+    BacklinkAnchor:
+      type: object
+      required: [anchor, backlinks, referringDomains, dofollow, nofollow]
+      properties:
+        anchor: { type: string }
+        backlinks: { type: integer }
+        referringDomains: { type: integer }
+        dofollow: { type: integer }
+        nofollow: { type: integer }
+    TopBacklink:
+      type: object
+      required: [urlFrom, urlTo, domainFrom, dofollow]
+      properties:
+        urlFrom: { type: string }
+        urlTo: { type: string }
+        domainFrom: { type: string }
+        pageFromTitle: { type: ["string", "null"] }
+        anchor: { type: ["string", "null"] }
+        dofollow: { type: boolean }
+        rank: { type: ["integer", "null"] }
+        domainFromRank: { type: ["integer", "null"] }
+        firstSeen: { type: ["string", "null"] }
+        lastSeen: { type: ["string", "null"] }
+    AuditReferringDomain:
+      type: object
+      required: [domain, backlinks]
+      properties:
+        domain: { type: string }
+        backlinks: { type: integer }
+        rank: { type: ["integer", "null"] }
+        firstSeen: { type: ["string", "null"] }
+        lastSeen: { type: ["string", "null"] }
+    BacklinkAudit:
+      type: object
+      required: [fetchedAt, target, anchors, topBacklinks, referringDomains, competitors]
+      properties:
+        fetchedAt: { type: string, format: date-time }
+        target: { type: string }
+        summary:
+          oneOf:
+            - $ref: "#/components/schemas/BacklinkSummary"
+            - type: "null"
+        anchors:
+          type: array
+          items:
+            $ref: "#/components/schemas/BacklinkAnchor"
+        topBacklinks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TopBacklink"
+        referringDomains:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditReferringDomain"
+        competitors:
+          type: array
+          items:
+            $ref: "#/components/schemas/BacklinkSummary"
+    BacklinkAuditResponse:
+      type: object
+      required: [audit]
+      properties:
+        audit:
+          oneOf:
+            - $ref: "#/components/schemas/BacklinkAudit"
+            - type: "null"
     ProspectUpdateInput:
       type: object
       properties:
@@ -5004,11 +5131,14 @@ components:
         tier: { type: ["integer", "null"] }
     DemandQuery:
       type: object
-      required: [query, impressions, similarity]
+      required: [query, impressions, similarity, intent]
       properties:
         query: { type: string }
         impressions: { type: integer }
         similarity: { type: number }
+        intent:
+          type: string
+          enum: [bofu, commercial]
     SnapshotHealth:
       type: object
       required:
@@ -5058,6 +5188,9 @@ components:
         - topOnCore
       properties:
         queriesAnalyzed: { type: integer }
+        informationalExcluded:
+          type: integer
+          description: Informational/junk queries excluded from the demand analysis (only BOFU and commercial-intent queries are analyzed).
         totalImpressions: { type: integer }
         onCore: { $ref: "#/components/schemas/SnapshotDemandSplit" }
         offCore: { $ref: "#/components/schemas/SnapshotDemandSplit" }

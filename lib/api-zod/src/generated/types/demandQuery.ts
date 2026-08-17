@@ -5,9 +5,11 @@
  * Linkweave internal linking system API
  * OpenAPI spec version: 0.1.0
  */
+import type { DemandQueryIntent } from './demandQueryIntent';
 
 export interface DemandQuery {
   query: string;
   impressions: number;
   similarity: number;
+  intent: DemandQueryIntent;
 }

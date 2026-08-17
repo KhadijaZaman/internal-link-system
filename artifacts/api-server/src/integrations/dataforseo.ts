@@ -36,9 +36,11 @@ export async function fetchTopReferringDomains(
       ]),
     },
   );
+  if (res.status === 402) throw new DataForSeoOutOfFundsError();
   if (!res.ok) return [];
   const data = (await res.json()) as {
     tasks?: Array<{
+      status_code?: number;
       result?: Array<{
         items?: Array<{
           domain?: string;
@@ -50,6 +52,8 @@ export async function fetchTopReferringDomains(
       }>;
     }>;
   };
+  const taskStatus = data.tasks?.[0]?.status_code;
+  if (taskStatus === 40200 || taskStatus === 40201) throw new DataForSeoOutOfFundsError();
   const items = data.tasks?.[0]?.result?.[0]?.items ?? [];
   return items
     .filter((i): i is Required<Pick<typeof i, "domain">> & typeof i => !!i.domain)
@@ -59,6 +63,169 @@ export async function fetchTopReferringDomains(
       rank: i.rank ?? null,
       firstSeen: i.first_seen ?? null,
       lastSeen: i.last_seen ?? null,
+    }));
+}
+
+// ---------- Backlink audit (summary / anchors / top backlinks) ----------
+
+class DataForSeoOutOfFundsError extends Error {
+  constructor() {
+    super(
+      "DataForSEO account is out of funds (HTTP 402) — top up the balance at app.dataforseo.com, then run again.",
+    );
+    this.name = "DataForSeoOutOfFundsError";
+  }
+}
+
+async function backlinksApi<T>(path: string, task: Record<string, unknown>): Promise<T | null> {
+  const login = process.env["DATAFORSEO_LOGIN"];
+  const password = process.env["DATAFORSEO_PASSWORD"];
+  if (!login || !password) return null;
+  const auth = Buffer.from(`${login}:${password}`).toString("base64");
+  const res = await fetch(`https://api.dataforseo.com/v3/backlinks/${path}/live`, {
+    method: "POST",
+    headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json" },
+    body: JSON.stringify([task]),
+  });
+  if (res.status === 402) throw new DataForSeoOutOfFundsError();
+  if (!res.ok) throw new Error(`DataForSEO backlinks/${path} failed: HTTP ${res.status}`);
+  const data = (await res.json()) as {
+    status_code?: number;
+    tasks?: Array<{ status_code?: number; status_message?: string; result?: T[] }>;
+  };
+  const t = data.tasks?.[0];
+  if (t?.status_code === 40201 || t?.status_code === 40200) throw new DataForSeoOutOfFundsError();
+  if (t?.status_code && t.status_code >= 40000) {
+    throw new Error(`DataForSEO backlinks/${path}: ${t.status_message ?? t.status_code}`);
+  }
+  return t?.result?.[0] ?? null;
+}
+
+export function isDataForSeoOutOfFunds(err: unknown): boolean {
+  return err instanceof DataForSeoOutOfFundsError;
+}
+
+export interface BacklinkSummary {
+  target: string;
+  rank: number | null; // domain rank, 0-1000
+  backlinks: number;
+  referringDomains: number;
+  referringMainDomains: number;
+  brokenBacklinks: number;
+  referringIps: number;
+  dofollow: number; // backlinks that are dofollow
+  nofollow: number;
+  firstSeen: string | null;
+}
+
+export async function fetchBacklinkSummary(target: string): Promise<BacklinkSummary | null> {
+  const r = await backlinksApi<{
+    target?: string;
+    rank?: number;
+    backlinks?: number;
+    referring_domains?: number;
+    referring_main_domains?: number;
+    broken_backlinks?: number;
+    referring_ips?: number;
+    referring_links_attributes?: Record<string, number>;
+    first_seen?: string;
+  }>("summary", { target, include_subdomains: true, exclude_internal_backlinks: true });
+  if (!r) return null;
+  const nofollow = r.referring_links_attributes?.["nofollow"] ?? 0;
+  const total = r.backlinks ?? 0;
+  return {
+    target: r.target ?? target,
+    rank: r.rank ?? null,
+    backlinks: total,
+    referringDomains: r.referring_domains ?? 0,
+    referringMainDomains: r.referring_main_domains ?? 0,
+    brokenBacklinks: r.broken_backlinks ?? 0,
+    referringIps: r.referring_ips ?? 0,
+    dofollow: Math.max(0, total - nofollow),
+    nofollow,
+    firstSeen: r.first_seen ?? null,
+  };
+}
+
+export interface BacklinkAnchor {
+  anchor: string;
+  backlinks: number;
+  referringDomains: number;
+  dofollow: number;
+  nofollow: number;
+}
+
+export async function fetchBacklinkAnchors(target: string, limit = 30): Promise<BacklinkAnchor[]> {
+  const r = await backlinksApi<{
+    items?: Array<{
+      anchor?: string;
+      backlinks?: number;
+      referring_domains?: number;
+      referring_links_attributes?: Record<string, number>;
+    }>;
+  }>("anchors", { target, limit, order_by: ["backlinks,desc"] });
+  return (r?.items ?? [])
+    .filter((i) => typeof i.anchor === "string")
+    .map((i) => {
+      const nofollow = i.referring_links_attributes?.["nofollow"] ?? 0;
+      const total = i.backlinks ?? 0;
+      return {
+        anchor: i.anchor ?? "",
+        backlinks: total,
+        referringDomains: i.referring_domains ?? 0,
+        dofollow: Math.max(0, total - nofollow),
+        nofollow,
+      };
+    });
+}
+
+export interface TopBacklink {
+  urlFrom: string;
+  urlTo: string;
+  domainFrom: string;
+  pageFromTitle: string | null;
+  anchor: string | null;
+  dofollow: boolean;
+  rank: number | null; // source page rank 0-1000
+  domainFromRank: number | null;
+  firstSeen: string | null;
+  lastSeen: string | null;
+}
+
+export async function fetchTopBacklinks(target: string, limit = 50): Promise<TopBacklink[]> {
+  const r = await backlinksApi<{
+    items?: Array<{
+      url_from?: string;
+      url_to?: string;
+      domain_from?: string;
+      page_from_title?: string;
+      anchor?: string;
+      dofollow?: boolean;
+      rank?: number;
+      domain_from_rank?: number;
+      first_seen?: string;
+      last_visited?: string;
+    }>;
+  }>("backlinks", {
+    target,
+    limit,
+    mode: "one_per_domain",
+    order_by: ["domain_from_rank,desc"],
+    exclude_internal_backlinks: true,
+  });
+  return (r?.items ?? [])
+    .filter((i) => !!i.url_from)
+    .map((i) => ({
+      urlFrom: i.url_from ?? "",
+      urlTo: i.url_to ?? "",
+      domainFrom: i.domain_from ?? "",
+      pageFromTitle: i.page_from_title ?? null,
+      anchor: i.anchor ?? null,
+      dofollow: i.dofollow ?? false,
+      rank: i.rank ?? null,
+      domainFromRank: i.domain_from_rank ?? null,
+      firstSeen: i.first_seen ?? null,
+      lastSeen: i.last_visited ?? null,
     }));
 }
 

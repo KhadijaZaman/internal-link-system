@@ -393,6 +393,139 @@ export const DiscoverBacklinkProspectsResponse = zod.object({
 
 
 /**
+ * @summary Get the saved backlink audit (own profile + competitor benchmarks)
+ */
+export const GetBacklinkAuditResponse = zod.object({
+  "audit": zod.union([zod.object({
+  "fetchedAt": zod.coerce.date(),
+  "target": zod.string(),
+  "summary": zod.union([zod.object({
+  "target": zod.string(),
+  "rank": zod.number().nullish(),
+  "backlinks": zod.number(),
+  "referringDomains": zod.number(),
+  "referringMainDomains": zod.number(),
+  "brokenBacklinks": zod.number(),
+  "referringIps": zod.number(),
+  "dofollow": zod.number(),
+  "nofollow": zod.number(),
+  "firstSeen": zod.string().nullish()
+}),zod.null()]).optional(),
+  "anchors": zod.array(zod.object({
+  "anchor": zod.string(),
+  "backlinks": zod.number(),
+  "referringDomains": zod.number(),
+  "dofollow": zod.number(),
+  "nofollow": zod.number()
+})),
+  "topBacklinks": zod.array(zod.object({
+  "urlFrom": zod.string(),
+  "urlTo": zod.string(),
+  "domainFrom": zod.string(),
+  "pageFromTitle": zod.string().nullish(),
+  "anchor": zod.string().nullish(),
+  "dofollow": zod.boolean(),
+  "rank": zod.number().nullish(),
+  "domainFromRank": zod.number().nullish(),
+  "firstSeen": zod.string().nullish(),
+  "lastSeen": zod.string().nullish()
+})),
+  "referringDomains": zod.array(zod.object({
+  "domain": zod.string(),
+  "backlinks": zod.number(),
+  "rank": zod.number().nullish(),
+  "firstSeen": zod.string().nullish(),
+  "lastSeen": zod.string().nullish()
+})),
+  "competitors": zod.array(zod.object({
+  "target": zod.string(),
+  "rank": zod.number().nullish(),
+  "backlinks": zod.number(),
+  "referringDomains": zod.number(),
+  "referringMainDomains": zod.number(),
+  "brokenBacklinks": zod.number(),
+  "referringIps": zod.number(),
+  "dofollow": zod.number(),
+  "nofollow": zod.number(),
+  "firstSeen": zod.string().nullish()
+}))
+}),zod.null()])
+})
+
+
+/**
+ * @summary Run or refresh the backlink audit via DataForSEO (paid; cached 24h)
+ */
+export const runBacklinkAuditBodyCompetitorsItemMin = 3;
+
+export const runBacklinkAuditBodyCompetitorsMax = 5;
+
+
+
+export const RunBacklinkAuditBody = zod.object({
+  "competitors": zod.array(zod.string().min(runBacklinkAuditBodyCompetitorsItemMin)).max(runBacklinkAuditBodyCompetitorsMax).optional(),
+  "refresh": zod.boolean().optional()
+})
+
+export const RunBacklinkAuditResponse = zod.object({
+  "audit": zod.union([zod.object({
+  "fetchedAt": zod.coerce.date(),
+  "target": zod.string(),
+  "summary": zod.union([zod.object({
+  "target": zod.string(),
+  "rank": zod.number().nullish(),
+  "backlinks": zod.number(),
+  "referringDomains": zod.number(),
+  "referringMainDomains": zod.number(),
+  "brokenBacklinks": zod.number(),
+  "referringIps": zod.number(),
+  "dofollow": zod.number(),
+  "nofollow": zod.number(),
+  "firstSeen": zod.string().nullish()
+}),zod.null()]).optional(),
+  "anchors": zod.array(zod.object({
+  "anchor": zod.string(),
+  "backlinks": zod.number(),
+  "referringDomains": zod.number(),
+  "dofollow": zod.number(),
+  "nofollow": zod.number()
+})),
+  "topBacklinks": zod.array(zod.object({
+  "urlFrom": zod.string(),
+  "urlTo": zod.string(),
+  "domainFrom": zod.string(),
+  "pageFromTitle": zod.string().nullish(),
+  "anchor": zod.string().nullish(),
+  "dofollow": zod.boolean(),
+  "rank": zod.number().nullish(),
+  "domainFromRank": zod.number().nullish(),
+  "firstSeen": zod.string().nullish(),
+  "lastSeen": zod.string().nullish()
+})),
+  "referringDomains": zod.array(zod.object({
+  "domain": zod.string(),
+  "backlinks": zod.number(),
+  "rank": zod.number().nullish(),
+  "firstSeen": zod.string().nullish(),
+  "lastSeen": zod.string().nullish()
+})),
+  "competitors": zod.array(zod.object({
+  "target": zod.string(),
+  "rank": zod.number().nullish(),
+  "backlinks": zod.number(),
+  "referringDomains": zod.number(),
+  "referringMainDomains": zod.number(),
+  "brokenBacklinks": zod.number(),
+  "referringIps": zod.number(),
+  "dofollow": zod.number(),
+  "nofollow": zod.number(),
+  "firstSeen": zod.string().nullish()
+}))
+}),zod.null()])
+})
+
+
+/**
  * @summary Update outreach status or notes for a prospect
  */
 export const UpdateBacklinkProspectParams = zod.object({
@@ -526,7 +659,7 @@ export const GetLinkGraphResponse = zod.object({
 export const GetLinkMapSheetInfoResponse = zod.object({
   "url": zod.string().nullable(),
   "sheetShared": zod.boolean().describe('True when the sheet is link-viewable (anyone with the link)'),
-  "lastSyncedAt": zod.string().nullable().optional().describe('ISO timestamp of the last successful automatic sync, or null if never synced')
+  "lastSyncedAt": zod.coerce.date().nullish().describe('ISO timestamp of the last successful automatic sync, or null if never synced')
 })
 
 
@@ -3472,6 +3605,7 @@ export const GetAuthoritySnapshotResponse = zod.object({
 }),
   "demand": zod.object({
   "queriesAnalyzed": zod.number(),
+  "informationalExcluded": zod.number().optional().describe('Informational\/junk queries excluded from the demand analysis (only BOFU and commercial-intent queries are analyzed).'),
   "totalImpressions": zod.number(),
   "onCore": zod.object({
   "queryCount": zod.number(),
@@ -3486,12 +3620,14 @@ export const GetAuthoritySnapshotResponse = zod.object({
   "worstOffenders": zod.array(zod.object({
   "query": zod.string(),
   "impressions": zod.number(),
-  "similarity": zod.number()
+  "similarity": zod.number(),
+  "intent": zod.enum(['bofu', 'commercial'])
 })),
   "topOnCore": zod.array(zod.object({
   "query": zod.string(),
   "impressions": zod.number(),
-  "similarity": zod.number()
+  "similarity": zod.number(),
+  "intent": zod.enum(['bofu', 'commercial'])
 }))
 })
 })

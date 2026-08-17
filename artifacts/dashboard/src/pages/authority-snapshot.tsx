@@ -94,6 +94,7 @@ function DemandTable({
         <TableHeader>
           <TableRow>
             <TableHead>Query</TableHead>
+            <TableHead>Intent</TableHead>
             <TableHead className="text-right">Impressions</TableHead>
             <TableHead className="text-right">Similarity</TableHead>
           </TableRow>
@@ -103,6 +104,18 @@ function DemandTable({
             <TableRow key={q.query}>
               <TableCell className="text-sm max-w-[420px] truncate" title={q.query}>
                 {q.query}
+              </TableCell>
+              <TableCell>
+                <Badge
+                  variant="outline"
+                  className={
+                    q.intent === "bofu"
+                      ? "text-xs text-emerald-700 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
+                      : "text-xs text-sky-700 dark:text-sky-400 border-sky-500/30 bg-sky-500/10"
+                  }
+                >
+                  {q.intent === "bofu" ? "BOFU" : "Commercial"}
+                </Badge>
               </TableCell>
               <TableCell className="text-right tabular-nums text-sm">
                 {q.impressions.toLocaleString()}
@@ -348,8 +361,13 @@ export default function AuthoritySnapshot() {
                 <div className="text-sm text-muted-foreground flex items-center gap-1">
                   Demand alignment
                   <InfoTip>
-                    Top {demand.queriesAnalyzed} queries by impressions, split by
-                    cosine similarity to the central entity.
+                    Top commercial-intent queries by impressions (BOFU +
+                    commercial investigation only
+                    {typeof demand.informationalExcluded === "number" &&
+                    demand.informationalExcluded > 0
+                      ? `; ${demand.informationalExcluded} informational/junk queries excluded`
+                      : ""}
+                    ), split by cosine similarity to the central entity.
                   </InfoTip>
                 </div>
                 <div className="text-xl font-semibold tabular-nums">
@@ -402,9 +420,10 @@ export default function AuthoritySnapshot() {
                 <CopyButton
                   getText={() =>
                     rowsToTsv(
-                      ["Query", "Impressions", "Similarity"],
+                      ["Query", "Intent", "Impressions", "Similarity"],
                       demand.worstOffenders.map((q) => [
                         q.query,
+                        q.intent,
                         q.impressions,
                         q.similarity.toFixed(3),
                       ]),
@@ -431,9 +450,10 @@ export default function AuthoritySnapshot() {
                 <CopyButton
                   getText={() =>
                     rowsToTsv(
-                      ["Query", "Impressions", "Similarity"],
+                      ["Query", "Intent", "Impressions", "Similarity"],
                       demand.topOnCore.map((q) => [
                         q.query,
+                        q.intent,
                         q.impressions,
                         q.similarity.toFixed(3),
                       ]),

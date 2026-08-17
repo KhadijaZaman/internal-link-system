@@ -13,6 +13,7 @@ import { compilePattern, isExcluded } from "../jobs/semanticLinking";
 import { embedBatch } from "../integrations/openaiEmbed";
 import { logger } from "../lib/logger";
 import { countContentPages, CONTENT_PAGES_FILTER_LABEL } from "./pageCounts";
+import { classifyQueryIntent, isJunkOperatorQuery } from "../lib/queryIntent";
 
 /**
  * Default cosine threshold separating on-core from off-core query demand.
@@ -53,6 +54,7 @@ export interface DemandQuery {
   query: string;
   impressions: number;
   similarity: number;
+  intent: "bofu" | "commercial";
 }
 
 export interface AuthoritySnapshot {
@@ -76,6 +78,7 @@ export interface AuthoritySnapshot {
   };
   demand: {
     queriesAnalyzed: number;
+    informationalExcluded: number;
     totalImpressions: number;
     onCore: { queryCount: number; impressions: number; impressionsPct: number };
     offCore: { queryCount: number; impressions: number; impressionsPct: number };
@@ -293,10 +296,26 @@ export async function computeAuthoritySnapshot(
     .orderBy(sql`sum(${gscSnapshotsTable.impressions}) desc`)
     .limit(TOP_QUERY_COUNT);
 
+  // Only commercial-intent demand matters for authority: keep BOFU (brand,
+  // conversion, singular-tool) and commercial (comparison, category, vendor)
+  // queries; drop informational/how-to and scraper-operator junk entirely.
   const impByQuery = new Map<string, number>();
+  const intentByQuery = new Map<string, "bofu" | "commercial">();
+  let informationalExcluded = 0;
   for (const r of topQ) {
     const q = r.query?.trim();
-    if (q) impByQuery.set(q, Number(r.impressions) || 0);
+    if (!q) continue;
+    if (isJunkOperatorQuery(q)) {
+      informationalExcluded++;
+      continue;
+    }
+    const intent = classifyQueryIntent(q);
+    if (intent === "informational") {
+      informationalExcluded++;
+      continue;
+    }
+    impByQuery.set(q, Number(r.impressions) || 0);
+    intentByQuery.set(q, intent);
   }
   const queries = Array.from(impByQuery.keys());
 
@@ -313,6 +332,7 @@ export async function computeAuthoritySnapshot(
         query: q,
         impressions: impByQuery.get(q) ?? 0,
         similarity: Math.round(cosineSim(emb, centroid) * 1000) / 1000,
+        intent: intentByQuery.get(q) ?? "commercial",
       });
     }
   }
@@ -349,6 +369,7 @@ export async function computeAuthoritySnapshot(
     },
     demand: {
       queriesAnalyzed: scored.length,
+      informationalExcluded,
       totalImpressions: totalImp,
       onCore: {
         queryCount: onCore.length,
