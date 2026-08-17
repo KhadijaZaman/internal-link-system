@@ -51,7 +51,7 @@ You read the user's question and the data slice provided (Google Search Console,
 
 Grounding rules (strict):
 - Every number you state must come from the slice. Never estimate, extrapolate, or use outside knowledge about the site.
-- When a source shows a notice instead of data, say it isn't connected rather than guessing.
+- When a data source object contains a "notice" key instead of data fields, that means the source is not connected or not configured. Say it isn't connected rather than guessing.
 - If the slice can't answer the question, say exactly what's missing (e.g. "pick that page in the URL filter and ask again").
 
 Source attribution (always):
@@ -74,6 +74,10 @@ You have three tools available:
 - get_page_metrics: fetch GSC data for any page on this site. Use it when the user asks about a page not in the initial context.
 - get_query_metrics: fetch GSC + Bing data for any search query. Use it when the user asks about a keyword not visible in the initial context.
 - get_trend_data: fetch daily or weekly clicks+impressions over time for a specific page or keyword. Use it when the user asks about trends, momentum, week-over-week changes, whether something is growing or declining, or "is X trending up/down".
+
+Tool result handling:
+- When a tool result contains a "zero_data_diagnostic" field, GSC is connected but returned no data for that page or query. Read the diagnostic and relay the likely causes to the user. If the result also contains "similarPagesInSameSection", list those paths as indexed pages the user could look at instead.
+- Do not say the source is "not connected" for a zero_data_diagnostic — the source is connected, but the specific page or keyword has no impressions.
 
 Voice rules:
 - Conversational casual, plain vocabulary, confident not hedgy.
@@ -937,6 +941,42 @@ async function executeTool(
         }),
       ]);
       const totals = aggregateTotals(dates);
+      const isEmpty = totals.clicks === 0 && totals.impressions === 0;
+
+      // When there's zero GSC data, try to surface sibling/nearby pages so the
+      // model can suggest alternatives rather than just saying "no data".
+      let similarPages: Array<{ path: string; clicks: number; impressions: number }> | undefined;
+      if (isEmpty) {
+        try {
+          const u = new URL(pageUrl);
+          const pathParts = u.pathname.split("/").filter(Boolean);
+          // Look one level up in the path hierarchy for sibling pages.
+          const prefixPath =
+            pathParts.length > 1
+              ? "/" + pathParts.slice(0, -1).join("/") + "/"
+              : "/";
+          const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const prefixRegex = `^https?://(www\\.)?${esc(stripWww(u.host))}${esc(prefixPath)}`;
+          const siblings = await queryGscDimension({
+            siteId,
+            startDate,
+            endDate,
+            dimension: "page",
+            pageRegex: prefixRegex,
+            rowLimit: 10,
+          });
+          if (siblings.length > 0) {
+            similarPages = trim(siblings, 10).map((p) => ({
+              path: (() => { try { return new URL(p.key).pathname; } catch { return p.key; } })(),
+              clicks: p.clicks,
+              impressions: p.impressions,
+            }));
+          }
+        } catch {
+          // best-effort — don't let a sibling lookup crash the primary result
+        }
+      }
+
       return JSON.stringify({
         page: pageUrl,
         range: { startDate, endDate },
@@ -947,6 +987,24 @@ async function executeTool(
           position: Number(totals.position.toFixed(2)),
         },
         topQueries: trim(queries, 20),
+        ...(isEmpty
+          ? {
+              zero_data_diagnostic:
+                "Zero impressions and clicks were returned for this page. Likely causes: " +
+                "(1) the page isn't indexed by Google, " +
+                "(2) the URL doesn't match any GSC record (check www vs non-www, trailing slash, or uppercase letters), " +
+                "(3) the date range predates when the page was published. " +
+                "Tell the user to verify the page appears in Search Console's URL Inspection tool or check the sitemap coverage in the Indexing section.",
+              ...(similarPages && similarPages.length > 0
+                ? {
+                    similarPagesInSameSection: {
+                      note: "Pages in the same path section that do have GSC data — list these as alternatives the user could check instead.",
+                      pages: similarPages,
+                    },
+                  }
+                : {}),
+            }
+          : {}),
       });
     } catch (err) {
       return JSON.stringify({ error: "GSC query failed", detail: String(err) });
@@ -966,6 +1024,7 @@ async function executeTool(
         rowLimit: 20,
       });
       const totals = aggregateTotals(pages);
+      const isEmpty = totals.clicks === 0 && totals.impressions === 0;
       // Bing side of the same query, from synced weekly buckets (no API spend).
       const bing = await bingQueryLookup(siteId, query).catch(() => null);
       return JSON.stringify({
@@ -979,6 +1038,16 @@ async function executeTool(
             position: Number(totals.position.toFixed(2)),
           },
           topPages: trim(pages, 15),
+          ...(isEmpty
+            ? {
+                zero_data_diagnostic:
+                  `No GSC data found for the exact query "${query}". Likely causes: ` +
+                  "(1) the query has very low volume and doesn't appear in the selected date range, " +
+                  "(2) the exact spelling doesn't match what GSC records (GSC stores queries in lowercase with the user's exact spelling), " +
+                  "(3) impressions exist only inside AI Overviews which are not exposed via the GSC API. " +
+                  "Tell the user to try a broader or slightly different keyword phrasing, or browse the top queries in the data slice for close matches.",
+              }
+            : {}),
         },
         bing: bing ?? { notice: "No Bing data synced for this query." },
       });
