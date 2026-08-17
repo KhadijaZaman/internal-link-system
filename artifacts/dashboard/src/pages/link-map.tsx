@@ -212,6 +212,17 @@ export default function LinkMap() {
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
+  // Focus view's own Map/Table toggle — lifted here so the D3 effect (which
+  // lives in LinkMap and holds the SVG ref) can re-run when the view returns
+  // to "map" after a Table detour.
+  const [focusView, setFocusView] = useState<ViewMode>("map");
+
+  // Reset the focus view to Map whenever the focused URL changes so a new
+  // paste always opens in the visual hub-and-spoke view.
+  useEffect(() => {
+    setFocusView("map");
+  }, [focusUrl]);
+
   const { data: selectedPage, isLoading: isLoadingPage } = useGetInventoryPage(
     { url: selectedNodeId || "" },
     { query: { enabled: !!selectedNodeId, queryKey: getGetInventoryPageQueryKey({ url: selectedNodeId || "" }) } },
@@ -369,9 +380,11 @@ export default function LinkMap() {
     };
   }, [globalGraph, focusUrl, globalView]);
 
-  // Focused hub-and-spoke render
+  // Focused hub-and-spoke render — depends on focusView so the effect re-runs
+  // when the user switches back from Table to Map (SVG remounts on that toggle).
   useEffect(() => {
     if (!focusUrl) return;
+    if (focusView !== "map") return;
     if (!focus || !focusSvgRef.current) return;
 
     const svg = d3.select(focusSvgRef.current);
@@ -476,7 +489,7 @@ export default function LinkMap() {
       .attr("font-weight", 600)
       .attr("fill", "white")
       .text(seedLabel);
-  }, [focus, focusUrl]);
+  }, [focus, focusUrl, focusView]);
 
   const clearFocus = () => setSearchQuery("");
 
@@ -769,7 +782,7 @@ export default function LinkMap() {
                 </Button>
               </div>
             ) : (
-              <FocusView focus={focus} svgRef={focusSvgRef} onSelectUrl={setSelectedNodeId} />
+              <FocusView focus={focus} svgRef={focusSvgRef} onSelectUrl={setSelectedNodeId} view={focusView} onViewChange={setFocusView} />
             )
           ) : isLoading ? (
             <div className="absolute inset-0 flex items-center justify-center">
@@ -1162,16 +1175,17 @@ interface FocusViewProps {
   focus: LinkGraphFocus;
   svgRef: React.RefObject<SVGSVGElement | null>;
   onSelectUrl: (url: string) => void;
+  view: ViewMode;
+  onViewChange: (v: ViewMode) => void;
 }
 
 type NeighborFilter = "all" | "inbound" | "outbound" | "recommended";
 type ViewMode = "map" | "table";
 type SortKey = "score" | "url" | "anchor" | "relevance" | "popularity" | "prominence";
 
-function FocusView({ focus, svgRef, onSelectUrl }: FocusViewProps) {
+function FocusView({ focus, svgRef, onSelectUrl, view, onViewChange }: FocusViewProps) {
   const { seed, neighbors } = focus;
   const [filter, setFilter] = useState<NeighborFilter>("all");
-  const [view, setView] = useState<ViewMode>("map");
   const matchesFilter = (d: string, f: NeighborFilter) => {
     if (f === "all") return true;
     if (f === "inbound") return d === "inbound" || d === "both";
@@ -1216,6 +1230,7 @@ function FocusView({ focus, svgRef, onSelectUrl }: FocusViewProps) {
             aria-pressed={filter === "inbound"}
             className={chipClass(filter === "inbound")}
             title="Show only inbound links (pages linking to this one). Includes bidirectional links."
+            data-testid="button-focus-filter-inbound"
           >
             <span className="inline-block w-2 h-2 rounded-full mr-1 align-middle" style={{ background: DIR_COLOR.inbound }} />
             {seed.inboundCount} inbound
@@ -1226,6 +1241,7 @@ function FocusView({ focus, svgRef, onSelectUrl }: FocusViewProps) {
             aria-pressed={filter === "outbound"}
             className={chipClass(filter === "outbound")}
             title="Show only outbound links (pages this one links to). Includes bidirectional links."
+            data-testid="button-focus-filter-outbound"
           >
             <span className="inline-block w-2 h-2 rounded-full mr-1 align-middle" style={{ background: DIR_COLOR.outbound }} />
             {seed.outboundCount} outbound
@@ -1236,6 +1252,7 @@ function FocusView({ focus, svgRef, onSelectUrl }: FocusViewProps) {
             aria-pressed={filter === "recommended"}
             className={chipClass(filter === "recommended")}
             title="Show only recommended new links (suggestions to add)"
+            data-testid="button-focus-filter-recommended"
           >
             <span className="inline-block w-2 h-2 rounded-full mr-1 align-middle" style={{ background: DIR_COLOR.recommended }} />
             {recCount} recommended
@@ -1259,19 +1276,21 @@ function FocusView({ focus, svgRef, onSelectUrl }: FocusViewProps) {
           <div className="inline-flex rounded-md border border-border/60 overflow-hidden">
             <button
               type="button"
-              onClick={() => setView("map")}
+              onClick={() => onViewChange("map")}
               aria-pressed={view === "map"}
               className={`px-2 py-1 inline-flex items-center gap-1 text-xs ${view === "map" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
               title="Visual map view"
+              data-testid="button-focus-view-map"
             >
               <Network className="h-3 w-3" /> Map
             </button>
             <button
               type="button"
-              onClick={() => setView("table")}
+              onClick={() => onViewChange("table")}
               aria-pressed={view === "table"}
               className={`px-2 py-1 inline-flex items-center gap-1 text-xs ${view === "table" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
               title="Table view with anchor text"
+              data-testid="button-focus-view-table"
             >
               <TableIcon className="h-3 w-3" /> Table
             </button>
@@ -1289,7 +1308,7 @@ function FocusView({ focus, svgRef, onSelectUrl }: FocusViewProps) {
       ) : (
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] flex-1 min-h-0">
         <div className="relative min-h-[300px] border-r">
-          <svg ref={svgRef} className="w-full h-full" />
+          <svg ref={svgRef} className="w-full h-full" data-testid="svg-focus-map" />
         </div>
         <div className="overflow-y-auto p-3 space-y-2">
           <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1 px-1">
@@ -1391,6 +1410,7 @@ function NeighborTables({ neighbors, filter, onSelectUrl }: NeighborTablesProps)
           rows={inbound}
           onSelectUrl={onSelectUrl}
           showRecommended={false}
+          testid="table-focus-inbound"
         />
       )}
       {showOutbound && (
@@ -1401,6 +1421,7 @@ function NeighborTables({ neighbors, filter, onSelectUrl }: NeighborTablesProps)
           rows={outbound}
           onSelectUrl={onSelectUrl}
           showRecommended={false}
+          testid="table-focus-outbound"
         />
       )}
       {showRecommended && (
@@ -1411,6 +1432,7 @@ function NeighborTables({ neighbors, filter, onSelectUrl }: NeighborTablesProps)
           rows={recommended}
           onSelectUrl={onSelectUrl}
           showRecommended
+          testid="table-focus-recommended"
         />
       )}
     </div>
@@ -1418,7 +1440,7 @@ function NeighborTables({ neighbors, filter, onSelectUrl }: NeighborTablesProps)
 }
 
 function NeighborTable({
-  title, subtitle, color, rows, onSelectUrl, showRecommended,
+  title, subtitle, color, rows, onSelectUrl, showRecommended, testid,
 }: {
   title: string;
   subtitle: string;
@@ -1426,6 +1448,7 @@ function NeighborTable({
   rows: LinkGraphFocusNeighbor[];
   onSelectUrl: (url: string) => void;
   showRecommended: boolean;
+  testid?: string;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>("score");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -1464,7 +1487,7 @@ function NeighborTable({
     </button>
   );
   return (
-    <div className="rounded-lg border border-border/60 overflow-hidden">
+    <div className="rounded-lg border border-border/60 overflow-hidden" data-testid={testid}>
       <div className="px-4 py-2.5 border-b bg-muted/30 flex items-center gap-3 flex-wrap">
         <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: color }} />
         <div className="font-medium text-sm">{title}</div>

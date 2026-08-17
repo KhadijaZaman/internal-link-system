@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 /**
- * Component-level integration tests for link-map.tsx — Map/Table tab toggle.
+ * Component-level integration tests for link-map.tsx.
+ *
+ * Section 1: Global Map/Table tab toggle (Task #121)
+ * Section 2: FocusView Map/Table toggle + direction filters (Task #126)
  *
  * Strategy
  * --------
@@ -12,6 +15,10 @@
  * 4. Toggle back to Map — verify D3 re-ran and the SVG is re-populated.
  * 5. Repeat with Navigation and Footer placement switches toggled on/off,
  *    confirming the table updates accordingly.
+ * 6. Paste a full URL → FocusView renders → Map/Table round-trip → SVG
+ *    re-populated each time (the D3 effect must list focusView as a dep).
+ * 7. Direction filters (Inbound / Outbound / Recommended) narrow the
+ *    neighbor tables shown in FocusView's Table mode.
  *
  * Note on D3 in jsdom
  * -------------------
@@ -29,7 +36,7 @@
 
 import React from "react";
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, cleanup, within, act } from "@testing-library/react";
+import { render, fireEvent, waitFor, cleanup, within, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import LinkMap from "./link-map";
@@ -65,7 +72,7 @@ beforeAll(() => {
 });
 
 // ---------------------------------------------------------------------------
-// Mock data
+// Mock data — global graph
 // ---------------------------------------------------------------------------
 
 /** Two core nodes and one outer node. */
@@ -100,6 +107,57 @@ const MOCK_GRAPH = {
 };
 
 // ---------------------------------------------------------------------------
+// Mock data — focused view (FocusView)
+// ---------------------------------------------------------------------------
+
+const MOCK_FOCUS = {
+  seed: {
+    url: "https://example.com/a",
+    title: "Page A",
+    section: "core",
+    hasEmbedding: true,
+    inboundCount: 1,
+    outboundCount: 1,
+    pagerank: 0.5,
+    clicks: 100,
+    position: 5.0,
+    topQuery: "example query",
+  },
+  neighbors: [
+    {
+      url: "https://example.com/b",
+      direction: "inbound" as const,
+      totalScore: 0.8,
+      relevanceScore: 0.9,
+      popularityScore: 0.7,
+      prominenceScore: 0.8,
+      title: "Page B",
+      anchorTexts: ["read more about B"],
+    },
+    {
+      url: "https://example.com/c",
+      direction: "outbound" as const,
+      totalScore: 0.6,
+      relevanceScore: 0.7,
+      popularityScore: 0.5,
+      prominenceScore: 0.6,
+      title: "Page C",
+      anchorTexts: ["see C"],
+    },
+    {
+      url: "https://example.com/d",
+      direction: "recommended" as const,
+      totalScore: 0.4,
+      relevanceScore: 0.5,
+      popularityScore: 0.3,
+      prominenceScore: 0.4,
+      title: "Page D",
+      anchorTexts: [],
+    },
+  ],
+};
+
+// ---------------------------------------------------------------------------
 // Mock: @workspace/api-client-react
 // ---------------------------------------------------------------------------
 const noopMutation = () => ({
@@ -111,10 +169,22 @@ const noopMutation = () => ({
   reset: vi.fn(),
 });
 
+/**
+ * Use a vi.fn() for useGetLinkGraphFocus so individual tests can override the
+ * return value when they want to activate focus mode.  All other tests see
+ * { data: null } — the global graph.
+ *
+ * The explicit return type (`FocusHookResult`) is required so TS allows
+ * `mockReturnValue({ data: MOCK_FOCUS, … })` — without it the inferred literal
+ * type `{ data: null }` would reject non-null focus data at the call sites.
+ */
+type FocusHookResult = { data: typeof MOCK_FOCUS | null; isLoading: boolean; error: null };
+const mockGetLinkGraphFocus = vi.fn((): FocusHookResult => ({ data: null, isLoading: false, error: null }));
+
 vi.mock("@workspace/api-client-react", () => ({
   useGetLinkGraph: vi.fn(() => ({ data: MOCK_GRAPH, isLoading: false })),
   useGetInventoryPage: () => ({ data: null, isLoading: false }),
-  useGetLinkGraphFocus: () => ({ data: null, isLoading: false, error: null }),
+  useGetLinkGraphFocus: () => mockGetLinkGraphFocus(),
   useGetJobStatus: () => ({ data: [], isLoading: false }),
   useRunJob: () => noopMutation(),
   useExportLinkMapSheet: () => noopMutation(),
@@ -162,8 +232,28 @@ function globalTableRowCount(container: HTMLElement): number {
   return tbody ? tbody.querySelectorAll("tr").length : 0;
 }
 
+/**
+ * Type a full URL into the Search URL input and wait for FocusView to appear.
+ * The component has a 400 ms debounce on the search; waitFor handles the delay.
+ */
+async function enterFocusMode(container: HTMLElement, url = "https://example.com/a") {
+  const input = container.querySelector<HTMLInputElement>(
+    "input[placeholder='/blog or https://...']",
+  )!;
+  await act(async () => {
+    fireEvent.change(input, { target: { value: url } });
+  });
+  // Wait for debounce to fire and FocusView's toggle buttons to appear.
+  await waitFor(
+    () => {
+      expect(container.querySelector("[data-testid='button-focus-view-map']")).toBeTruthy();
+    },
+    { timeout: 2000 },
+  );
+}
+
 // ---------------------------------------------------------------------------
-// Tests
+// Global Map/Table toggle tests (Task #121)
 // ---------------------------------------------------------------------------
 
 describe("LinkMap — Map/Table tab toggle", () => {
@@ -534,6 +624,236 @@ describe("LinkMap — flagged-links audit drawer", () => {
       expect(list.textContent).toContain("No links with this flag.");
       expect(list.textContent).not.toContain("unrelated anchor");
       expect(list.textContent).not.toContain("see C");
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FocusView — focused URL Map/Table toggle + direction filters (Task #126)
+// ---------------------------------------------------------------------------
+
+describe("FocusView — Map/Table toggle redraws the hub-and-spoke SVG", () => {
+  beforeEach(() => {
+    // Return focus data for any call — the component only calls this hook
+    // when focusUrl is truthy (i.e. after the URL is typed in).
+    mockGetLinkGraphFocus.mockReturnValue({ data: MOCK_FOCUS, isLoading: false, error: null });
+  });
+  afterEach(() => {
+    mockGetLinkGraphFocus.mockReturnValue({ data: null, isLoading: false, error: null });
+    cleanup();
+  });
+
+  it("paste a URL → focus view loads → Map has a D3-populated SVG", async () => {
+    const { container } = renderPage();
+    await enterFocusMode(container);
+
+    // Map toggle button is pressed by default.
+    const mapBtn = container.querySelector("[data-testid='button-focus-view-map']")!;
+    expect(mapBtn.getAttribute("aria-pressed")).toBe("true");
+
+    // D3 drew into the focused SVG.
+    await waitFor(() => {
+      const svg = container.querySelector("[data-testid='svg-focus-map']");
+      expect(svg).toBeTruthy();
+      expect(svg!.querySelector("g")).toBeTruthy();
+    });
+  });
+
+  it("Map → Table → Map: focused SVG is re-populated after returning to Map", async () => {
+    const { container } = renderPage();
+    await enterFocusMode(container);
+
+    // Confirm SVG starts populated.
+    await waitFor(() => {
+      const svg = container.querySelector("[data-testid='svg-focus-map']");
+      expect(svg?.querySelector("g")).toBeTruthy();
+    });
+
+    // Switch to Table.
+    await act(async () => {
+      fireEvent.click(container.querySelector("[data-testid='button-focus-view-table']")!);
+    });
+
+    // SVG is unmounted while in Table mode.
+    await waitFor(() => {
+      expect(container.querySelector("[data-testid='svg-focus-map']")).toBeNull();
+    });
+
+    // Switch back to Map.
+    await act(async () => {
+      fireEvent.click(container.querySelector("[data-testid='button-focus-view-map']")!);
+    });
+
+    // SVG is back and D3 re-ran (the focusView dep triggers the effect).
+    await waitFor(() => {
+      const svg = container.querySelector("[data-testid='svg-focus-map']");
+      expect(svg).toBeTruthy();
+      expect(svg!.querySelector("g")).toBeTruthy();
+    });
+
+    // Toggle button state.
+    expect(
+      container.querySelector("[data-testid='button-focus-view-map']")!.getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      container.querySelector("[data-testid='button-focus-view-table']")!.getAttribute("aria-pressed"),
+    ).toBe("false");
+  });
+
+  it("Map → Table → Map round-trip is repeatable (no blank SVG on second return)", async () => {
+    const { container } = renderPage();
+    await enterFocusMode(container);
+
+    for (let round = 0; round < 2; round++) {
+      // → Table
+      await act(async () => {
+        fireEvent.click(container.querySelector("[data-testid='button-focus-view-table']")!);
+      });
+      await waitFor(() => {
+        expect(container.querySelector("[data-testid='svg-focus-map']")).toBeNull();
+      });
+
+      // → Map
+      await act(async () => {
+        fireEvent.click(container.querySelector("[data-testid='button-focus-view-map']")!);
+      });
+      await waitFor(() => {
+        const svg = container.querySelector("[data-testid='svg-focus-map']");
+        expect(svg).toBeTruthy();
+        expect(svg!.querySelector("g")).toBeTruthy();
+      });
+    }
+  });
+});
+
+describe("FocusView — direction filters update the neighbor tables", () => {
+  beforeEach(() => {
+    mockGetLinkGraphFocus.mockReturnValue({ data: MOCK_FOCUS, isLoading: false, error: null });
+  });
+  afterEach(() => {
+    mockGetLinkGraphFocus.mockReturnValue({ data: null, isLoading: false, error: null });
+    cleanup();
+  });
+
+  /** Enter focus mode then switch to Table view so neighbor tables are visible. */
+  async function openFocusTable(container: HTMLElement) {
+    await enterFocusMode(container);
+    await act(async () => {
+      fireEvent.click(container.querySelector("[data-testid='button-focus-view-table']")!);
+    });
+    // Wait until at least one neighbor table section is rendered.
+    await waitFor(() => {
+      const hasAny =
+        container.querySelector("[data-testid='table-focus-inbound']") ||
+        container.querySelector("[data-testid='table-focus-outbound']") ||
+        container.querySelector("[data-testid='table-focus-recommended']");
+      expect(hasAny).toBeTruthy();
+    });
+  }
+
+  it("Table mode shows all three direction sections by default", async () => {
+    const { container } = renderPage();
+    await openFocusTable(container);
+
+    expect(container.querySelector("[data-testid='table-focus-inbound']")).toBeTruthy();
+    expect(container.querySelector("[data-testid='table-focus-outbound']")).toBeTruthy();
+    expect(container.querySelector("[data-testid='table-focus-recommended']")).toBeTruthy();
+  });
+
+  it("Inbound filter shows only the inbound section", async () => {
+    const { container } = renderPage();
+    await openFocusTable(container);
+
+    await act(async () => {
+      fireEvent.click(container.querySelector("[data-testid='button-focus-filter-inbound']")!);
+    });
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-testid='table-focus-inbound']")).toBeTruthy();
+      expect(container.querySelector("[data-testid='table-focus-outbound']")).toBeNull();
+      expect(container.querySelector("[data-testid='table-focus-recommended']")).toBeNull();
+    });
+  });
+
+  it("Outbound filter shows only the outbound section", async () => {
+    const { container } = renderPage();
+    await openFocusTable(container);
+
+    await act(async () => {
+      fireEvent.click(container.querySelector("[data-testid='button-focus-filter-outbound']")!);
+    });
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-testid='table-focus-inbound']")).toBeNull();
+      expect(container.querySelector("[data-testid='table-focus-outbound']")).toBeTruthy();
+      expect(container.querySelector("[data-testid='table-focus-recommended']")).toBeNull();
+    });
+  });
+
+  it("Recommended filter shows only the recommended section", async () => {
+    const { container } = renderPage();
+    await openFocusTable(container);
+
+    await act(async () => {
+      fireEvent.click(container.querySelector("[data-testid='button-focus-filter-recommended']")!);
+    });
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-testid='table-focus-inbound']")).toBeNull();
+      expect(container.querySelector("[data-testid='table-focus-outbound']")).toBeNull();
+      expect(container.querySelector("[data-testid='table-focus-recommended']")).toBeTruthy();
+    });
+  });
+
+  it("clicking the active filter chip a second time clears it (shows all sections again)", async () => {
+    const { container } = renderPage();
+    await openFocusTable(container);
+
+    const inboundChip = container.querySelector("[data-testid='button-focus-filter-inbound']")!;
+
+    // Enable inbound filter.
+    await act(async () => { fireEvent.click(inboundChip); });
+    await waitFor(() => {
+      expect(container.querySelector("[data-testid='table-focus-outbound']")).toBeNull();
+    });
+
+    // Click the same chip to toggle back to "all".
+    await act(async () => { fireEvent.click(inboundChip); });
+    await waitFor(() => {
+      expect(container.querySelector("[data-testid='table-focus-inbound']")).toBeTruthy();
+      expect(container.querySelector("[data-testid='table-focus-outbound']")).toBeTruthy();
+      expect(container.querySelector("[data-testid='table-focus-recommended']")).toBeTruthy();
+    });
+  });
+
+  it("direction filter persists when switching Map → Table → Map → Table", async () => {
+    const { container } = renderPage();
+    await openFocusTable(container);
+
+    // Set outbound filter.
+    await act(async () => {
+      fireEvent.click(container.querySelector("[data-testid='button-focus-filter-outbound']")!);
+    });
+    await waitFor(() => {
+      expect(container.querySelector("[data-testid='table-focus-inbound']")).toBeNull();
+    });
+
+    // Map → back to Table.
+    await act(async () => {
+      fireEvent.click(container.querySelector("[data-testid='button-focus-view-map']")!);
+    });
+    await waitFor(() => {
+      expect(container.querySelector("[data-testid='svg-focus-map']")).toBeTruthy();
+    });
+    await act(async () => {
+      fireEvent.click(container.querySelector("[data-testid='button-focus-view-table']")!);
+    });
+
+    // Filter should still be "outbound".
+    await waitFor(() => {
+      expect(container.querySelector("[data-testid='table-focus-inbound']")).toBeNull();
+      expect(container.querySelector("[data-testid='table-focus-outbound']")).toBeTruthy();
+      expect(container.querySelector("[data-testid='table-focus-recommended']")).toBeNull();
     });
   });
 });
