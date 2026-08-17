@@ -70,9 +70,10 @@ When the user asks about a specific URL/page, structure the answer around:
 4. Internal links: inbound/outbound in-content link counts and notable anchors
 5. One overall read: what these sources together say is happening, and one action.
 
-You have two tools available:
+You have three tools available:
 - get_page_metrics: fetch GSC data for any page on this site. Use it when the user asks about a page not in the initial context.
 - get_query_metrics: fetch GSC + Bing data for any search query. Use it when the user asks about a keyword not visible in the initial context.
+- get_trend_data: fetch daily or weekly clicks+impressions over time for a specific page or keyword. Use it when the user asks about trends, momentum, week-over-week changes, whether something is growing or declining, or "is X trending up/down".
 
 Voice rules:
 - Conversational casual, plain vocabulary, confident not hedgy.
@@ -566,11 +567,16 @@ router.post("/gsc/chat", requireAuth, requireSite, async (req, res) => {
     const contextJson = await buildContext(parsed, site);
     const withCtx = buildPromptMessages(parsed.messages, parsed.includeDefault, contextJson);
     if (!withCtx) {
-      res.status(400).json({ error: "no messages" });
+      send("error", { error: "no messages" });
+      res.end();
       return;
     }
+    send("meta", {
+      contextSummary: `Analyzed ${parsed.startDate} → ${parsed.endDate}${parsed.url ? ` for ${parsed.url}` : ""}`,
+    });
+
     const openai = getOpenAI();
-    // Same tool-calling loop as the streaming route, without streaming.
+
     const toolOpts = { startDate: parsed.startDate, endDate: parsed.endDate, siteId: site.id, site };
     const history: OpenAI.Chat.ChatCompletionMessageParam[] = [
       { role: "system", content: SYSTEM },
@@ -600,9 +606,9 @@ router.post("/gsc/chat", requireAuth, requireSite, async (req, res) => {
           continue;
         }
         toolCallsUsed++;
-        let args: Record<string, unknown> = {};
+          let args: Record<string, unknown> = {};
         try { args = JSON.parse(tc.function.arguments || "{}"); } catch { /* keep empty */ }
-        const result = await executeTool(tc.function.name, args, toolOpts);
+          const result = await executeTool(tc.name, args, toolOpts);
         history.push({ role: "tool", tool_call_id: tc.id, content: result });
       }
     }
@@ -844,6 +850,12 @@ function toolLabel(name: string, args: Record<string, unknown>): string {
   if (name === "get_query_metrics") {
     return typeof args["query"] === "string" ? `"${args["query"]}"` : "?";
   }
+  if (name === "get_trend_data") {
+    const target = typeof args["target"] === "string" ? args["target"] : "?";
+    const gran = typeof args["granularity"] === "string" ? args["granularity"] : "daily";
+    const display = target.startsWith("/") || target.startsWith("http") ? target : `"${target}"`;
+    return `${display} (${gran})`;
+  }
   return name;
 }
 
@@ -979,6 +991,85 @@ async function executeTool(
     }
   }
 
+  if (name === "get_trend_data") {
+    const target = typeof args["target"] === "string" ? args["target"].trim() : "";
+    if (!target) return JSON.stringify({ error: "target is required" });
+    const granularity = args["granularity"] === "weekly" ? "weekly" : "daily";
+
+    // Determine whether target is a page (URL/path) or a keyword.
+    const isPage = target.startsWith("/") || target.startsWith("http://") || target.startsWith("https://");
+
+    try {
+      let dateRows: { key: string; clicks: number; impressions: number; ctr: number; position: number }[];
+
+      if (isPage) {
+        const pageUrl = resolvePageUrl(target, site);
+        if (!pageUrl) {
+          return JSON.stringify({ error: `target must be a page on this site (${site.host})` });
+        }
+        dateRows = await queryGscDimension({
+          siteId,
+          startDate,
+          endDate,
+          dimension: "date",
+          pageRegex: pageVariantsRegex(pageUrl),
+          rowLimit: 5000,
+        });
+      } else {
+        dateRows = await queryGscDimension({
+          siteId,
+          startDate,
+          endDate,
+          dimension: "date",
+          queryFilter: { expression: target.toLowerCase(), operator: "equals" },
+          rowLimit: 5000,
+        });
+      }
+
+      // Aggregate into weekly buckets when requested.
+      let points: { date: string; clicks: number; impressions: number }[];
+      if (granularity === "weekly") {
+        const byWeek: Record<string, { clicks: number; impressions: number }> = {};
+        for (const row of dateRows) {
+          // ISO week label: YYYY-Www
+          const d = new Date(`${row.key}T00:00:00Z`);
+          const jan4 = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+          const startOfWeek = new Date(jan4.getTime() - ((jan4.getUTCDay() + 6) % 7) * 86_400_000);
+          const weekNum = Math.ceil(((d.getTime() - startOfWeek.getTime()) / 86_400_000 + 1) / 7);
+          const label = `${d.getUTCFullYear()}-W${String(weekNum).padStart(2, "0")}`;
+          if (!byWeek[label]) byWeek[label] = { clicks: 0, impressions: 0 };
+          byWeek[label]!.clicks += row.clicks;
+          byWeek[label]!.impressions += row.impressions;
+        }
+        points = Object.entries(byWeek)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([date, v]) => ({ date, ...v }));
+      } else {
+        points = dateRows
+          .slice()
+          .sort((a, b) => a.key.localeCompare(b.key))
+          .map((r) => ({ date: r.key, clicks: r.clicks, impressions: r.impressions }));
+      }
+
+      // Hard cap: keep at most 90 data points (most recent).
+      const MAX_TREND_POINTS = 90;
+      if (points.length > MAX_TREND_POINTS) {
+        points = points.slice(points.length - MAX_TREND_POINTS);
+      }
+
+      return JSON.stringify({
+        target,
+        targetType: isPage ? "page" : "query",
+        granularity,
+        range: { startDate, endDate },
+        pointCount: points.length,
+        points,
+      });
+    } catch (err) {
+      return JSON.stringify({ error: "GSC trend query failed", detail: String(err) });
+    }
+  }
+
   return JSON.stringify({ error: `Unknown tool: ${name}` });
 }
 
@@ -1017,6 +1108,31 @@ const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
           },
         },
         required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_trend_data",
+      description:
+        "Fetch daily or weekly clicks and impressions over time for a specific page or search keyword. Use when the user asks about trends, momentum, week-over-week changes, whether something is growing or declining, or 'is X trending up/down'. Returns at most 90 data points.",
+      parameters: {
+        type: "object",
+        properties: {
+          target: {
+            type: "string",
+            description:
+              "The page URL or path (e.g. /pricing, https://example.com/blog/post) or a search keyword (e.g. 'wellows seo tool'). Paths and full URLs are treated as pages; plain text is treated as a keyword.",
+          },
+          granularity: {
+            type: "string",
+            enum: ["daily", "weekly"],
+            description:
+              "Time granularity of the returned data points. Use 'daily' for short ranges (≤90 days) and 'weekly' for longer ranges or when the user asks about weekly trends.",
+          },
+        },
+        required: ["target", "granularity"],
       },
     },
   },
