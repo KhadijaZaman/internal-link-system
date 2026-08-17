@@ -1618,9 +1618,19 @@ export const ListTopicalMapRunsResponseItem = zod.object({
   "stats": zod.record(zod.string(), zod.number()),
   "createdAt": zod.string(),
   "startedAt": zod.string().nullable(),
-  "finishedAt": zod.string().nullable()
+  "finishedAt": zod.string().nullable(),
+  "competitorScanStatus": zod.string().nullish().describe('null | queued | running | complete | failed — current state of the per-map SERP competitor scan'),
+  "competitorScanError": zod.string().nullish().describe('Last error from the competitor scan (includes out-of-funds notice)')
 })
 export const ListTopicalMapRunsResponse = zod.array(ListTopicalMapRunsResponseItem)
+
+
+/**
+ * @summary Start a SERP competitor scan for every topic in a map (DataForSEO — paid)
+ */
+export const AnalyzeTopicalMapCompetitorsParams = zod.object({
+  "mapId": zod.coerce.number()
+})
 
 
 /**
@@ -1647,7 +1657,9 @@ export const GetTopicalMapRunResponse = zod.object({
   "stats": zod.record(zod.string(), zod.number()),
   "createdAt": zod.string(),
   "startedAt": zod.string().nullable(),
-  "finishedAt": zod.string().nullable()
+  "finishedAt": zod.string().nullable(),
+  "competitorScanStatus": zod.string().nullish().describe('null | queued | running | complete | failed — current state of the per-map SERP competitor scan'),
+  "competitorScanError": zod.string().nullish().describe('Last error from the competitor scan (includes out-of-funds notice)')
 }),
   "nodes": zod.array(zod.object({
   "id": zod.number(),
@@ -1727,7 +1739,9 @@ export const GetLatestTopicalMapResponse = zod.object({
   "stats": zod.record(zod.string(), zod.number()),
   "createdAt": zod.string(),
   "startedAt": zod.string().nullable(),
-  "finishedAt": zod.string().nullable()
+  "finishedAt": zod.string().nullable(),
+  "competitorScanStatus": zod.string().nullish().describe('null | queued | running | complete | failed — current state of the per-map SERP competitor scan'),
+  "competitorScanError": zod.string().nullish().describe('Last error from the competitor scan (includes out-of-funds notice)')
 }),
   "nodes": zod.array(zod.object({
   "id": zod.number(),

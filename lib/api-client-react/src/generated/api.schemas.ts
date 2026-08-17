@@ -3211,6 +3211,16 @@ export interface TopicalMapSummary {
   startedAt: string | null;
   /** @nullable */
   finishedAt: string | null;
+  /**
+     * null | queued | running | complete | failed — current state of the per-map SERP competitor scan
+     * @nullable
+     */
+  competitorScanStatus?: string | null;
+  /**
+     * Last error from the competitor scan (includes out-of-funds notice)
+     * @nullable
+     */
+  competitorScanError?: string | null;
 }
 
 export type TopicalMapNodeLevel = typeof TopicalMapNodeLevel[keyof typeof TopicalMapNodeLevel];

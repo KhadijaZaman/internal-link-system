@@ -780,6 +780,9 @@ router.post("/gsc/chat/stream", requireAuth, requireSite, async (req, res) => {
           send("tool_use", { name: tc.name, label });
 
           const result = await executeTool(tc.name, args, toolOpts);
+          let parsedResult: unknown;
+          try { parsedResult = JSON.parse(result); } catch { parsedResult = result; }
+          send("tool_result", { data: parsedResult });
           toolCallsUsed++;
 
           apiMessages.push({
@@ -812,9 +815,6 @@ router.post("/gsc/chat/stream", requireAuth, requireSite, async (req, res) => {
 });
 
 export default router;
-
-// ─── Tool helpers ────────────────────────────────────────────────────────────
-
 /**
  * Resolve a page_url arg from the model to a full URL that belongs to the site.
  * Accepts paths (/pricing) or full URLs. Returns null if it can't be resolved
@@ -1039,18 +1039,20 @@ async function executeTool(
             position: Number(totals.position.toFixed(2)),
           },
           topPages: trim(pages, 15),
-          ...(isEmpty
-            ? {
-                zero_data_diagnostic:
-                  `No GSC data found for the exact query "${query}". Likely causes: ` +
-                  "(1) the query has very low volume and doesn't appear in the selected date range, " +
-                  "(2) the exact spelling doesn't match what GSC records (GSC stores queries in lowercase with the user's exact spelling), " +
-                  "(3) impressions exist only inside AI Overviews which are not exposed via the GSC API. " +
-                  "Tell the user to try a broader or slightly different keyword phrasing, or browse the top queries in the data slice for close matches.",
-              }
-            : {}),
         },
         bing: bing ?? { notice: "No Bing data synced for this query." },
+        // zero_data_diagnostic at the top level so clients (and tests) can find
+        // it without knowing the internal gsc/bing nesting.
+        ...(isEmpty
+          ? {
+              zero_data_diagnostic:
+                `No GSC data found for the exact query "${query}". Likely causes: ` +
+                "(1) the query has very low volume and doesn't appear in the selected date range, " +
+                "(2) the exact spelling doesn't match what GSC records (GSC stores queries in lowercase with the user's exact spelling), " +
+                "(3) impressions exist only inside AI Overviews which are not exposed via the GSC API. " +
+                "Tell the user to try a broader or slightly different keyword phrasing, or browse the top queries in the data slice for close matches.",
+            }
+          : {}),
       });
     } catch (err) {
       return JSON.stringify({ error: "GSC query failed", detail: String(err) });
@@ -1097,9 +1099,9 @@ async function executeTool(
       const {
         points: resolvedPoints,
         effectiveGranularity,
-        notice: initialNotice,
+        notice: noticeFromResolve,
       } = resolveTrendPoints(dateRows, granularity, startDate, endDate);
-      let notice = initialNotice;
+      let notice = noticeFromResolve;
       let points = resolvedPoints;
 
       // Hard cap: keep at most 90 data points (most recent).

@@ -4590,6 +4590,76 @@ export function useListTopicalMapRuns<TData = Awaited<ReturnType<typeof listTopi
 
 
 
+export const getAnalyzeTopicalMapCompetitorsUrl = (mapId: number,) => {
+
+
+
+
+  return `/api/topical-map/runs/${mapId}/analyze-competitors`
+}
+
+/**
+ * @summary Start a SERP competitor scan for every topic in a map (DataForSEO — paid)
+ */
+export const analyzeTopicalMapCompetitors = async (mapId: number, options?: RequestInit): Promise<TopicalMapSummary> => {
+
+  return customFetch<TopicalMapSummary>(getAnalyzeTopicalMapCompetitorsUrl(mapId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getAnalyzeTopicalMapCompetitorsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeTopicalMapCompetitors>>, TError,{mapId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof analyzeTopicalMapCompetitors>>, TError,{mapId: number}, TContext> => {
+
+const mutationKey = ['analyzeTopicalMapCompetitors'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof analyzeTopicalMapCompetitors>>, {mapId: number}> = (props) => {
+          const {mapId} = props ?? {};
+
+          return  analyzeTopicalMapCompetitors(mapId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AnalyzeTopicalMapCompetitorsMutationResult = NonNullable<Awaited<ReturnType<typeof analyzeTopicalMapCompetitors>>>
+
+    export type AnalyzeTopicalMapCompetitorsMutationError = ErrorType<void>
+
+    /**
+ * @summary Start a SERP competitor scan for every topic in a map (DataForSEO — paid)
+ */
+export const useAnalyzeTopicalMapCompetitors = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeTopicalMapCompetitors>>, TError,{mapId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof analyzeTopicalMapCompetitors>>,
+        TError,
+        {mapId: number},
+        TContext
+      > => {
+      return useMutation(getAnalyzeTopicalMapCompetitorsMutationOptions(options));
+    }
+
 export const getGetTopicalMapRunUrl = (mapId: number,) => {
 
 

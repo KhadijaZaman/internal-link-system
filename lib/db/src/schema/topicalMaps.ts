@@ -41,6 +41,12 @@ export const topicalMapsTable = pgTable("topical_maps", {
   startedAt: timestamp("started_at", { withTimezone: true }),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
   heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
+  /** null | queued | running | complete | failed — tracks per-map SERP competitor scan. */
+  competitorScanStatus: text("competitor_scan_status"),
+  /** Error message if the competitor scan failed (includes out-of-funds notice). */
+  competitorScanError: text("competitor_scan_error"),
+  /** When the competitor scan last transitioned to 'running' — used to detect stale running scans. */
+  competitorScanStartedAt: timestamp("competitor_scan_started_at", { withTimezone: true }),
 });
 
 export const topicalMapNodesTable = pgTable(
@@ -93,6 +99,14 @@ export const topicalMapNodesTable = pgTable(
     matchConfidence: real("match_confidence"),
     /** Stable sibling ordering for rendering. */
     sortOrder: integer("sort_order").notNull().default(0),
+    /**
+     * Competitor domains already ranking for this topic's canonical query.
+     * Populated by the analyze_topical_map_competitors job. Each entry:
+     * { domain, url, bestPosition, matchedQuery }
+     */
+    competitors: jsonb("competitors").$type<
+      Array<{ domain: string; url: string; bestPosition: number | null; matchedQuery: string }>
+    >(),
   },
   (t) => [
     index("topical_map_nodes_map_idx").on(t.mapId),

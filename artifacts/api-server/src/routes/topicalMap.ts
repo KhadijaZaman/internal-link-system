@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import {
   db,
   topicalMapsTable,
@@ -38,6 +38,9 @@ function serializeMap(map: TopicalMap) {
     createdAt: map.createdAt.toISOString(),
     startedAt: map.startedAt?.toISOString() ?? null,
     finishedAt: map.finishedAt?.toISOString() ?? null,
+    competitorScanStatus: map.competitorScanStatus ?? null,
+    competitorScanError: map.competitorScanError ?? null,
+    competitorScanStartedAt: map.competitorScanStartedAt?.toISOString() ?? null,
   };
 }
 
@@ -46,6 +49,7 @@ interface JoinedNode extends TopicalMapNode {
   gscClicks: number | null;
   gscImpressions: number | null;
   gscPosition: number | null;
+  // competitors is already on TopicalMapNode (from DB schema), re-declared here for clarity
 }
 
 function serializeNode(n: JoinedNode) {
@@ -175,10 +179,15 @@ function normalizeQuery(q: string): string {
 }
 
 /**
- * Which competitors already rank for each topic, from SERP results stored by
- * the latest complete keyword-clustering run (no new API spend). A node
- * matches a clustered keyword when the normalized strings are equal or one
- * contains the other.
+ * Which competitors already rank for each topic.
+ *
+ * Primary source: the node's own `competitors` JSONB column, populated by the
+ * analyze_topical_map_competitors job (covers every topic, fresh SERP data).
+ *
+ * Fallback for nodes without stored data: SERP results stored by the latest
+ * complete keyword-clustering run. This typically only covers the small set of
+ * GSC queries that were clustered (~12 keywords), so competitor chips will be
+ * sparse until the competitor-scan job runs.
  */
 async function competitorsByNode(
   nodes: JoinedNode[],
@@ -186,6 +195,21 @@ async function competitorsByNode(
   siteHost: string,
 ): Promise<Map<number, NodeCompetitor[]>> {
   const out = new Map<number, NodeCompetitor[]>();
+
+  // --- Primary: use stored competitors from the analyze job ---
+  const needsFallback: JoinedNode[] = [];
+  for (const node of nodes) {
+    const stored = node.competitors as NodeCompetitor[] | null | undefined;
+    if (stored && stored.length > 0) {
+      out.set(node.id, stored.slice(0, 5));
+    } else {
+      needsFallback.push(node);
+    }
+  }
+
+  // --- Fallback: cluster-run SERP matching for nodes without stored data ---
+  if (needsFallback.length === 0) return out;
+
   const [run] = await db
     .select({ id: clusterRunsTable.id })
     .from(clusterRunsTable)
@@ -193,6 +217,7 @@ async function competitorsByNode(
     .orderBy(desc(clusterRunsTable.id))
     .limit(1);
   if (!run) return out;
+
   const clusters = await db
     .select({ keywords: clusterRunClustersTable.keywords })
     .from(clusterRunClustersTable)
@@ -203,6 +228,7 @@ async function competitorsByNode(
     const h = host.replace(/^www\./, "");
     return h === ownHost || h.endsWith(`.${ownHost}`);
   };
+
   // Pre-parse each keyword entry ONCE (URL parsing + own-host/scheme filtering
   // out of the node loop — nodes × keywords only does string matching below).
   const entries: { query: string; competitors: { domain: string; url: string; position: number | null }[] }[] = [];
@@ -231,7 +257,7 @@ async function competitorsByNode(
   }
   if (entries.length === 0) return out;
 
-  for (const node of nodes) {
+  for (const node of needsFallback) {
     const candidates = [node.canonicalQuery, node.title]
       .filter((s): s is string => !!s)
       .map(normalizeQuery)
@@ -353,6 +379,121 @@ router.get("/topical-map/runs", requireAuth, requireSite, async (req, res) => {
     .orderBy(desc(topicalMapsTable.createdAt))
     .limit(10);
   res.json(rows.map(serializeMap));
+});
+
+router.post("/topical-map/runs/:mapId/analyze-competitors", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
+  const mapId = Number(req.params.mapId);
+  if (!Number.isInteger(mapId)) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+
+  const [map] = await db
+    .select()
+    .from(topicalMapsTable)
+    .where(and(eq(topicalMapsTable.siteId, site.id), eq(topicalMapsTable.id, mapId)))
+    .limit(1);
+  if (!map) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (map.status !== "complete") {
+    res.status(409).json({ error: "Competitor scan requires a complete map." });
+    return;
+  }
+
+  // Stale-scan recovery: the job updates competitor_scan_started_at every
+  // 2 minutes as a heartbeat. A running scan with a heartbeat older than
+  // 6 minutes (3 missed heartbeats) is considered stale — the process likely
+  // restarted mid-scan — and is reset so the user can re-trigger.
+  const SCAN_HEARTBEAT_MS = 2 * 60_000; // must match job's HEARTBEAT_INTERVAL_MS
+  const SCAN_STALE_MS = SCAN_HEARTBEAT_MS * 3; // 6 minutes
+  if (map.competitorScanStatus === "running") {
+    const startedAt = map.competitorScanStartedAt;
+    const isStale = !startedAt || Date.now() - startedAt.getTime() > SCAN_STALE_MS;
+    if (isStale) {
+      const [reset] = await db
+        .update(topicalMapsTable)
+        .set({
+          competitorScanStatus: "failed",
+          competitorScanError:
+            "The server restarted while the competitor scan was in progress. Trigger the scan again to retry.",
+        })
+        .where(
+          and(
+            eq(topicalMapsTable.siteId, site.id),
+            eq(topicalMapsTable.id, mapId),
+            eq(topicalMapsTable.competitorScanStatus, "running"),
+          ),
+        )
+        .returning();
+      if (reset) {
+        // Successfully reset to 'failed' — fall through and let the new scan start.
+        Object.assign(map, reset);
+      }
+    } else {
+      // Scan is genuinely running (fresh heartbeat).
+      res.status(409).json({ error: "A competitor scan is already running for this map." });
+      return;
+    }
+  }
+
+  // 'queued' (stuck after a process restart) or 'partial' (previous scan was
+  // budget-limited): allow re-triggering. The job's atomic claim is idempotent —
+  // if a running job already picked this map up it skips it; otherwise a new
+  // job will claim and process it.
+  if (map.competitorScanStatus === "queued" || map.competitorScanStatus === "partial") {
+    // Fall through to runJob below — treat this as a recovery/continuation trigger.
+  }
+
+  // Check DataForSEO credentials are configured before queuing anything.
+  if (!process.env["DATAFORSEO_LOGIN"] || !process.env["DATAFORSEO_PASSWORD"]) {
+    res.status(422).json({ error: "DataForSEO credentials are not configured." });
+    return;
+  }
+
+  // Conditionally transition to 'queued' — only from eligible statuses (never
+  // from 'running'). A concurrent request that started a scan between the
+  // freshness check above and this UPDATE will leave the row at 'running',
+  // causing the UPDATE to match 0 rows, which we surface as a 409 below.
+  const eligibleStatuses = ["queued", "partial", "complete", "failed"];
+  const [updated] = await db
+    .update(topicalMapsTable)
+    .set({ competitorScanStatus: "queued", competitorScanError: null })
+    .where(
+      and(
+        eq(topicalMapsTable.siteId, site.id),
+        eq(topicalMapsTable.id, mapId),
+        sql`competitor_scan_status IS NULL OR competitor_scan_status = ANY(${eligibleStatuses})`,
+      ),
+    )
+    .returning();
+
+  if (!updated) {
+    res.status(500).json({ error: "Failed to queue competitor scan." });
+    return;
+  }
+
+  const jobResult = await runJob("analyze_topical_map_competitors", site);
+  if (!jobResult.started) {
+    // Another scan job is already running for this site. The map is now 'queued'
+    // and will be picked up when the running scan's job finishes. Return 202 so
+    // the UI shows the queued state rather than an error.
+    if (jobResult.reason === "Already running") {
+      res.status(202).json(serializeMap(updated));
+      return;
+    }
+    // Unexpected failure — revert so the user can retry.
+    await db
+      .update(topicalMapsTable)
+      .set({ competitorScanStatus: null })
+      .where(and(eq(topicalMapsTable.siteId, site.id), eq(topicalMapsTable.id, mapId)));
+    res.status(409).json({ error: `Could not start competitor scan: ${jobResult.reason}` });
+    return;
+  }
+
+  res.status(202).json(serializeMap(updated));
 });
 
 router.get("/topical-map/runs/:mapId", requireAuth, requireSite, async (req, res) => {

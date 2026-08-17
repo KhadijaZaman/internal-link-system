@@ -1153,6 +1153,29 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/TopicalMapSummary"
+  /topical-map/runs/{mapId}/analyze-competitors:
+    post:
+      operationId: analyzeTopicalMapCompetitors
+      tags: [topicalMap]
+      summary: Start a SERP competitor scan for every topic in a map (DataForSEO — paid)
+      parameters:
+        - in: path
+          name: mapId
+          required: true
+          schema: { type: integer }
+      responses:
+        "202":
+          description: Scan queued and job started; returns the updated map summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopicalMapSummary"
+        "404":
+          description: Map not found
+        "409":
+          description: A scan is already in progress, or the map is not complete yet
+        "422":
+          description: DataForSEO credentials are not configured
   /topical-map/runs/{mapId}:
     get:
       operationId: getTopicalMapRun
@@ -5415,6 +5438,12 @@ components:
         createdAt: { type: string }
         startedAt: { type: ["string", "null"] }
         finishedAt: { type: ["string", "null"] }
+        competitorScanStatus:
+          type: ["string", "null"]
+          description: "null | queued | running | complete | partial | failed — current state of the per-map SERP competitor scan. 'partial' means the scan ran but some topics were not covered (budget cap, timeouts, or task failures); re-run to make more progress."
+        competitorScanError:
+          type: ["string", "null"]
+          description: Last error from the competitor scan (includes out-of-funds notice)
     TopicalMapNode:
       type: object
       required: [id, mapId, parentId, level, section, title, canonicalQuery, attributeOwned, intent, predicate, funnelStage, pageType, suggestedSlug, suggestedTitle, informationGain, borderNote, priority, status, matchedPagePath, matchSource, matchConfidence, sortOrder, pageTitle, gscClicks, gscImpressions, gscPosition]

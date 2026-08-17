@@ -6,6 +6,7 @@ import {
   getGetTopicalMapRunQueryKey,
   useGenerateTopicalMap,
   useUpdateTopicalMapNode,
+  useAnalyzeTopicalMapCompetitors,
   type TopicalMapSummary,
   type TopicalMapNode,
 } from "@workspace/api-client-react";
@@ -47,6 +48,7 @@ import {
   Copy,
   Download,
   EyeOff,
+  Globe,
   Map as MapIcon,
   Play,
   RotateCcw,
@@ -217,9 +219,11 @@ export default function TopicalMapPage() {
       queryKey: getListTopicalMapRunsQueryKey(),
       refetchInterval: (query) => {
         const rows = query.state.data ?? [];
-        return rows.some((r) => r.status === "queued" || r.status === "running")
-          ? 3000
-          : false;
+        const mapGenerating = rows.some((r) => r.status === "queued" || r.status === "running");
+        const scanRunning = rows.some(
+          (r) => r.competitorScanStatus === "queued" || r.competitorScanStatus === "running",
+        );
+        return mapGenerating || scanRunning ? 3000 : false;
       },
     },
   });
@@ -297,6 +301,51 @@ export default function TopicalMapPage() {
     },
   });
   const detail = detailQ.data ?? null;
+
+  const scanMutation = useAnalyzeTopicalMapCompetitors({
+    mutation: {
+      onSuccess: (data) => {
+        void queryClient.invalidateQueries({ queryKey: getListTopicalMapRunsQueryKey() });
+        if (selectedRun) {
+          void queryClient.invalidateQueries({
+            queryKey: getGetTopicalMapRunQueryKey(selectedRun.id),
+          });
+        }
+        // The job runs async; show the user the scan has been queued.
+        toast({
+          title: "Competitor scan started",
+          description: `Fetching live SERP data for ${data.centralEntity} topics — this takes a few minutes.`,
+        });
+      },
+      onError: (err: unknown) => {
+        const message =
+          err && typeof err === "object" && "error" in err && typeof err.error === "string"
+            ? err.error
+            : "Could not start competitor scan.";
+        toast({ title: "Scan not started", description: message, variant: "destructive" });
+      },
+    },
+  });
+
+  // When the scan finishes (status transitions out of running/queued), refresh
+  // the detail so competitor chips populate immediately.
+  const prevScanStatus = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const current = selectedRun?.competitorScanStatus ?? null;
+    const prev = prevScanStatus.current;
+    if (
+      prev !== undefined &&
+      (prev === "running" || prev === "queued") &&
+      current !== "running" &&
+      current !== "queued" &&
+      selectedRun
+    ) {
+      void queryClient.invalidateQueries({
+        queryKey: getGetTopicalMapRunQueryKey(selectedRun.id),
+      });
+    }
+    prevScanStatus.current = current;
+  }, [selectedRun?.competitorScanStatus, selectedRun, queryClient]);
 
   const updateNodeMutation = useUpdateTopicalMapNode({
     mutation: {
@@ -1192,16 +1241,50 @@ export default function TopicalMapPage() {
                         <TableHead>Funnel</TableHead>
                         <TableHead className="min-w-[180px]">Your page</TableHead>
                         <TableHead className="text-right">Clicks</TableHead>
-                        <TableHead className="min-w-[220px]">
-                          <span className="flex items-center gap-1">
-                            Competitors ranking
-                            <InfoTip>
-                              Competitor domains already ranking on Google for this topic, from
-                              SERP data captured by your latest keyword-clustering run. Empty
-                              means no stored SERP data matched this topic yet — run Keyword
-                              clustering to widen coverage.
-                            </InfoTip>
-                          </span>
+                        <TableHead className="min-w-[280px]">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="flex items-center gap-1">
+                              Competitors ranking
+                              <InfoTip>
+                                Competitor domains already ranking on Google for this topic.
+                                Click "Scan competitors" to fetch live SERP data for every
+                                topic — this uses your DataForSEO budget (~$0.0006/topic).
+                                Requires the DataForSEO account to have funds.
+                              </InfoTip>
+                            </span>
+                            {selectedRun &&
+                              (selectedRun.competitorScanStatus === "running" ||
+                              selectedRun.competitorScanStatus === "queued" ? (
+                                <span className="flex items-center gap-1 text-xs text-muted-foreground font-normal">
+                                  <Spinner className="h-3 w-3" />
+                                  Scanning…
+                                </span>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-6 text-xs px-2 font-normal"
+                                  disabled={scanMutation.isPending}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    scanMutation.mutate({ mapId: selectedRun.id });
+                                  }}
+                                  data-testid="button-scan-competitors"
+                                >
+                                  <Globe className="h-3 w-3 mr-1" />
+                                  Scan competitors
+                                </Button>
+                              ))}
+                          </div>
+                          {selectedRun?.competitorScanStatus === "failed" &&
+                            selectedRun.competitorScanError && (
+                              <p className="text-[11px] text-destructive mt-0.5 font-normal">
+                                {selectedRun.competitorScanError.includes("out of funds") ||
+                                selectedRun.competitorScanError.includes("402")
+                                  ? "DataForSEO out of funds — top up at app.dataforseo.com"
+                                  : selectedRun.competitorScanError}
+                              </p>
+                            )}
                         </TableHead>
                       </TableRow>
                     </TableHeader>

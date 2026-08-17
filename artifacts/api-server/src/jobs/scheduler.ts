@@ -1,4 +1,6 @@
 import cron from "node-cron";
+import { inArray } from "drizzle-orm";
+import { db, topicalMapsTable } from "@workspace/db";
 import { registerJob, runJob, lastRunAt, type JobName } from "./runner";
 import { runCrawlLinkMap } from "./crawlLinkMap";
 import { runGscInventoryAndLosers } from "./gscInventory";
@@ -18,7 +20,8 @@ import { runAnalyzeSimilarity } from "./analyzeSimilarity";
 import { runSyncBingPages } from "./syncBingPages";
 import { runGenerateTopicalMap } from "./generateTopicalMap";
 import { runAuditLinkQuality } from "./auditLinkQuality";
-import { listSchedulableSites } from "../lib/site";
+import { runAnalyzeTopicalMapCompetitors } from "./analyzeTopicalMapCompetitors";
+import { listSchedulableSites, type SiteContext } from "../lib/site";
 import { logger } from "../lib/logger";
 
 export function setupJobs(): void {
@@ -63,6 +66,9 @@ export function setupJobs(): void {
   // Existing-link quality audit (embeddings × edges, pure DB + math, no API
   // spend) — manual trigger from the Link Map page; re-run after re-crawls.
   registerJob("audit_link_quality", runAuditLinkQuality);
+  // Competitor SERP scan for topical-map topics — triggered by POST
+  // /topical-map/runs/:mapId/analyze-competitors, never on a cron (paid DataForSEO spend).
+  registerJob("analyze_topical_map_competitors", runAnalyzeTopicalMapCompetitors);
 }
 
 /**
@@ -147,6 +153,90 @@ const CATCHUP_JOBS: Array<{
   // Monthly
   { name: "reembed_wordpress", maxAgeMs: MONTHLY_MAX_AGE_MS, requirePriorRun: true },
 ];
+
+/**
+ * Startup recovery for stuck competitor scans.
+ *
+ * When the server restarts mid-scan, topical_maps rows can be left with
+ * competitor_scan_status = 'queued' (never claimed) or 'running' with a stale
+ * heartbeat (process died). This sweep:
+ *  1. Resets genuinely stale 'running' rows to 'failed'.
+ *  2. Triggers analyze_topical_map_competitors for every site that still has a
+ *     'queued' map — the job's atomic claim handles races safely.
+ *
+ * Safe to call at any time; the job's FOR UPDATE SKIP LOCKED prevents double-
+ * processing, and runJob's per-(job,site) lock prevents duplicate concurrent runs.
+ */
+export async function recoverStaleCompetitorScans(): Promise<void> {
+  // The job heartbeats every 2 minutes; 6 minutes (3 missed heartbeats) is stale.
+  const HEARTBEAT_MS = 2 * 60_000;
+  const STALE_MS = HEARTBEAT_MS * 3;
+  const staleThreshold = new Date(Date.now() - STALE_MS);
+
+  try {
+    // Find maps still in a non-terminal scan state.
+    const stuck = await db
+      .select({ id: topicalMapsTable.id, siteId: topicalMapsTable.siteId, competitorScanStatus: topicalMapsTable.competitorScanStatus, competitorScanStartedAt: topicalMapsTable.competitorScanStartedAt })
+      .from(topicalMapsTable)
+      .where(inArray(topicalMapsTable.competitorScanStatus, ["queued", "running"]));
+
+    if (stuck.length === 0) return;
+
+    // Reset stale 'running' maps to 'failed'.
+    const staleRunning = stuck.filter(
+      (m) =>
+        m.competitorScanStatus === "running" &&
+        (!m.competitorScanStartedAt || m.competitorScanStartedAt < staleThreshold),
+    );
+    if (staleRunning.length > 0) {
+      await db
+        .update(topicalMapsTable)
+        .set({
+          competitorScanStatus: "failed",
+          competitorScanError:
+            "The server restarted while the competitor scan was in progress. Trigger the scan again to retry.",
+        })
+        .where(inArray(topicalMapsTable.id, staleRunning.map((m) => m.id)));
+      logger.info(
+        { count: staleRunning.length },
+        "Startup recovery: reset stale running competitor scans to failed",
+      );
+    }
+
+    // Find sites that still have queued maps (after the reset above, some
+    // running→failed maps may have been the only issue; remaining queued maps
+    // need a job triggered).
+    const remainingQueued = stuck.filter((m) => m.competitorScanStatus === "queued");
+    if (remainingQueued.length === 0) return;
+
+    const siteIds = [...new Set(remainingQueued.map((m) => m.siteId))];
+    let sites: SiteContext[];
+    try {
+      const all = await listSchedulableSites();
+      sites = all.filter((s) => siteIds.includes(s.id));
+    } catch (e) {
+      logger.error({ err: e }, "Startup recovery: failed to list sites for competitor scan");
+      return;
+    }
+
+    for (const site of sites) {
+      logger.info(
+        { siteId: site.id },
+        "Startup recovery: triggering analyze_topical_map_competitors for stuck queued map",
+      );
+      const result = await runJob("analyze_topical_map_competitors", site);
+      if (!result.started) {
+        logger.warn(
+          { siteId: site.id, reason: result.reason },
+          "Startup recovery: could not start competitor scan job",
+        );
+      }
+      // Fire-and-forget: don't await completion so startup is not blocked.
+    }
+  } catch (e) {
+    logger.error({ err: e }, "Startup recovery: competitor scan sweep failed");
+  }
+}
 
 /**
  * Run any scheduled job whose last recorded run (per site) is older than its

@@ -1,7 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { resyncSerialSequences } from "./lib/sequenceResync";
-import { setupJobs, startScheduler, runDailyCatchUp } from "./jobs/scheduler";
+import { setupJobs, startScheduler, runDailyCatchUp, recoverStaleCompetitorScans } from "./jobs/scheduler";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
@@ -45,6 +45,9 @@ void resyncSerialSequences().then(async () => {
   // workspace, autoscale recycle), run overdue daily jobs now instead of
   // waiting for tomorrow's slot. runDailyCatchUp never throws.
   void runDailyCatchUp();
+  // Recover any competitor scans that were left queued or running when the
+  // server last restarted. Safe to call at any time — no-ops when nothing is stuck.
+  void recoverStaleCompetitorScans();
 });
 
 app.listen(port, (err) => {
