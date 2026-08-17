@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hitTestNodes, type HitTestNode } from "./map-hittest";
+import { hitTestNodes, resolveClickSelection, type HitTestNode } from "./map-hittest";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -138,5 +138,76 @@ describe("hitTestNodes — zoom scale", () => {
     // Cursor at distance 5: hit at k=1, miss at k=4.
     expect(hitTestNodes(5, 0, 1, [n], ALL_VISIBLE, ALL_PRIORITIES)?.id).toBe(1);
     expect(hitTestNodes(5, 0, 4, [n], ALL_VISIBLE, ALL_PRIORITIES)).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Central-entity hub node at (0,0)
+//
+// The central entity is drawn as a static decorative circle at world origin
+// (0, 0). It has NO corresponding LaidOutNode entry in the nodes array that
+// hitTestNodes searches. Clicking exactly on it must therefore return
+// undefined so the onClick handler calls setSelectedNodeId(null) — closing
+// any open detail panel — rather than crashing or showing a stale selection.
+// ---------------------------------------------------------------------------
+
+describe("hitTestNodes — central-entity hub node at (0,0)", () => {
+  it("returns undefined for a click at (0,0) when the node list is empty (identity transform)", () => {
+    // The central hub is not in the nodes list; clicking it must not crash.
+    expect(hitTestNodes(0, 0, K, [], ALL_VISIBLE, ALL_PRIORITIES)).toBeUndefined();
+  });
+
+  it("returns undefined for a click at (0,0) when all nodes are positioned away from origin", () => {
+    // Nodes exist but none overlap the hub; clicking the hub returns undefined.
+    const nodes = [
+      node({ id: 1, x: 200, y: 100, r: 12 }),
+      node({ id: 2, x: -150, y: 80, r: 10 }),
+    ];
+    expect(hitTestNodes(0, 0, K, nodes, ALL_VISIBLE, ALL_PRIORITIES)).toBeUndefined();
+  });
+
+  it("does NOT return undefined when a real topic node is placed at the origin", () => {
+    // Edge-case: a topic node coincidentally placed at (0,0) should still be
+    // found (the hub circle doesn't 'block' the hit-test).
+    const n = node({ id: 42, x: 0, y: 0, r: 8 });
+    const result = hitTestNodes(0, 0, K, [n], ALL_VISIBLE, ALL_PRIORITIES);
+    expect(result?.id).toBe(42);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveClickSelection — panel-close on hub click
+//
+// The onClick handler in topical-map.tsx calls resolveClickSelection(hit) to
+// derive the next selectedNodeId. When the user clicks the central-entity hub
+// at (0,0) — which has no LaidOutNode — hitTestNodes returns undefined and
+// resolveClickSelection must return null so the detail panel closes cleanly
+// rather than leaving a stale selection on screen.
+// ---------------------------------------------------------------------------
+
+describe("resolveClickSelection — panel closes when hub is clicked", () => {
+  it("returns null when no node was hit (central-entity hub click)", () => {
+    expect(resolveClickSelection(undefined)).toBe(null);
+  });
+
+  it("closes a previously open detail panel: undefined hit clears a stale selection", () => {
+    // Simulate: panel was open showing node 42, user clicks the hub.
+    // The full chain: hub click → hitTestNodes(0,0, identity, []) → undefined
+    //                          → resolveClickSelection(undefined) → null
+    const priorSelection = 42; // panel was open
+    const hit = hitTestNodes(0, 0, K, [], ALL_VISIBLE, ALL_PRIORITIES); // hub → undefined
+    const next = resolveClickSelection(hit);
+    expect(next).toBe(null);
+    expect(next).not.toBe(priorSelection); // stale selection is gone
+  });
+
+  it("does not throw when the hit is undefined (no crash on hub click)", () => {
+    expect(() => resolveClickSelection(undefined)).not.toThrow();
+  });
+
+  it("returns the hit node's id when a real topic node is clicked", () => {
+    const n = node({ id: 7, x: 50, y: 50, r: 8 });
+    const hit = hitTestNodes(50, 50, K, [n], ALL_VISIBLE, ALL_PRIORITIES);
+    expect(resolveClickSelection(hit)).toBe(7);
   });
 });

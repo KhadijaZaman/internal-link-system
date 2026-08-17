@@ -61,7 +61,7 @@ import { JobSpendCapNotice } from "@/components/spend-cap-badge";
 import { InfoTip } from "@/components/info-tip";
 import { DataNarrative, Num } from "@/components/data-narrative";
 import * as d3 from "d3";
-import { hitTestNodes } from "@/lib/map-hittest";
+import { hitTestNodes, resolveClickSelection } from "@/lib/map-hittest";
 
 const STATUS_COLOR: Record<TopicalMapNode["status"], string> = {
   published: "#10b981",
@@ -630,7 +630,7 @@ export default function TopicalMapPage() {
     const onClick = (ev: MouseEvent) => {
       const [mx, my] = d3.pointer(ev, canvas);
       const n = findNode(mx, my);
-      setSelectedNodeId(n ? n.id : null);
+      setSelectedNodeId(resolveClickSelection(n));
     };
     const onMove = (ev: MouseEvent) => {
       const [mx, my] = d3.pointer(ev, canvas);

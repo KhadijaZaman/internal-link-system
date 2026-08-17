@@ -53,3 +53,19 @@ export function hitTestNodes<T extends HitTestNode>(
 
   return best;
 }
+
+/**
+ * Resolves the next `selectedNodeId` value after a canvas click.
+ *
+ * Returns the hit node's `id` when a visible topic node was clicked, or `null`
+ * when the click missed every node — for example when the user clicks the
+ * central-entity hub circle drawn at world origin (0, 0), which has no
+ * corresponding `LaidOutNode` entry and therefore makes `hitTestNodes` return
+ * `undefined`.  A `null` result tells the caller to close the detail panel.
+ *
+ * Extracting this one-liner into a named function makes the "hub click closes
+ * the panel" contract unit-testable without a DOM or a D3 event.
+ */
+export function resolveClickSelection(hit: HitTestNode | undefined): number | null {
+  return hit !== undefined ? hit.id : null;
+}
