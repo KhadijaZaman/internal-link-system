@@ -61,6 +61,7 @@ import { JobSpendCapNotice } from "@/components/spend-cap-badge";
 import { InfoTip } from "@/components/info-tip";
 import { DataNarrative, Num } from "@/components/data-narrative";
 import * as d3 from "d3";
+import { hitTestNodes } from "@/lib/map-hittest";
 
 const STATUS_COLOR: Record<TopicalMapNode["status"], string> = {
   published: "#10b981",
@@ -613,20 +614,15 @@ export default function TopicalMapPage() {
 
     const findNode = (mx: number, my: number): LaidOutNode | undefined => {
       const t = transformRef.current;
-      const filt = statusFilterRef.current;
-      const priFilt = priorityFilterRef.current;
       const [x, y] = t.invert([mx, my]);
-      let best: LaidOutNode | undefined;
-      let bestDist = Infinity;
-      for (const n of nodes) {
-        if (!filt[n.status] || !priFilt[n.priority as "high" | "medium" | "low"]) continue;
-        const dist = Math.hypot(n.x - x, n.y - y);
-        if (dist <= n.r + 6 / t.k && dist < bestDist) {
-          best = n;
-          bestDist = dist;
-        }
-      }
-      return best;
+      return hitTestNodes(
+        x,
+        y,
+        t.k,
+        nodes,
+        statusFilterRef.current,
+        priorityFilterRef.current,
+      );
     };
 
     const onClick = (ev: MouseEvent) => {
