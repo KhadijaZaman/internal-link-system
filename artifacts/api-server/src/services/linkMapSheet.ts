@@ -325,14 +325,26 @@ export async function exportLinkMapSheet(
   // Persist the (new or unchanged) spreadsheet ID.
   await storeSheetId(spreadsheetId, siteId);
 
-  // 5. Write header + data rows.
-  await sheetsRequest(`/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
-    method: "POST",
-    body: {
-      valueInputOption: "RAW",
-      data: [{ range: `'${TAB_TITLE}'!A1`, values: [HEADERS, ...dataRows] }],
-    },
-  });
+  // 5. Write header + data rows in chunks to stay within the Sheets API
+  //    10 MB per-request payload limit.  Each chunk targets an explicit A1
+  //    range so rows land in the right place even when a previous chunk
+  //    wrote fewer cells than expected.
+  const WRITE_CHUNK_SIZE = 1000; // rows per API call (≈ safe payload size)
+  const allRows: unknown[][] = [HEADERS, ...dataRows];
+
+  for (let start = 0; start < allRows.length; start += WRITE_CHUNK_SIZE) {
+    const chunk = allRows.slice(start, start + WRITE_CHUNK_SIZE);
+    const startRow = start + 1; // 1-based row index
+    const endRow = startRow + chunk.length - 1;
+    const range = `'${TAB_TITLE}'!A${startRow}:${columnLetter(columnCount)}${endRow}`;
+    await sheetsRequest(`/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
+      method: "POST",
+      body: {
+        valueInputOption: "RAW",
+        data: [{ range, values: chunk }],
+      },
+    });
+  }
 
   // 6. Bold the header and auto-resize columns.
   // Need the current sheetId of the tab we just wrote.
