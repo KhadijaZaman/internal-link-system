@@ -558,7 +558,7 @@ const MAX_TOOL_CALLS = 5;
 
 router.post("/gsc/chat", requireAuth, requireSite, async (req, res) => {
   const site = getSite(req);
-              const parsed = JSON.parse(result) as Record<string, unknown>;
+  const parsed = parseChatBody(req);
   if ("error" in parsed) {
     res.status(400).json({ error: parsed.error });
     return;
@@ -572,13 +572,9 @@ router.post("/gsc/chat", requireAuth, requireSite, async (req, res) => {
     const contextJson = await buildContext(parsed, site);
     const withCtx = buildPromptMessages(parsed.messages, parsed.includeDefault, contextJson);
     if (!withCtx) {
-      send("error", { error: "no messages" });
-      res.end();
+      res.status(400).json({ error: "no messages" });
       return;
     }
-    send("meta", {
-      contextSummary: `Analyzed ${parsed.startDate} → ${parsed.endDate}${parsed.url ? ` for ${parsed.url}` : ""}`,
-    });
 
     const openai = getOpenAI();
 
@@ -611,9 +607,9 @@ router.post("/gsc/chat", requireAuth, requireSite, async (req, res) => {
           continue;
         }
         toolCallsUsed++;
-          let args: Record<string, unknown> = {};
+        let args: Record<string, unknown> = {};
         try { args = JSON.parse(tc.function.arguments || "{}"); } catch { /* keep empty */ }
-          const result = await executeTool(tc.name, args, toolOpts);
+        const result = await executeTool(tc.function.name, args, toolOpts);
         history.push({ role: "tool", tool_call_id: tc.id, content: result });
       }
     }
@@ -629,7 +625,7 @@ router.post("/gsc/chat", requireAuth, requireSite, async (req, res) => {
 
 router.post("/gsc/chat/stream", requireAuth, requireSite, async (req, res) => {
   const site = getSite(req);
-              const parsed = JSON.parse(result) as Record<string, unknown>;
+  const parsed = parseChatBody(req);
   if ("error" in parsed) {
     res.status(400).json({ error: parsed.error });
     return;
@@ -784,6 +780,37 @@ router.post("/gsc/chat/stream", requireAuth, requireSite, async (req, res) => {
           send("tool_use", { name: tc.name, label });
 
           const result = await executeTool(tc.name, args, toolOpts);
+          toolCallsUsed++;
+
+          apiMessages.push({
+            role: "tool",
+            tool_call_id: tc.id,
+            content: result,
+          });
+        }
+        // Always make a follow-up call when tool results were appended.
+        // If the cap is now reached, the next iteration omits the tools
+        // parameter — the model is forced to respond with text instead of
+        // calling more tools, and finish_reason will be "stop".
+        continueLoop = true;
+      }
+    }
+
+    if (!closed) {
+      send("done", { ok: true });
+      res.end();
+    }
+  } catch (err) {
+    req.log.error({ err }, "GSC chat stream failed");
+    if (!closed) {
+      send("error", { error: "OpenAI streaming failed" });
+      res.end();
+    }
+  } finally {
+    clearInterval(keepalive);
+  }
+});
+
 export default router;
 
 // ─── Tool helpers ────────────────────────────────────────────────────────────
@@ -1070,8 +1097,9 @@ async function executeTool(
       const {
         points: resolvedPoints,
         effectiveGranularity,
-        notice,
+        notice: initialNotice,
       } = resolveTrendPoints(dateRows, granularity, startDate, endDate);
+      let notice = initialNotice;
       let points = resolvedPoints;
 
       // Hard cap: keep at most 90 data points (most recent).

@@ -38,10 +38,14 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
+import { rowsToTsv, copyToClipboard, type Cell } from "@/lib/clipboard";
 import { useLocation } from "wouter";
 import {
   AlertTriangle,
+  Check,
   ChevronDown,
+  Copy,
+  Download,
   EyeOff,
   Map as MapIcon,
   Play,
@@ -136,6 +140,7 @@ export default function TopicalMapPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
   const [topicSearch, setTopicSearch] = useState("");
+  const [copiedExport, setCopiedExport] = useState(false);
 
   const sendToWriter = (node: TopicalMapNode) => {
     const params = new URLSearchParams({
@@ -144,6 +149,67 @@ export default function TopicalMapPage() {
     });
     navigate(`/content/writer?${params.toString()}`);
   };
+
+  const EXPORT_HEADERS = [
+    "Topic",
+    "Level",
+    "Section",
+    "Status",
+    "Priority",
+    "Funnel",
+    "Canonical Query",
+    "Matched Page",
+    "GSC Clicks",
+    "Competitor Domains",
+  ];
+
+  function buildExportRows(): Cell[][] {
+    return orderedRows.map(({ node }) => [
+      node.title,
+      node.level.replace("_", " "),
+      node.section,
+      node.status === "published" ? "covered" : node.status === "gap" ? "gap" : "dismissed",
+      node.priority,
+      node.funnelStage,
+      node.canonicalQuery,
+      node.matchedPagePath ?? "",
+      node.gscClicks ?? "",
+      (node.competitors ?? []).map((c) => c.domain).join(", "),
+    ]);
+  }
+
+  function downloadTableCsv() {
+    if (!detail) return;
+    const tsv = rowsToTsv(EXPORT_HEADERS, buildExportRows());
+    // Use comma-separated for .csv; replace tabs with commas and quote fields containing commas.
+    const csv = tsv
+      .split("\n")
+      .map((line) =>
+        line
+          .split("\t")
+          .map((cell) => (cell.includes(",") || cell.includes('"') ? `"${cell.replace(/"/g, '""')}"` : cell))
+          .join(","),
+      )
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `topical-map-${detail.map.centralEntity.replace(/\s+/g, "-").toLowerCase()}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  async function copyTableForSheets() {
+    if (!detail) return;
+    const tsv = rowsToTsv(EXPORT_HEADERS, buildExportRows());
+    const ok = await copyToClipboard(tsv);
+    if (ok) {
+      setCopiedExport(true);
+      setTimeout(() => setCopiedExport(false), 2000);
+    } else {
+      toast({ title: "Copy failed", description: "Could not access the clipboard.", variant: "destructive" });
+    }
+  }
 
   const [centralEntity, setCentralEntity] = useState("");
   const [synonyms, setSynonyms] = useState("");
@@ -950,6 +1016,36 @@ export default function TopicalMapPage() {
                       </button>
                     ))}
                   </div>
+                  {viewMode === "table" && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 px-2 text-xs gap-1"
+                        onClick={() => void copyTableForSheets()}
+                        title="Copy as tab-separated values — paste straight into Google Sheets or Excel"
+                        data-testid="button-copy-table-sheets"
+                      >
+                        {copiedExport ? (
+                          <Check className="h-3 w-3 text-emerald-600" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                        {copiedExport ? "Copied!" : "Copy for Sheets"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 px-2 text-xs gap-1"
+                        onClick={downloadTableCsv}
+                        title="Download as CSV"
+                        data-testid="button-export-csv"
+                      >
+                        <Download className="h-3 w-3" />
+                        Export CSV
+                      </Button>
+                    </>
+                  )}
                   {(
                     [
                       { key: "published" as const, label: "Covered", dot: "bg-emerald-500" },
