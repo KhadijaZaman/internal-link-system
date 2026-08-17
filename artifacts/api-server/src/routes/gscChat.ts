@@ -1147,6 +1147,16 @@ async function executeTool(
         points = points.slice(points.length - MAX_TREND_POINTS);
       }
 
+      // Warn the model when daily data has fewer than 3 points — that's a
+      // snapshot, not a trend, so it must not describe momentum or direction.
+      if (effectiveGranularity === "daily" && points.length < 3) {
+        const shortNotice =
+          `Only ${points.length} daily data point${points.length === 1 ? "" : "s"} available for ` +
+          `${startDate} to ${endDate} — too few to show momentum or direction. ` +
+          `Treat this as a snapshot only. Ask the user to widen the date range if trend analysis is needed.`;
+        notice = notice ? `${notice} ${shortNotice}` : shortNotice;
+      }
+
       return JSON.stringify({
         target,
         targetType: isPage ? "page" : "query",
