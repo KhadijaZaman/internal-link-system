@@ -854,6 +854,18 @@ export default function LinkMap() {
                         ? "Update Sheet"
                         : "Export to Sheets"}
                     </Button>
+                    {sheetInfoQ.data?.url && (
+                      <a
+                        href={sheetInfoQ.data.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Open Sheet"
+                        className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        <span className="sr-only">Open Sheet</span>
+                      </a>
+                    )}
                   </div>
                 )}
               </div>
