@@ -258,6 +258,8 @@ export default function TopicalMapPage() {
       onSuccess: () => {
         setSelectedRunId(null);
         setSelectedNodeId(null);
+        setStatusFilter({ published: true, gap: true, ignored: true });
+        setPriorityFilter({ high: true, medium: true, low: true });
         setFormOpen(false);
         void queryClient.invalidateQueries({ queryKey: getListTopicalMapRunsQueryKey() });
       },
