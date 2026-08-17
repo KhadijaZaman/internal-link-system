@@ -61,7 +61,7 @@ import { JobSpendCapNotice } from "@/components/spend-cap-badge";
 import { InfoTip } from "@/components/info-tip";
 import { DataNarrative, Num } from "@/components/data-narrative";
 import * as d3 from "d3";
-import { hitTestNodes, resolveClickSelection } from "@/lib/map-hittest";
+import { hitTestNodes, resolveClickSelection, resolveHoverTransition } from "@/lib/map-hittest";
 
 const STATUS_COLOR: Record<TopicalMapNode["status"], string> = {
   published: "#10b981",
@@ -635,10 +635,10 @@ export default function TopicalMapPage() {
     const onMove = (ev: MouseEvent) => {
       const [mx, my] = d3.pointer(ev, canvas);
       const n = findNode(mx, my);
-      const next = n?.id ?? null;
-      if (next !== hoverRef.current) {
-        hoverRef.current = next;
-        canvas.style.cursor = next !== null ? "pointer" : "grab";
+      const { nextHoverId, didChange, cursor } = resolveHoverTransition(n, hoverRef.current);
+      if (didChange) {
+        hoverRef.current = nextHoverId;
+        canvas.style.cursor = cursor;
         draw();
       }
     };

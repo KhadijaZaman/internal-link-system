@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hitTestNodes, resolveClickSelection, type HitTestNode } from "./map-hittest";
+import { hitTestNodes, resolveClickSelection, resolveHoverTransition, type HitTestNode } from "./map-hittest";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -209,5 +209,101 @@ describe("resolveClickSelection — panel closes when hub is clicked", () => {
     const n = node({ id: 7, x: 50, y: 50, r: 8 });
     const hit = hitTestNodes(50, 50, K, [n], ALL_VISIBLE, ALL_PRIORITIES);
     expect(resolveClickSelection(hit)).toBe(7);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveHoverTransition — hub area hover transitions
+//
+// topical-map.tsx onMove calls resolveHoverTransition(hit, hoverRef.current)
+// and only writes cursor + calls draw() when didChange is true.
+//
+// The central-entity hub circle is drawn at world-space origin (0, 0) but has
+// NO corresponding LaidOutNode, so hitTestNodes always returns undefined for
+// coordinates inside the hub.  The critical contracts are:
+//
+//   1. null → null (open space / hub → hub): didChange=false, no redraw.
+//   2. nodeId → null (node → hub):           didChange=true, cursor="grab".
+//   3. null → nodeId (hub → node):           didChange=true, cursor="pointer".
+//   4. Repeated hub moves after null is set: didChange=false every time.
+// ---------------------------------------------------------------------------
+
+describe("resolveHoverTransition — hub area hover transitions", () => {
+  const NODES_AWAY = [
+    node({ id: 1, x: 200, y: 100, r: 12 }),
+    node({ id: 2, x: -150, y: 80, r: 10 }),
+  ];
+
+  it("cursor already over open space → enters hub → didChange=false (null stays null, no redraw)", () => {
+    // Prior hover: null (open space). Cursor moves to hub at (0,0).
+    // hitTestNodes returns undefined because hub has no LaidOutNode.
+    const hit = hitTestNodes(0, 0, K, NODES_AWAY, ALL_VISIBLE, ALL_PRIORITIES);
+    const result = resolveHoverTransition(hit, null);
+    expect(result.nextHoverId).toBeNull();
+    expect(result.didChange).toBe(false);
+  });
+
+  it("cursor over hub → subsequent move still inside hub → didChange=false (no extra redraw)", () => {
+    // hoverRef is already null (entered hub in a prior move). Another move
+    // within the hub must not trigger a second draw().
+    const hit = hitTestNodes(3, 4, K, NODES_AWAY, ALL_VISIBLE, ALL_PRIORITIES);
+    const result = resolveHoverTransition(hit, null); // currentHoverId already null
+    expect(result.nextHoverId).toBeNull();
+    expect(result.didChange).toBe(false);
+  });
+
+  it("cursor over a topic node → enters hub → didChange=true, cursor='grab'", () => {
+    // Prior hover: node 1. Cursor drifts into hub area.
+    const hit = hitTestNodes(0, 0, K, NODES_AWAY, ALL_VISIBLE, ALL_PRIORITIES);
+    const result = resolveHoverTransition(hit, 1 /* prior hover node id */);
+    expect(result.nextHoverId).toBeNull();
+    expect(result.didChange).toBe(true);
+    expect(result.cursor).toBe("grab"); // must NOT be "pointer" over hub
+  });
+
+  it("cursor over hub → exits onto a topic node → didChange=true, cursor='pointer'", () => {
+    // Prior hover: null (was over hub). Cursor moves onto node 1 at (200,100).
+    const hit = hitTestNodes(200, 100, K, NODES_AWAY, ALL_VISIBLE, ALL_PRIORITIES);
+    const result = resolveHoverTransition(hit, null);
+    expect(result.nextHoverId).toBe(1);
+    expect(result.didChange).toBe(true);
+    expect(result.cursor).toBe("pointer");
+  });
+
+  it("cursor is never 'pointer' while it remains inside the hub area", () => {
+    // Five positions inside the hub — none overlap the displaced nodes.
+    const hubPositions: [number, number][] = [
+      [0, 0], [2, 3], [-4, 1], [0, 5], [-3, -3],
+    ];
+    for (const [x, y] of hubPositions) {
+      const hit = hitTestNodes(x, y, K, NODES_AWAY, ALL_VISIBLE, ALL_PRIORITIES);
+      const result = resolveHoverTransition(hit, null);
+      expect(result.cursor).toBe("grab");
+    }
+  });
+
+  it("exactly one didChange=true when hover transitions node→hub; subsequent hub moves are didChange=false", () => {
+    // Verifies the real production guard prevents spurious extra redraws
+    // when the cursor continues to drift within the hub after the first entry.
+    let drawCount = 0;
+    let currentHoverId: number | null = 2; // was hovering node 2
+
+    // Move 1: onto hub at (0,0)
+    const hit1 = hitTestNodes(0, 0, K, NODES_AWAY, ALL_VISIBLE, ALL_PRIORITIES);
+    const t1 = resolveHoverTransition(hit1, currentHoverId);
+    if (t1.didChange) { drawCount++; currentHoverId = t1.nextHoverId; }
+
+    // Move 2: still inside hub at (1,1)
+    const hit2 = hitTestNodes(1, 1, K, NODES_AWAY, ALL_VISIBLE, ALL_PRIORITIES);
+    const t2 = resolveHoverTransition(hit2, currentHoverId);
+    if (t2.didChange) { drawCount++; currentHoverId = t2.nextHoverId; }
+
+    // Move 3: still inside hub at (-2,2)
+    const hit3 = hitTestNodes(-2, 2, K, NODES_AWAY, ALL_VISIBLE, ALL_PRIORITIES);
+    const t3 = resolveHoverTransition(hit3, currentHoverId);
+    if (t3.didChange) { drawCount++; currentHoverId = t3.nextHoverId; }
+
+    // Only the first entry (node→null) should have triggered a redraw.
+    expect(drawCount).toBe(1);
   });
 });

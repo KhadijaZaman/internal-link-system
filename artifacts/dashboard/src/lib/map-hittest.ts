@@ -54,6 +54,50 @@ export function hitTestNodes<T extends HitTestNode>(
   return best;
 }
 
+// ---------------------------------------------------------------------------
+// Hover-state transition helper
+// ---------------------------------------------------------------------------
+
+export interface HoverTransition {
+  /** The new hover id (null = no node hovered, e.g. cursor over the hub or empty space). */
+  nextHoverId: number | null;
+  /**
+   * True when the hover state changed and the canvas needs a redraw + cursor
+   * update.  False when the new hover id equals the previous one — in
+   * particular when the cursor drifts across the central-entity hub circle
+   * (which has no LaidOutNode) while the prior hover was already null.
+   */
+  didChange: boolean;
+  /**
+   * The CSS cursor value that the caller should apply when `didChange` is
+   * true.  "pointer" over a topic node, "grab" over the hub or empty space.
+   */
+  cursor: "pointer" | "grab";
+}
+
+/**
+ * Computes the next hover state from a hit-test result and the current hover
+ * id stored in `hoverRef`.
+ *
+ * Extracted from the inline `onMove` closure in topical-map.tsx so the
+ * "no-redraw when null→null" and "cursor is 'grab' over the hub" contracts
+ * can be unit-tested without a DOM, a canvas, or a D3 event.
+ *
+ * The caller is responsible for:
+ *  1. Running `hitTestNodes` to obtain `hit`.
+ *  2. If `didChange`, writing `hoverRef.current = nextHoverId`,
+ *     `canvas.style.cursor = cursor`, and calling `draw()`.
+ */
+export function resolveHoverTransition(
+  hit: HitTestNode | undefined,
+  currentHoverId: number | null,
+): HoverTransition {
+  const nextHoverId = hit?.id ?? null;
+  const didChange = nextHoverId !== currentHoverId;
+  const cursor: "pointer" | "grab" = nextHoverId !== null ? "pointer" : "grab";
+  return { nextHoverId, didChange, cursor };
+}
+
 /**
  * Resolves the next `selectedNodeId` value after a canvas click.
  *
