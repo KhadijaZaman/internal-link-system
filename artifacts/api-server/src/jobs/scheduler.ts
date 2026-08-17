@@ -18,6 +18,7 @@ import { runEmbedKbChunks } from "./embedKbChunks";
 import { runSyncKeywordSheet } from "./syncKeywordSheet";
 import { runAnalyzeSimilarity } from "./analyzeSimilarity";
 import { runSyncBingPages } from "./syncBingPages";
+import { runSyncLinkMapSheet } from "./syncLinkMapSheet";
 import { runGenerateTopicalMap } from "./generateTopicalMap";
 import { runAuditLinkQuality } from "./auditLinkQuality";
 import { runAnalyzeTopicalMapCompetitors } from "./analyzeTopicalMapCompetitors";
@@ -55,6 +56,9 @@ export function setupJobs(): void {
   // Daily refresh of the persistent Target Keyword Daily Movement sheet —
   // GSC + Sheets only, no paid spend.
   registerJob("sync_keyword_sheet", runSyncKeywordSheet);
+  // Daily refresh of the persistent Link Map Google Sheet — Sheets only,
+  // no crawling, no paid spend. Skips sites with no sheet yet.
+  registerJob("sync_link_map_sheet", runSyncLinkMapSheet);
   // Content Similarity Explorer runs — triggered by POST /similarity/runs,
   // never on a cron (fetches arbitrary user-supplied URLs + OpenAI spend).
   registerJob("analyze_similarity", runAnalyzeSimilarity);
@@ -140,6 +144,7 @@ const CATCHUP_JOBS: Array<{
   // Daily
   { name: "sync_keyword_sheet", maxAgeMs: DAILY_MAX_AGE_MS },
   { name: "sync_bing_pages", maxAgeMs: DAILY_MAX_AGE_MS },
+  { name: "sync_link_map_sheet", maxAgeMs: DAILY_MAX_AGE_MS },
   // Weekly — GSC inventory MUST come before GA4 (ordering dependency)
   { name: "crawl_wordpress", maxAgeMs: WEEKLY_MAX_AGE_MS, requirePriorRun: true },
   { name: "gsc_inventory_and_losers", maxAgeMs: WEEKLY_MAX_AGE_MS, requirePriorRun: true },
@@ -332,6 +337,9 @@ export function startScheduler(): void {
   // Daily 04:00 UTC — Bing Webmaster stats (free API, one key; full-window
   // delete+reinsert so daily cadence just keeps the rolling window fresh).
   cron.schedule("0 4 * * *", all("sync_bing_pages"), { timezone: "UTC" });
+  // Daily 05:00 UTC — refresh the persistent Link Map Google Sheet for sites
+  // that have already exported one. Pure Sheets write, no crawling or paid API.
+  cron.schedule("0 5 * * *", all("sync_link_map_sheet"), { timezone: "UTC" });
   // Hourly catch-up sweep: reruns any scheduled job whose last run exceeds
   // its cadence threshold (daily >26h, weekly >8d, monthly >33d), covering
   // servers that were asleep/recycled at the scheduled minute. Also fired

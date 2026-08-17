@@ -67,6 +67,7 @@ const EXPECTED_SCHEDULE: Record<string, string | null> = {
   "0 2 * * *": "sync_keyword_sheet", // Daily 02:00 America/Los_Angeles
   "0 10 * * 5": "weekly_digest", // Friday 10:00 UTC
   "0 4 * * *": "sync_bing_pages", // Daily 04:00 UTC
+  "0 5 * * *": "sync_link_map_sheet", // Daily 05:00 UTC
   "17 * * * *": null, // hourly catch-up sweep
 };
 
