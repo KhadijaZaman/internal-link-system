@@ -806,7 +806,7 @@ export default function LinkMap() {
                       always shown — the Table tab lists every link under the current filters.
                     </div>
                   )}
-                  <svg ref={svgRef} className="w-full h-full" />
+                  <svg ref={svgRef} className="w-full h-full" data-testid="svg-global-map" />
                 </div>
               )}
             </>
