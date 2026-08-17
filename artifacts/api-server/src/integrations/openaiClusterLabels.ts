@@ -56,12 +56,18 @@ export async function generateClusterLabels(
   const labels = clusters.map((c) => c.fallback);
   if (clusters.length === 0) return labels;
 
+  // Prefer the Replit AI-integrations proxy; fall back to the direct key.
+  const proxyKey = process.env["AI_INTEGRATIONS_OPENAI_API_KEY"]?.trim();
+  const proxyUrl = process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"]?.trim();
   const key = process.env["OPENAI_API_KEY"]?.trim();
-  if (!key) {
-    logger.warn("OPENAI_API_KEY not set; keeping keyword-based cluster topics");
+  if (!proxyKey && !key) {
+    logger.warn("No OpenAI credentials set; keeping keyword-based cluster topics");
     return labels;
   }
-  const client = new OpenAI({ apiKey: key, timeout: TIMEOUT_MS, maxRetries: 1 });
+  const client =
+    proxyKey && proxyUrl
+      ? new OpenAI({ apiKey: proxyKey, baseURL: proxyUrl, timeout: TIMEOUT_MS, maxRetries: 1 })
+      : new OpenAI({ apiKey: key!, timeout: TIMEOUT_MS, maxRetries: 1 });
 
   for (let start = 0; start < clusters.length; start += BATCH_SIZE) {
     const batch = clusters.slice(start, start + BATCH_SIZE);

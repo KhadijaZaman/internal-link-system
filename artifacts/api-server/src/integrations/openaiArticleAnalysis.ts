@@ -36,12 +36,18 @@ export async function analyzeArticleContent(
   bodyText: string,
 ): Promise<ArticleAnalysis> {
   const empty: ArticleAnalysis = { topics: [], mainTheme: null };
+  // Prefer the Replit AI-integrations proxy; fall back to the direct key.
+  const proxyKey = process.env["AI_INTEGRATIONS_OPENAI_API_KEY"]?.trim();
+  const proxyUrl = process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"]?.trim();
   const key = process.env["OPENAI_API_KEY"]?.trim();
-  if (!key) {
-    logger.warn("OPENAI_API_KEY not set; skipping article topic analysis");
+  if (!proxyKey && !key) {
+    logger.warn("No OpenAI credentials set; skipping article topic analysis");
     return empty;
   }
-  const client = new OpenAI({ apiKey: key, timeout: TIMEOUT_MS, maxRetries: 1 });
+  const client =
+    proxyKey && proxyUrl
+      ? new OpenAI({ apiKey: proxyKey, baseURL: proxyUrl, timeout: TIMEOUT_MS, maxRetries: 1 })
+      : new OpenAI({ apiKey: key!, timeout: TIMEOUT_MS, maxRetries: 1 });
   try {
     const res = await client.chat.completions.create({
       model: MODEL,

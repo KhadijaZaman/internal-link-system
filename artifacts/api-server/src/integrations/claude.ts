@@ -292,9 +292,15 @@ Return STRICT JSON only (no preamble, no markdown fences):
 
   try {
     const OpenAI = (await import("openai")).default;
-    const apiKey = process.env["OPENAI_API_KEY"];
-    if (!apiKey) return null;
-    const openai = new OpenAI({ apiKey });
+    // Prefer the Replit AI-integrations proxy; fall back to the direct key.
+    const proxyKey = process.env["AI_INTEGRATIONS_OPENAI_API_KEY"]?.trim();
+    const proxyUrl = process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"]?.trim();
+    const directKey = process.env["OPENAI_API_KEY"]?.trim();
+    if (!proxyKey && !directKey) return null;
+    const openai =
+      proxyKey && proxyUrl
+        ? new OpenAI({ apiKey: proxyKey, baseURL: proxyUrl, timeout: 60_000, maxRetries: 1 })
+        : new OpenAI({ apiKey: directKey!, timeout: 60_000, maxRetries: 1 });
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 25_000);
     let text = "";

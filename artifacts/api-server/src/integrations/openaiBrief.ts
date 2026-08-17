@@ -45,6 +45,13 @@ import type { GroundingPassage } from "@workspace/db";
 export const BRIEF_MODEL = "gpt-4o-mini";
 
 function getClient(): OpenAI {
+  // Prefer the Replit AI-integrations proxy (credits managed by Replit).
+  // Fall back to the direct OPENAI_API_KEY when the proxy env vars are absent.
+  const proxyKey = process.env["AI_INTEGRATIONS_OPENAI_API_KEY"]?.trim();
+  const proxyUrl = process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"]?.trim();
+  if (proxyKey && proxyUrl) {
+    return new OpenAI({ apiKey: proxyKey, baseURL: proxyUrl, timeout: 60_000, maxRetries: 1 });
+  }
   const key = process.env["OPENAI_API_KEY"]?.trim();
   if (!key) {
     throw new Error(
@@ -59,7 +66,7 @@ function getClient(): OpenAI {
       );
     }
   }
-  return new OpenAI({ apiKey: key });
+  return new OpenAI({ apiKey: key, timeout: 60_000, maxRetries: 1 });
 }
 
 interface GscRow {

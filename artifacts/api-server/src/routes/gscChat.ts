@@ -5,6 +5,7 @@ import { requireSite, getSite } from "../lib/site";
 import {
   queryGscDimension,
   aggregateTotals,
+  pageVariantsRegex,
   listSitemaps,
   withCache,
   gscSiteUrl,
@@ -509,6 +510,8 @@ function urlBelongsToSite(url: string, site: SiteContext): boolean {
 }
 
 const MAX_TOOL_CALLS = 5;
+
+router.post("/gsc/chat", requireAuth, requireSite, async (req, res) => {
   const site = getSite(req);
   const parsed = parseChatBody(req);
   if ("error" in parsed) {
@@ -524,17 +527,10 @@ const MAX_TOOL_CALLS = 5;
     const contextJson = await buildContext(parsed, site);
     const withCtx = buildPromptMessages(parsed.messages, parsed.includeDefault, contextJson);
     if (!withCtx) {
-      send("error", { error: "no messages" });
-      res.end();
+      res.status(400).json({ error: "no messages" });
       return;
     }
-    send("meta", {
-      contextSummary: `Analyzed ${parsed.startDate} → ${parsed.endDate}${parsed.url ? ` for ${parsed.url}` : ""}`,
-    });
-
     const openai = getOpenAI();
-
-    const toolOpts = { startDate: parsed.startDate, endDate: parsed.endDate, siteId: site.id, site };
     const completion = await openai.chat.completions.create({
       model: CHAT_MODEL,
       max_tokens: 1400,
@@ -613,20 +609,177 @@ router.post("/gsc/chat/stream", requireAuth, requireSite, async (req, res) => {
     const openai = getOpenAI();
 
     const toolOpts = { startDate: parsed.startDate, endDate: parsed.endDate, siteId: site.id, site };
+
+    // Conversation message history for the tool-calling loop.
+    const apiMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      { role: "system", content: SYSTEM },
+      ...withCtx,
+    ];
+
+    let toolCallsUsed = 0;
+    let continueLoop = true;
+
+    while (continueLoop && !closed) {
+      continueLoop = false;
+      // Accumulate streaming tool-call argument fragments keyed by tool index.
+      const toolCallAccum: Record<number, { id: string; name: string; argsJson: string }> = {};
+      let assistantText = "";
+      let finishReason: string | null = null;
+
       const stream = await openai.chat.completions.create({
         model: CHAT_MODEL,
         max_tokens: 1400,
         stream: true,
-        tools: TOOLS,
-        tool_choice: toolCallsUsed >= MAX_TOOL_CALLS ? "none" : "auto",
+        // Disable tools once the cap is reached to force a text reply.
+        ...(toolCallsUsed < MAX_TOOL_CALLS ? { tools: TOOLS, tool_choice: "auto" } : {}),
         messages: apiMessages,
       });
 
-      let assistantText = "";
+      for await (const chunk of stream) {
+        if (closed) break;
+        const choice = chunk.choices[0];
+        if (!choice) continue;
+
         const delta = choice.delta;
 
+        // Text delta
+        if (delta.content) {
+          assistantText += delta.content;
+          send("delta", { text: delta.content });
+        }
+
+        // Accumulate tool-call argument fragments
+        if (delta.tool_calls) {
+          for (const tc of delta.tool_calls) {
             const idx = tc.index ?? 0;
+            if (!toolCallAccum[idx]) {
+              toolCallAccum[idx] = { id: tc.id ?? "", name: tc.function?.name ?? "", argsJson: "" };
+            }
+            const acc = toolCallAccum[idx]!;
+            if (tc.id) acc.id = tc.id;
+            if (tc.function?.name) acc.name = tc.function.name;
+            if (tc.function?.arguments) acc.argsJson += tc.function.arguments;
+          }
+        }
+
+        finishReason = choice.finish_reason ?? finishReason;
+      }
+
+      // Append the assistant turn (text + any tool_calls) to the history.
+      const toolCallsForMsg = Object.values(toolCallAccum);
+      const assistantMsg: OpenAI.Chat.ChatCompletionMessageParam = {
+        role: "assistant",
+        content: assistantText || null,
+        ...(toolCallsForMsg.length > 0
+          ? {
+              tool_calls: toolCallsForMsg.map((tc) => ({
+                id: tc.id,
+                type: "function" as const,
+                function: { name: tc.name, arguments: tc.argsJson },
+              })),
+            }
+          : {}),
+      };
+      apiMessages.push(assistantMsg);
+
+      // Execute tool calls and append results, then loop.
+      if (finishReason === "tool_calls" && toolCallsForMsg.length > 0 && !closed) {
+        for (const tc of toolCallsForMsg) {
+          // Every tool_call ID in the assistant turn must have a corresponding
+          // tool result message or the OpenAI API rejects the conversation.
+          // When the per-turn or cumulative cap is already reached, return a
+          // sentinel result rather than executing the fetch.
+          if (toolCallsUsed >= MAX_TOOL_CALLS) {
+            apiMessages.push({
+              role: "tool",
+              tool_call_id: tc.id,
+              content: JSON.stringify({
+                error: "Tool call limit reached. Please answer from the data already retrieved.",
+              }),
+            });
+            continue;
+          }
+
+          let args: Record<string, unknown> = {};
+          try { args = JSON.parse(tc.argsJson || "{}"); } catch { /* keep empty */ }
+
+          const label = toolLabel(tc.name, args);
+          send("tool_use", { name: tc.name, label });
+
+          const result = await executeTool(tc.name, args, toolOpts);
+          toolCallsUsed++;
+
+          apiMessages.push({
+            role: "tool",
+            tool_call_id: tc.id,
+            content: result,
+          });
+        }
+        // Always make a follow-up call when tool results were appended.
+        // If the cap is now reached, the next iteration omits the tools
+        // parameter — the model is forced to respond with text instead of
+        // calling more tools, and finish_reason will be "stop".
+        continueLoop = true;
+      }
+    }
+
+    if (!closed) {
+      send("done", { ok: true });
+      res.end();
+    }
+  } catch (err) {
+    req.log.error({ err }, "GSC chat stream failed");
+    if (!closed) {
+      send("error", { error: "OpenAI streaming failed" });
+      res.end();
+    }
+  } finally {
+    clearInterval(keepalive);
+  }
+});
+
 export default router;
+
+// ─── Tool helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Resolve a page_url arg from the model to a full URL that belongs to the site.
+ * Accepts paths (/pricing) or full URLs. Returns null if it can't be resolved
+ * to a site-owned URL.
+ */
+function resolvePageUrl(raw: string, site: SiteContext): string | null {
+  try {
+    const u = new URL(raw);
+    if (u.protocol === "http:" || u.protocol === "https:") {
+      u.hash = "";
+      u.search = "";
+      if (!urlBelongsToSite(u.href, site)) return null;
+      return u.href;
+    }
+  } catch {
+    // fall through — treat as a path
+  }
+  if (raw.startsWith("/")) {
+    try {
+      return `https://${site.host}${raw}`;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/** Human-readable label for a tool call, shown in the UI while data loads. */
+function toolLabel(name: string, args: Record<string, unknown>): string {
+  if (name === "get_page_metrics") {
+    const raw = typeof args["page_url"] === "string" ? args["page_url"] : "?";
+    try { return new URL(raw).pathname; } catch { return raw; }
+  }
+  if (name === "get_query_metrics") {
+    return typeof args["query"] === "string" ? `"${args["query"]}"` : "?";
+  }
+  return name;
+}
 
 /**
  * Execute a tool call from the model. Returns a JSON string (the tool result).
@@ -712,88 +865,6 @@ async function executeTool(
 
   return JSON.stringify({ error: `Unknown tool: ${name}` });
 }
-
-/** Human-readable label for a tool call, shown in the UI while data loads. */
-function toolLabel(name: string, args: Record<string, unknown>): string {
-  if (name === "get_page_metrics") {
-    const raw = typeof args["page_url"] === "string" ? args["page_url"] : "?";
-    // Show just the path portion if it's a full URL
-    try { return new URL(raw).pathname; } catch { return raw; }
-  }
-  if (name === "get_query_metrics") {
-    return typeof args["query"] === "string" ? `"${args["query"]}"` : "?";
-  }
-  return name;
-}
-
-      const toolCallsForMsg = Object.values(toolCallAccum);
-
-          const label = toolLabel(tc.name, args);
-
-    const apiMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-      { role: "system", content: SYSTEM },
-      ...withCtx,
-    ];
-
-      let finishReason: string | null = null;
-
-          let args: Record<string, unknown> = {};
-
-    let toolCallsUsed = 0;
-
-        const choice = chunk.choices[0];
-
-/**
- * Resolve a page_url arg from the model to a full URL that belongs to the site.
- * Accepts paths (/pricing) or full URLs. Returns null if it can't be resolved
- * to a site-owned URL.
- */
-function resolvePageUrl(raw: string, site: SiteContext): string | null {
-  // Already a full URL?
-  try {
-    const u = new URL(raw);
-    if (u.protocol === "http:" || u.protocol === "https:") {
-      u.hash = "";
-      u.search = "";
-      if (!urlBelongsToSite(u.href, site)) return null;
-      return u.href;
-    }
-  } catch {
-    // fall through
-  }
-  // Path only: prepend site origin
-  if (raw.startsWith("/")) {
-    try {
-      return `https://${site.host}${raw}`;
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-
-    let continueLoop = true;
-
-      const assistantMsg: OpenAI.Chat.ChatCompletionMessageParam = {
-        role: "assistant",
-        content: assistantText || null,
-        ...(toolCallsForMsg.length > 0
-          ? {
-              tool_calls: toolCallsForMsg.map((tc) => ({
-                id: tc.id,
-                type: "function" as const,
-                function: { name: tc.name, arguments: tc.argsJson },
-              })),
-            }
-          : {}),
-      };
-
-            const result = await executeTool(tc.name, args, toolOpts);
-
-      const toolCallAccum: Record<
-        number,
-        { id: string; name: string; argsJson: string }
-      > = {};
 
 const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
   {
