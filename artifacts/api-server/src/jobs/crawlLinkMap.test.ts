@@ -114,6 +114,18 @@ function makeResponse(status: number, body: string): Response {
   } as unknown as Response;
 }
 
+/** Response stub for redirect hops (3xx with a Location header). */
+function makeRedirectResponse(status: number, location: string): Response {
+  return {
+    ok: false,
+    status,
+    headers: {
+      get: (name: string) => (name.toLowerCase() === "location" ? location : null),
+    },
+    text: () => Promise.resolve(""),
+  } as unknown as Response;
+}
+
 const SITEMAP_INDEX_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <sitemap>
@@ -221,5 +233,86 @@ describe("crawlLinkMap — fetchSitemapUrls failure propagation", () => {
 
     // Should resolve — not throw — when sitemaps are healthy.
     await expect(runCrawlLinkMap(fakeSite)).resolves.toBeUndefined();
+  });
+});
+
+// ── SSRF guard: redirect hop validation ───────────────────────────────────────
+
+describe("crawlLinkMap — fetchWithSafeRedirects SSRF guard", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("throws with 'not allowed for domain' when a sitemap redirect leads to an off-domain URL", async () => {
+    // The root sitemap fetch returns a 301 pointing to an off-domain host.
+    // fetchWithSafeRedirects must reject before following the hop.
+    vi.mocked(fetch).mockResolvedValueOnce(
+      makeRedirectResponse(301, "https://evil.example.org/steal"),
+    );
+
+    await expect(runCrawlLinkMap(fakeSite)).rejects.toThrow("not allowed for domain");
+  });
+
+  it("throws with 'not allowed for domain' when a redirect uses http pointing to a different host", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      makeRedirectResponse(302, "http://attacker.com/payload"),
+    );
+
+    await expect(runCrawlLinkMap(fakeSite)).rejects.toThrow("not allowed for domain");
+  });
+
+  it("throws with 'not allowed for domain' when a redirect leads to an internal IP (169.254.x.x)", async () => {
+    // An SSRF attempt targeting link-local metadata; the host does not match
+    // example.com so isAllowedUrl returns false before any DNS is consulted.
+    vi.mocked(fetch).mockResolvedValueOnce(
+      makeRedirectResponse(301, "http://169.254.169.254/latest/meta-data/"),
+    );
+
+    await expect(runCrawlLinkMap(fakeSite)).rejects.toThrow("not allowed for domain");
+  });
+
+  it("follows a same-domain redirect and proceeds with the crawl", async () => {
+    // First call: root sitemap returns 301 → same-domain canonical URL.
+    // Second call: the redirect target returns a valid leaf sitemap.
+    // Subsequent calls: page fetches return generic HTML.
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        makeRedirectResponse(301, "https://example.com/sitemap-canonical.xml"),
+      )
+      .mockResolvedValueOnce(makeResponse(200, LEAF_SITEMAP_XML))
+      .mockResolvedValue(makeResponse(200, "<html><body></body></html>"));
+
+    // The redirect is within the allowed domain so runCrawlLinkMap must not throw.
+    await expect(runCrawlLinkMap(fakeSite)).resolves.toBeUndefined();
+  });
+
+  it("follows a www-prefixed redirect on the same domain and proceeds with the crawl", async () => {
+    // isAllowedUrl strips a leading "www." so www.example.com must be accepted
+    // for a site configured with domain "example.com".
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        makeRedirectResponse(301, "https://www.example.com/sitemap.xml"),
+      )
+      .mockResolvedValueOnce(makeResponse(200, LEAF_SITEMAP_XML))
+      .mockResolvedValue(makeResponse(200, "<html><body></body></html>"));
+
+    await expect(runCrawlLinkMap(fakeSite)).resolves.toBeUndefined();
+  });
+
+  it("throws when a redirect chain eventually escapes the allowed domain", async () => {
+    // Hop 1: same-domain → allowed; Hop 2: off-domain → must throw.
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        makeRedirectResponse(301, "https://example.com/sitemap-step2.xml"),
+      )
+      .mockResolvedValueOnce(
+        makeRedirectResponse(301, "https://other-site.com/steal"),
+      );
+
+    await expect(runCrawlLinkMap(fakeSite)).rejects.toThrow("not allowed for domain");
   });
 });
