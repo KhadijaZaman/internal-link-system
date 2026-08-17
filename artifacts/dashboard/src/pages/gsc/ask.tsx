@@ -11,6 +11,28 @@ import { cn } from "@/lib/utils";
 import { getActiveSiteId } from "@/lib/site-context";
 import { InfoTip } from "@/components/info-tip";
 import { HowThisWorks } from "@/components/how-this-works";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+} from "recharts";
+
+interface TrendPoint {
+  date: string;
+  clicks: number;
+  impressions: number;
+}
+
+interface TrendData {
+  target: string;
+  targetType: "page" | "query";
+  granularity: "daily" | "weekly";
+  points: TrendPoint[];
+}
 
 interface Msg {
   role: "user" | "assistant" | "tool_use";
@@ -19,6 +41,8 @@ interface Msg {
   toolLabel?: string;
   /** Tool name for tool_use messages */
   toolName?: string;
+  /** Trend data attached when a get_trend_data tool result was received for this assistant turn */
+  trendData?: TrendData;
 }
 
 const STREAM_URL = `${import.meta.env.BASE_URL}api/gsc/chat/stream`.replace(/\/+api/, "/api");
@@ -54,6 +78,7 @@ interface StreamArgs {
   signal: AbortSignal;
   onDelta: (text: string) => void;
   onToolUse: (name: string, label: string) => void;
+  onToolResult: (name: string, data: unknown) => void;
 }
 
 async function streamChat(args: StreamArgs): Promise<void> {
@@ -110,6 +135,9 @@ async function streamChat(args: StreamArgs): Promise<void> {
       const name = typeof obj["name"] === "string" ? obj["name"] : "";
       const label = typeof obj["label"] === "string" ? obj["label"] : "";
       args.onToolUse(name, label);
+    } else if (eventName === "tool_result") {
+      const name = typeof obj["name"] === "string" ? obj["name"] : "";
+      args.onToolResult(name, obj["data"]);
     } else if (eventName === "error") {
       streamError = typeof obj["error"] === "string" ? obj["error"] : "stream error";
     }
@@ -153,6 +181,122 @@ function toolUseDescription(name: string, label: string): string {
   if (name === "get_query_metrics") return `Fetching query data for ${label}`;
   return `Fetching ${label}`;
 }
+
+/** Format a date label for the sparkline x-axis. Weekly labels (YYYY-Www) are
+ * displayed as-is; daily dates are shortened to M/D. */
+function formatDateLabel(date: string): string {
+  // Weekly bucket: "2024-W03"
+  if (/^\d{4}-W\d{2}$/.test(date)) return date.slice(5); // "W03"
+  // Daily: "2024-01-15" → "1/15"
+  try {
+    const [, m, d] = date.split("-");
+    return `${parseInt(m!, 10)}/${parseInt(d!, 10)}`;
+  } catch {
+    return date;
+  }
+}
+
+/** Compact number formatter for sparkline axis/tooltips */
+function fmtNum(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+function TrendSparkline({ data }: { data: TrendData }) {
+  const { points, target, targetType, granularity } = data;
+  if (points.length < 2) return null;
+
+  // Downsample for display: show at most 30 ticks to keep x-axis readable.
+  const MAX_DISPLAY = 30;
+  let displayPoints = points;
+  if (points.length > MAX_DISPLAY) {
+    const step = Math.ceil(points.length / MAX_DISPLAY);
+    displayPoints = points.filter((_, i) => i % step === 0 || i === points.length - 1);
+  }
+
+  // Determine how many x-axis ticks to show (max 6 to avoid crowding).
+  const tickCount = Math.min(6, displayPoints.length);
+  const tickIndexes = new Set<number>();
+  for (let i = 0; i < tickCount; i++) {
+    tickIndexes.add(Math.round((i / (tickCount - 1)) * (displayPoints.length - 1)));
+  }
+  const ticks = displayPoints
+    .map((p, i) => (tickIndexes.has(i) ? p.date : null))
+    .filter(Boolean) as string[];
+
+  const label = targetType === "page"
+    ? (target.startsWith("/") ? target : (() => { try { return new URL(target).pathname; } catch { return target; } })())
+    : `"${target}"`;
+
+  return (
+    <div className="mt-3 pt-3 border-t border-border/40">
+      <p className="text-xs text-muted-foreground mb-2">
+        Clicks &amp; impressions — {label} ({granularity})
+      </p>
+      <ResponsiveContainer width="100%" height={110}>
+        <LineChart data={displayPoints} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+          <XAxis
+            dataKey="date"
+            ticks={ticks}
+            tickFormatter={formatDateLabel}
+            tick={{ fontSize: 10 }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            yAxisId="imp"
+            orientation="right"
+            tickFormatter={fmtNum}
+            tick={{ fontSize: 10 }}
+            axisLine={false}
+            tickLine={false}
+            width={36}
+          />
+          <YAxis
+            yAxisId="clk"
+            orientation="left"
+            tickFormatter={fmtNum}
+            tick={{ fontSize: 10 }}
+            axisLine={false}
+            tickLine={false}
+            width={32}
+          />
+          <Tooltip
+            formatter={(value: number, name: string) => [fmtNum(value), name === "clicks" ? "Clicks" : "Impressions"]}
+            labelFormatter={(l: string) => l}
+            contentStyle={{ fontSize: 11, padding: "4px 8px" }}
+          />
+          <Legend
+            iconType="circle"
+            iconSize={6}
+            wrapperStyle={{ fontSize: 10, paddingTop: 4 }}
+          />
+          <Line
+            yAxisId="clk"
+            type="monotone"
+            dataKey="clicks"
+            stroke="hsl(var(--primary))"
+            strokeWidth={1.5}
+            dot={false}
+            name="clicks"
+          />
+          <Line
+            yAxisId="imp"
+            type="monotone"
+            dataKey="impressions"
+            stroke="hsl(var(--primary) / 0.4)"
+            strokeWidth={1.5}
+            dot={false}
+            strokeDasharray="3 3"
+            name="impressions"
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 function AskBody() {
   const { range } = useGscRange();
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -190,7 +334,7 @@ function AskBody() {
           // tool_use messages may appear between assistant turns after tool calls.
           for (let i = next.length - 1; i >= 0; i--) {
             if (next[i]!.role === "assistant") {
-              next[i] = { role: "assistant", content: next[i]!.content + text };
+              next[i] = { ...next[i]!, content: next[i]!.content + text };
               break;
             }
           }
@@ -203,6 +347,24 @@ function AskBody() {
           ...prev,
           { role: "tool_use", content: "", toolName: name, toolLabel: label },
         ]);
+      },
+      onToolResult: (name, data) => {
+        if (abortRef.current !== ctrl) return;
+        if (name !== "get_trend_data" || !data) return;
+        // Attach the trend data to the last assistant message so the sparkline
+        // renders below that message's text once streaming completes.
+        const td = data as TrendData;
+        if (!Array.isArray(td.points) || td.points.length < 2) return;
+        setMessages((prev) => {
+          const next = prev.slice();
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i]!.role === "assistant") {
+              next[i] = { ...next[i]!, trendData: td };
+              break;
+            }
+          }
+          return next;
+        });
       },
     })
       .then(() => {
@@ -312,9 +474,12 @@ function AskBody() {
                   </div>
                   <div className="min-w-0 rounded-lg bg-muted px-4 py-2 text-sm">
                     {m.content ? (
-                      <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-2 prose-headings:mt-3 prose-headings:mb-1 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:my-2 prose-table:my-2">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
-                      </div>
+                      <>
+                        <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-2 prose-headings:mt-3 prose-headings:mb-1 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:my-2 prose-table:my-2">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+                        </div>
+                        {m.trendData && <TrendSparkline data={m.trendData} />}
+                      </>
                     ) : (
                       isLast && pending && <TypingDots />
                     )}
