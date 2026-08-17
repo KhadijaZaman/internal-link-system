@@ -13,8 +13,8 @@ import {
 import { fetchCrux } from "../integrations/crux";
 import { queryGa4Pages } from "../integrations/ga4";
 import type { SiteContext } from "../lib/site";
-import { db, bingPageStatsTable, linkGraphTable } from "@workspace/db";
-import { and, eq, desc, inArray } from "drizzle-orm";
+import { db, bingPageStatsTable, bingQueryStatsTable, linkGraphTable } from "@workspace/db";
+import { and, eq, desc, inArray, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -54,6 +54,15 @@ Grounding rules (strict):
 - When a source shows a notice instead of data, say it isn't connected rather than guessing.
 - If the slice can't answer the question, say exactly what's missing (e.g. "pick that page in the URL filter and ask again").
 
+Source attribution (always):
+- Every number must name its source: GSC, Bing, or GA4. Never present a blended or unattributed number.
+- When the user asks for "best" or "top" anything (queries, pages, opportunities), answer from BOTH GSC and Bing when both have data, in clearly labeled sections, then give one combined recommendation that says which source supports it. Note that Bing data is weekly buckets while GSC follows the selected date range.
+- GA4 covers sessions/engagement/conversions only, not queries.
+
+Intent clarification:
+- If the question is ambiguous about which data source, metric, or filter the user wants (e.g. "how are we doing?" or "show me the data"), ask ONE short clarifying question first (offer the concrete options: GSC search performance, Bing, GA4 traffic/conversions; site-wide or a specific page) instead of guessing.
+- If the question is specific enough to answer, just answer. Never ask a clarifying question when the intent is clear.
+
 When the user asks about a specific URL/page, structure the answer around:
 1. GSC: clicks, impressions, CTR, average position, top queries for that page, trend vs previous period
 2. GA4: organic sessions, engagement, key events (conversions), AI-assistant-referred sessions
@@ -63,7 +72,7 @@ When the user asks about a specific URL/page, structure the answer around:
 
 You have two tools available:
 - get_page_metrics: fetch GSC data for any page on this site. Use it when the user asks about a page not in the initial context.
-- get_query_metrics: fetch GSC data for any search query. Use it when the user asks about a keyword not visible in the initial context.
+- get_query_metrics: fetch GSC + Bing data for any search query. Use it when the user asks about a keyword not visible in the initial context.
 
 Voice rules:
 - Conversational casual, plain vocabulary, confident not hedgy.
@@ -207,8 +216,38 @@ async function bingSummary(siteId: number, url: string | null | undefined) {
     impressions: list.reduce((s, r) => s + r.impressions, 0),
   });
   const latest = byBucket(dates[0]!);
+  // Bing query stats have no page dimension, so top queries are site-wide only.
+  // Their latest bucket is resolved independently — the query and page
+  // endpoints can have different available bucket sets.
+  let queryRows: (typeof bingQueryStatsTable.$inferSelect)[] = [];
+  if (!url) {
+    const qBucket = await db
+      .selectDistinct({ bucketDate: bingQueryStatsTable.bucketDate })
+      .from(bingQueryStatsTable)
+      .where(eq(bingQueryStatsTable.siteId, siteId))
+      .orderBy(desc(bingQueryStatsTable.bucketDate))
+      .limit(1);
+    if (qBucket[0]) {
+      queryRows = await db
+        .select()
+        .from(bingQueryStatsTable)
+        .where(and(eq(bingQueryStatsTable.siteId, siteId), eq(bingQueryStatsTable.bucketDate, qBucket[0].bucketDate)))
+        .orderBy(desc(bingQueryStatsTable.impressions))
+        .limit(15);
+    }
+  }
   return {
     note: "Bing Webmaster weekly buckets (site-synced); latestWeek vs priorWeek shows movement.",
+    ...(url
+      ? {}
+      : {
+          topQueries: queryRows.map((r) => ({
+            query: r.query,
+            clicks: r.clicks,
+            impressions: r.impressions,
+            position: r.position != null ? Number(r.position.toFixed(1)) : null,
+          })),
+        }),
     latestWeek: { bucketDate: dates[0], ...total(latest) },
     priorWeek: dates[1] ? { bucketDate: dates[1], ...total(byBucket(dates[1]!)) } : null,
     topPages: latest
@@ -531,15 +570,42 @@ router.post("/gsc/chat", requireAuth, requireSite, async (req, res) => {
       return;
     }
     const openai = getOpenAI();
-    const completion = await openai.chat.completions.create({
-      model: CHAT_MODEL,
-      max_tokens: 1400,
-      messages: [
-        { role: "system", content: SYSTEM },
-        ...withCtx,
-      ],
-    });
-    const reply = completion.choices[0]?.message?.content ?? "";
+    // Same tool-calling loop as the streaming route, without streaming.
+    const toolOpts = { startDate: parsed.startDate, endDate: parsed.endDate, siteId: site.id, site };
+    const history: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      { role: "system", content: SYSTEM },
+      ...withCtx,
+    ];
+    let toolCallsUsed = 0;
+    let reply = "";
+    for (;;) {
+      const completion = await openai.chat.completions.create({
+        model: CHAT_MODEL,
+        max_tokens: 1400,
+        messages: history,
+        ...(toolCallsUsed < MAX_TOOL_CALLS ? { tools: TOOLS, tool_choice: "auto" as const } : {}),
+      });
+      const msg = completion.choices[0]?.message;
+      if (!msg) break;
+      history.push(msg);
+      const calls = msg.tool_calls ?? [];
+      if (completion.choices[0]?.finish_reason !== "tool_calls" || calls.length === 0) {
+        reply = msg.content ?? "";
+        break;
+      }
+      for (const tc of calls) {
+        if (tc.type !== "function") continue;
+        if (toolCallsUsed >= MAX_TOOL_CALLS) {
+          history.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify({ error: "Tool call limit reached; answer from data already fetched." }) });
+          continue;
+        }
+        toolCallsUsed++;
+        let args: Record<string, unknown> = {};
+        try { args = JSON.parse(tc.function.arguments || "{}"); } catch { /* keep empty */ }
+        const result = await executeTool(tc.function.name, args, toolOpts);
+        history.push({ role: "tool", tool_call_id: tc.id, content: result });
+      }
+    }
     res.json({
       reply,
       contextSummary: `Analyzed ${parsed.startDate} → ${parsed.endDate}${parsed.url ? ` for ${parsed.url}` : ""}`,
@@ -781,6 +847,51 @@ function toolLabel(name: string, args: Record<string, unknown>): string {
   return name;
 }
 
+/** Bing weekly stats for one exact query (case-insensitive), latest 2 buckets. */
+async function bingQueryLookup(siteId: number, query: string) {
+  const buckets = await db
+    .selectDistinct({ bucketDate: bingQueryStatsTable.bucketDate })
+    .from(bingQueryStatsTable)
+    .where(eq(bingQueryStatsTable.siteId, siteId))
+    .orderBy(desc(bingQueryStatsTable.bucketDate))
+    .limit(2);
+  if (buckets.length === 0) return null;
+  const dates = buckets.map((b) => b.bucketDate);
+  const rows = await db
+    .select()
+    .from(bingQueryStatsTable)
+    .where(
+      and(
+        eq(bingQueryStatsTable.siteId, siteId),
+        inArray(bingQueryStatsTable.bucketDate, dates),
+        sql`lower(${bingQueryStatsTable.query}) = ${query.toLowerCase()}`,
+      ),
+    );
+  if (rows.length === 0) return null;
+  const week = (d: string) => {
+    const list = rows.filter((r) => r.bucketDate === d);
+    if (list.length === 0) return null;
+    // Case-variant duplicates can match; weight position by impressions.
+    const withPos = list.filter((r) => r.position != null);
+    const posWeight = withPos.reduce((s, r) => s + Math.max(r.impressions, 1), 0);
+    const position =
+      withPos.length > 0
+        ? Number((withPos.reduce((s, r) => s + r.position! * Math.max(r.impressions, 1), 0) / posWeight).toFixed(1))
+        : null;
+    return {
+      bucketDate: d,
+      clicks: list.reduce((s, r) => s + r.clicks, 0),
+      impressions: list.reduce((s, r) => s + r.impressions, 0),
+      position,
+    };
+  };
+  return {
+    note: "Bing Webmaster weekly buckets (synced); only the top ~100 queries per week are stored.",
+    latestWeek: week(dates[0]!),
+    priorWeek: dates[1] ? week(dates[1]!) : null,
+  };
+}
+
 /**
  * Execute a tool call from the model. Returns a JSON string (the tool result).
  */
@@ -847,16 +958,21 @@ async function executeTool(
         rowLimit: 20,
       });
       const totals = aggregateTotals(pages);
+      // Bing side of the same query, from synced weekly buckets (no API spend).
+      const bing = await bingQueryLookup(siteId, query).catch(() => null);
       return JSON.stringify({
         query,
         range: { startDate, endDate },
-        totals: {
-          clicks: totals.clicks,
-          impressions: totals.impressions,
-          ctr: Number(totals.ctr.toFixed(4)),
-          position: Number(totals.position.toFixed(2)),
+        gsc: {
+          totals: {
+            clicks: totals.clicks,
+            impressions: totals.impressions,
+            ctr: Number(totals.ctr.toFixed(4)),
+            position: Number(totals.position.toFixed(2)),
+          },
+          topPages: trim(pages, 15),
         },
-        topPages: trim(pages, 15),
+        bing: bing ?? { notice: "No Bing data synced for this query." },
       });
     } catch (err) {
       return JSON.stringify({ error: "GSC query failed", detail: String(err) });
@@ -891,7 +1007,7 @@ const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
     function: {
       name: "get_query_metrics",
       description:
-        "Fetch GSC metrics for a specific search query — which pages it drives traffic to, and the overall clicks / impressions / CTR / position. Use when the user asks about a keyword not visible in the initial context.",
+        "Fetch metrics for a specific search query from BOTH Google Search Console (pages it drives, clicks/impressions/CTR/position) and Bing Webmaster (weekly clicks/impressions/position). Use when the user asks about a keyword not visible in the initial context.",
       parameters: {
         type: "object",
         properties: {
