@@ -56,6 +56,54 @@ beforeEach(() => {
   listSchedulableSitesMock.mockResolvedValue(fakeSites);
 });
 
+describe("recompute_action_queue cron loop — site-list query failure", () => {
+  it("resolves without throwing when listSchedulableSites itself rejects", async () => {
+    listSchedulableSitesMock.mockRejectedValue(new Error("DB unavailable at sweep start"));
+
+    // Must resolve, never reject, even when the site-list query fails entirely.
+    await expect(runJobForAllSites("recompute_action_queue")).resolves.toBeUndefined();
+  });
+
+  it("does not attempt to run any site job when listSchedulableSites rejects", async () => {
+    listSchedulableSitesMock.mockRejectedValue(new Error("connection refused"));
+
+    await runJobForAllSites("recompute_action_queue");
+
+    expect(runJobMock).not.toHaveBeenCalled();
+  });
+
+  it("logs the site-list failure with the job name in context", async () => {
+    const cause = new Error("DB unavailable at sweep start");
+    listSchedulableSitesMock.mockRejectedValue(cause);
+
+    await runJobForAllSites("recompute_action_queue");
+
+    expect(loggerErrorMock).toHaveBeenCalledOnce();
+    const [meta, message] = loggerErrorMock.mock.calls[0]!;
+    expect(meta).toMatchObject({ err: cause, jobName: "recompute_action_queue" });
+    expect(typeof message).toBe("string");
+  });
+
+  it("no unhandled rejection escapes when listSchedulableSites rejects", async () => {
+    listSchedulableSitesMock.mockRejectedValue(new Error("connection refused"));
+
+    // Collect any unhandled rejections that Node emits during this tick.
+    const unhandled: Error[] = [];
+    const handler = (reason: unknown) => {
+      unhandled.push(reason instanceof Error ? reason : new Error(String(reason)));
+    };
+    process.on("unhandledRejection", handler);
+
+    await runJobForAllSites("recompute_action_queue");
+
+    // Drain the microtask queue so any leaked rejections have a chance to fire.
+    await new Promise((r) => setImmediate(r));
+    process.off("unhandledRejection", handler);
+
+    expect(unhandled).toHaveLength(0);
+  });
+});
+
 describe("recompute_action_queue cron loop — per-site error isolation", () => {
   it("continues to remaining sites when one site's completion rejects with a DB error", async () => {
     // Site 2 simulates a SQL failure (e.g. connection dropped, constraint violation).
