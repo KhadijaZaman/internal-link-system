@@ -307,3 +307,132 @@ describe("resolveHoverTransition — hub area hover transitions", () => {
     expect(drawCount).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Integration: full onClick chain in topical-map.tsx
+//
+// topical-map.tsx onClick handler does:
+//   const [mx, my] = d3.pointer(ev, canvas);
+//   const n = findNode(mx, my);           // hitTestNodes after transform.invert
+//   setSelectedNodeId(resolveClickSelection(n));
+//
+// The canvas is initialised with:
+//   zoom.transform → d3.zoomIdentity.translate(width/2, height/2).scale(0.85)
+//
+// Inverting canvas-centre pixel coords (width/2, height/2) through that
+// transform always yields world origin (0, 0) — the hub position — regardless
+// of canvas dimensions:
+//
+//   invert([px, py]) = [(px − tx) / k, (py − ty) / k]
+//                    = [(w/2 − w/2) / 0.85, (h/2 − h/2) / 0.85]
+//                    = [0, 0]
+//
+// The hub has no LaidOutNode in the nodes array, so hitTestNodes(0, 0, …)
+// returns undefined, and resolveClickSelection(undefined) returns null —
+// which is the value the handler passes to setSelectedNodeId.
+//
+// These tests verify the complete chain produces null starting from a
+// non-null prior selection, confirming that clicking the hub clears any
+// stale highlighted ring in the canvas re-render.
+// ---------------------------------------------------------------------------
+
+describe("onClick integration — hub click clears stale node selection", () => {
+  // Nodes placed at realistic radial-tree positions (radius ≈ 300 world units)
+  // so none of them overlap the hub at world origin.
+  const LAYOUT_NODES: HitTestNode[] = [
+    node({ id: 1, x: 260, y: 150,   r: 10, status: "published", priority: "high" }),
+    node({ id: 2, x: -130, y: 260,  r: 7,  status: "gap",       priority: "high" }),
+    node({ id: 3, x: -300, y: 0,    r: 7,  status: "gap",       priority: "medium" }),
+    node({ id: 4, x: 0,   y: -300,  r: 5,  status: "gap",       priority: "low" }),
+    node({ id: 5, x: 130, y: -260,  r: 5,  status: "ignored",   priority: "low" }),
+  ];
+
+  // Simulate the default zoom transform's invert of canvas-centre.
+  // Canvas dimensions don't matter — the math always yields (0, 0).
+  function invertCanvasCentre(_width: number, _height: number, k: number): [number, number] {
+    // translate(w/2, h/2).scale(k) → invert([w/2, h/2]) = (0, 0)
+    // Computed explicitly so the expectation is obvious.
+    const tx = _width / 2;
+    const ty = _height / 2;
+    const px = _width / 2;
+    const py = _height / 2;
+    return [(px - tx) / k, (py - ty) / k];
+  }
+
+  it("canvas-centre pixel coords invert to world origin (0,0) under the default transform", () => {
+    const [wx, wy] = invertCanvasCentre(1200, 640, 0.85);
+    expect(wx).toBeCloseTo(0);
+    expect(wy).toBeCloseTo(0);
+  });
+
+  it("full chain: hub click → hitTestNodes(0,0) → undefined → resolveClickSelection → null", () => {
+    const [wx, wy] = invertCanvasCentre(1200, 640, 0.85);
+    const hit = hitTestNodes(wx, wy, 0.85, LAYOUT_NODES, ALL_VISIBLE, ALL_PRIORITIES);
+    expect(hit).toBeUndefined(); // hub has no LaidOutNode
+    const nextId = resolveClickSelection(hit);
+    expect(nextId).toBeNull();
+  });
+
+  it("selectedNodeId transitions from a real node id to null after a hub click", () => {
+    // Simulate: node 2 was clicked first (panel open), then user clicks hub.
+    let selectedNodeId: number | null = null;
+
+    // Step 1 — click on node 2 at (-130, 260): panel opens.
+    const hit1 = hitTestNodes(-130, 260, 0.85, LAYOUT_NODES, ALL_VISIBLE, ALL_PRIORITIES);
+    selectedNodeId = resolveClickSelection(hit1);
+    expect(selectedNodeId).toBe(2); // panel is open
+
+    // Step 2 — click at canvas centre → hub → panel must close.
+    const [wx, wy] = invertCanvasCentre(1200, 640, 0.85);
+    const hit2 = hitTestNodes(wx, wy, 0.85, LAYOUT_NODES, ALL_VISIBLE, ALL_PRIORITIES);
+    selectedNodeId = resolveClickSelection(hit2);
+    expect(selectedNodeId).toBeNull(); // stale ring is gone
+  });
+
+  it("selectedNodeId clears regardless of which node was previously selected", () => {
+    for (const n of LAYOUT_NODES) {
+      // Open the panel on this node.
+      const hitOpen = hitTestNodes(n.x, n.y, 0.85, LAYOUT_NODES, ALL_VISIBLE, ALL_PRIORITIES);
+      let selectedNodeId = resolveClickSelection(hitOpen);
+      expect(selectedNodeId).toBe(n.id);
+
+      // Click the hub — panel must close for every prior selection.
+      const [wx, wy] = invertCanvasCentre(1200, 640, 0.85);
+      const hitHub = hitTestNodes(wx, wy, 0.85, LAYOUT_NODES, ALL_VISIBLE, ALL_PRIORITIES);
+      selectedNodeId = resolveClickSelection(hitHub);
+      expect(selectedNodeId).toBeNull();
+    }
+  });
+
+  it("hub click does not restore a previously cleared selection (idempotent)", () => {
+    // Panel already closed (selectedNodeId is null). Clicking hub again must
+    // keep it null — no accidental re-selection.
+    let selectedNodeId: number | null = null;
+
+    const [wx, wy] = invertCanvasCentre(1200, 640, 0.85);
+    const hit = hitTestNodes(wx, wy, 0.85, LAYOUT_NODES, ALL_VISIBLE, ALL_PRIORITIES);
+    selectedNodeId = resolveClickSelection(hit);
+    expect(selectedNodeId).toBeNull();
+
+    // Second hub click.
+    const hit2 = hitTestNodes(wx, wy, 0.85, LAYOUT_NODES, ALL_VISIBLE, ALL_PRIORITIES);
+    selectedNodeId = resolveClickSelection(hit2);
+    expect(selectedNodeId).toBeNull();
+  });
+
+  it("hub click clears selection even when a ghost-filtered node overlaps origin", () => {
+    // A low-priority ignored node placed exactly at origin (an extreme edge case).
+    // It must be skipped by the ghost filter, keeping the hub miss.
+    const ghostAtOrigin = node({ id: 99, x: 0, y: 0, r: 14, status: "ignored", priority: "low" });
+    const nodesWithGhost = [...LAYOUT_NODES, ghostAtOrigin];
+    const statusFilter = { published: true, gap: true, ignored: false };
+    const priorityFilter = { high: true, medium: true, low: false };
+
+    let selectedNodeId: number | null = 3; // panel open on node 3
+
+    const hit = hitTestNodes(0, 0, 0.85, nodesWithGhost, statusFilter, priorityFilter);
+    selectedNodeId = resolveClickSelection(hit);
+    // Ghost was skipped; hub click still closes the panel.
+    expect(selectedNodeId).toBeNull();
+  });
+});

@@ -6,6 +6,10 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "node",
+    environmentMatchGlobs: [
+      // Component tests that use jsdom declare it per-file via @vitest-environment jsdom.
+      // No global override needed here; the per-file docblock takes precedence.
+    ],
   },
   resolve: {
     alias: {
