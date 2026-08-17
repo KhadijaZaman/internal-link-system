@@ -164,7 +164,7 @@ export default function TopicalMapPage() {
   ];
 
   function buildExportRows(): Cell[][] {
-    return orderedRows.map(({ node }) => [
+    return orderedRows.filter(({ node }) => statusFilter[node.status]).map(({ node }) => [
       node.title,
       node.level.replace("_", " "),
       node.section,
