@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeAll, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import TopicalMapPage from "./topical-map";
@@ -137,5 +137,47 @@ describe("TopicalMapPage — empty-state overlay (zero nodes)", () => {
 
   it("does not throw a JS error during render with an empty node list", () => {
     expect(() => renderPage()).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Table view — zero nodes
+// ---------------------------------------------------------------------------
+
+describe("TopicalMapPage — table view (zero nodes)", () => {
+  afterEach(() => cleanup());
+
+  it("does not throw a JS error when switching to table view on a zero-node run", () => {
+    expect(() => {
+      renderPage();
+      const tableBtn = document.querySelector('[data-testid="button-view-table"]');
+      if (tableBtn) fireEvent.click(tableBtn);
+    }).not.toThrow();
+  });
+
+  it("renders the table header row after switching to table view", () => {
+    renderPage();
+    const tableBtn = screen.getByTestId("button-view-table");
+    fireEvent.click(tableBtn);
+    // The table header must be present even when there are zero data rows.
+    expect(screen.getByText("Topic")).toBeTruthy();
+  });
+
+  it("renders the full set of column headers in table view with zero nodes", () => {
+    renderPage();
+    fireEvent.click(screen.getByTestId("button-view-table"));
+    expect(screen.getByText("Status")).toBeTruthy();
+    expect(screen.getByText("Priority")).toBeTruthy();
+    expect(screen.getByText("Funnel")).toBeTruthy();
+    expect(screen.getByText("Your page")).toBeTruthy();
+    expect(screen.getByText("Clicks")).toBeTruthy();
+  });
+
+  it("renders zero data rows in the table body when nodes list is empty", () => {
+    renderPage();
+    fireEvent.click(screen.getByTestId("button-view-table"));
+    // No topic rows — there must be no row with data-testid matching row-topic-*.
+    const topicRows = document.querySelectorAll('[data-testid^="row-topic-"]');
+    expect(topicRows.length).toBe(0);
   });
 });
