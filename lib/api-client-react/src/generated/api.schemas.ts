@@ -3271,6 +3271,14 @@ export const TopicalMapNodeMatchSource = {
   embedding: 'embedding',
 } as const;
 
+export interface TopicalMapNodeCompetitor {
+  domain: string;
+  url: string;
+  /** @nullable */
+  bestPosition: number | null;
+  matchedQuery: string;
+}
+
 export interface TopicalMapNode {
   id: number;
   mapId: number;
@@ -3311,6 +3319,8 @@ export interface TopicalMapNode {
   gscImpressions: number | null;
   /** @nullable */
   gscPosition: number | null;
+  /** Competitor domains already ranking for this topic, from stored SERP data (latest keyword-clustering run) */
+  competitors?: TopicalMapNodeCompetitor[];
 }
 
 export interface TopicalMapBridge {

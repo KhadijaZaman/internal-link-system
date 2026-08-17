@@ -6,8 +6,11 @@ import {
   topicalMapNodesTable,
   topicalMapBridgesTable,
   pagesTable,
+  clusterRunsTable,
+  clusterRunClustersTable,
   type TopicalMap,
   type TopicalMapNode,
+  type ClusterKeywordEntry,
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
 import { requireSite, getSite } from "../lib/site";
@@ -160,7 +163,103 @@ function buildCoverage(nodes: JoinedNode[]) {
   };
 }
 
-async function buildDetail(map: TopicalMap, siteId: number) {
+interface NodeCompetitor {
+  domain: string;
+  url: string;
+  bestPosition: number | null;
+  matchedQuery: string;
+}
+
+function normalizeQuery(q: string): string {
+  return q.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Which competitors already rank for each topic, from SERP results stored by
+ * the latest complete keyword-clustering run (no new API spend). A node
+ * matches a clustered keyword when the normalized strings are equal or one
+ * contains the other.
+ */
+async function competitorsByNode(
+  nodes: JoinedNode[],
+  siteId: number,
+  siteHost: string,
+): Promise<Map<number, NodeCompetitor[]>> {
+  const out = new Map<number, NodeCompetitor[]>();
+  const [run] = await db
+    .select({ id: clusterRunsTable.id })
+    .from(clusterRunsTable)
+    .where(and(eq(clusterRunsTable.siteId, siteId), eq(clusterRunsTable.status, "complete")))
+    .orderBy(desc(clusterRunsTable.id))
+    .limit(1);
+  if (!run) return out;
+  const clusters = await db
+    .select({ keywords: clusterRunClustersTable.keywords })
+    .from(clusterRunClustersTable)
+    .where(and(eq(clusterRunClustersTable.siteId, siteId), eq(clusterRunClustersTable.runId, run.id)));
+
+  const ownHost = siteHost.replace(/^www\./, "");
+  const isOwn = (host: string) => {
+    const h = host.replace(/^www\./, "");
+    return h === ownHost || h.endsWith(`.${ownHost}`);
+  };
+  // Pre-parse each keyword entry ONCE (URL parsing + own-host/scheme filtering
+  // out of the node loop — nodes × keywords only does string matching below).
+  const entries: { query: string; competitors: { domain: string; url: string; position: number | null }[] }[] = [];
+  for (const c of clusters) {
+    for (const kw of (c.keywords ?? []) as ClusterKeywordEntry[]) {
+      if (!kw.serpUrls?.length) continue;
+      const competitors: { domain: string; url: string; position: number | null }[] = [];
+      for (const s of kw.serpUrls) {
+        let parsed: URL;
+        try {
+          parsed = new URL(s.url);
+        } catch {
+          continue;
+        }
+        // Stored SERP data is untrusted; only http(s) links may reach the UI.
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") continue;
+        if (!parsed.host || isOwn(parsed.host)) continue;
+        competitors.push({
+          domain: parsed.host.replace(/^www\./, ""),
+          url: s.url,
+          position: s.position ?? null,
+        });
+      }
+      if (competitors.length > 0) entries.push({ query: normalizeQuery(kw.query), competitors });
+    }
+  }
+  if (entries.length === 0) return out;
+
+  for (const node of nodes) {
+    const candidates = [node.canonicalQuery, node.title]
+      .filter((s): s is string => !!s)
+      .map(normalizeQuery)
+      .filter((s) => s.length >= 4);
+    const byDomain = new Map<string, NodeCompetitor>();
+    for (const e of entries) {
+      const matched = candidates.some((c) => c === e.query || c.includes(e.query) || e.query.includes(c));
+      if (!matched) continue;
+      for (const s of e.competitors) {
+        const prev = byDomain.get(s.domain);
+        if (!prev || (s.position != null && (prev.bestPosition == null || s.position < prev.bestPosition))) {
+          byDomain.set(s.domain, { domain: s.domain, url: s.url, bestPosition: s.position, matchedQuery: e.query });
+        }
+      }
+    }
+    if (byDomain.size > 0) {
+      out.set(
+        node.id,
+        [...byDomain.values()]
+          .sort((a, b) => (a.bestPosition ?? 999) - (b.bestPosition ?? 999))
+          .slice(0, 5),
+      );
+    }
+  }
+  return out;
+}
+
+async function buildDetail(map: TopicalMap, siteId: number, siteHost: string) {
   const nodes = await fetchJoinedNodes(map.id, siteId);
   const bridges = await db
     .select()
@@ -169,9 +268,10 @@ async function buildDetail(map: TopicalMap, siteId: number) {
       and(eq(topicalMapBridgesTable.siteId, siteId), eq(topicalMapBridgesTable.mapId, map.id)),
     )
     .orderBy(topicalMapBridgesTable.id);
+  const competitors = await competitorsByNode(nodes, siteId, siteHost).catch(() => new Map<number, NodeCompetitor[]>());
   return {
     map: serializeMap(map),
-    nodes: nodes.map(serializeNode),
+    nodes: nodes.map((n) => ({ ...serializeNode(n), competitors: competitors.get(n.id) ?? [] })),
     bridges: bridges.map((b) => ({
       id: b.id,
       sourceNodeId: b.sourceNodeId,
@@ -271,7 +371,7 @@ router.get("/topical-map/runs/:mapId", requireAuth, requireSite, async (req, res
     res.status(404).json({ error: "Not found" });
     return;
   }
-  res.json(await buildDetail(map, site.id));
+  res.json(await buildDetail(map, site.id, site.host));
 });
 
 router.get("/topical-map/latest", requireAuth, requireSite, async (req, res) => {
@@ -286,7 +386,7 @@ router.get("/topical-map/latest", requireAuth, requireSite, async (req, res) => 
     res.status(404).json({ error: "No complete topical map yet" });
     return;
   }
-  res.json(await buildDetail(map, site.id));
+  res.json(await buildDetail(map, site.id, site.host));
 });
 
 router.patch("/topical-map/nodes/:nodeId", requireAuth, requireSite, async (req, res) => {

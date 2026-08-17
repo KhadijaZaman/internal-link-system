@@ -1675,7 +1675,13 @@ export const GetTopicalMapRunResponse = zod.object({
   "pageTitle": zod.string().nullable().describe('Title of the matched page (joined at read time)'),
   "gscClicks": zod.number().nullable(),
   "gscImpressions": zod.number().nullable(),
-  "gscPosition": zod.number().nullable()
+  "gscPosition": zod.number().nullable(),
+  "competitors": zod.array(zod.object({
+  "domain": zod.string(),
+  "url": zod.string(),
+  "bestPosition": zod.number().nullable(),
+  "matchedQuery": zod.string()
+})).optional().describe('Competitor domains already ranking for this topic, from stored SERP data (latest keyword-clustering run)')
 })),
   "bridges": zod.array(zod.object({
   "id": zod.number(),
@@ -1749,7 +1755,13 @@ export const GetLatestTopicalMapResponse = zod.object({
   "pageTitle": zod.string().nullable().describe('Title of the matched page (joined at read time)'),
   "gscClicks": zod.number().nullable(),
   "gscImpressions": zod.number().nullable(),
-  "gscPosition": zod.number().nullable()
+  "gscPosition": zod.number().nullable(),
+  "competitors": zod.array(zod.object({
+  "domain": zod.string(),
+  "url": zod.string(),
+  "bestPosition": zod.number().nullable(),
+  "matchedQuery": zod.string()
+})).optional().describe('Competitor domains already ranking for this topic, from stored SERP data (latest keyword-clustering run)')
 })),
   "bridges": zod.array(zod.object({
   "id": zod.number(),
@@ -1812,7 +1824,13 @@ export const UpdateTopicalMapNodeResponse = zod.object({
   "pageTitle": zod.string().nullable().describe('Title of the matched page (joined at read time)'),
   "gscClicks": zod.number().nullable(),
   "gscImpressions": zod.number().nullable(),
-  "gscPosition": zod.number().nullable()
+  "gscPosition": zod.number().nullable(),
+  "competitors": zod.array(zod.object({
+  "domain": zod.string(),
+  "url": zod.string(),
+  "bestPosition": zod.number().nullable(),
+  "matchedQuery": zod.string()
+})).optional().describe('Competitor domains already ranking for this topic, from stored SERP data (latest keyword-clustering run)')
 })
 
 

@@ -11,6 +11,14 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -124,6 +132,7 @@ export default function TopicalMapPage() {
     Record<TopicalMapNode["status"], boolean>
   >({ published: true, gap: true, ignored: true });
   const [showBridges, setShowBridges] = useState(true);
+  const [viewMode, setViewMode] = useState<"map" | "table">("map");
   const [formOpen, setFormOpen] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
   const [topicSearch, setTopicSearch] = useState("");
@@ -530,6 +539,30 @@ export default function TopicalMapPage() {
     };
   }, [layout]);
 
+  // Depth-first order (pillar → its subtree) for the table view, so rows read
+  // like an indented outline of the map.
+  const orderedRows = useMemo(() => {
+    if (!detail) return [];
+    const childrenOf = new Map<number, TopicalMapNode[]>();
+    const roots: TopicalMapNode[] = [];
+    const sorted = [...detail.nodes].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+    for (const n of sorted) {
+      if (n.parentId === null) roots.push(n);
+      else {
+        const list = childrenOf.get(n.parentId);
+        if (list) list.push(n);
+        else childrenOf.set(n.parentId, [n]);
+      }
+    }
+    const out: { node: TopicalMapNode; depth: number }[] = [];
+    const walk = (n: TopicalMapNode, depth: number) => {
+      out.push({ node: n, depth });
+      for (const c of childrenOf.get(n.id) ?? []) walk(c, depth + 1);
+    };
+    for (const r of roots) walk(r, 0);
+    return out;
+  }, [detail]);
+
   const coverage = detail?.coverage ?? null;
 
   const narrative = useMemo(() => {
@@ -900,6 +933,23 @@ export default function TopicalMapPage() {
                   </InfoTip>
                 </CardTitle>
                 <div className="flex items-center gap-1.5 text-xs">
+                  <div className="flex rounded-md border overflow-hidden mr-1">
+                    {(["map", "table"] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setViewMode(m)}
+                        className={`px-2.5 py-1 transition-colors ${
+                          viewMode === m
+                            ? "bg-foreground text-background"
+                            : "bg-background text-muted-foreground hover:bg-muted/60"
+                        }`}
+                        data-testid={`button-view-${m}`}
+                      >
+                        {m === "map" ? "Map" : "Table"}
+                      </button>
+                    ))}
+                  </div>
                   {(
                     [
                       { key: "published" as const, label: "Covered", dot: "bg-emerald-500" },
@@ -1003,9 +1053,112 @@ export default function TopicalMapPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <div ref={containerRef} className="relative w-full">
+              {/* Keep the canvas mounted (hidden) so pan/zoom state survives view switches. */}
+              <div ref={containerRef} className={viewMode === "map" ? "relative w-full" : "hidden"}>
                 <canvas ref={canvasRef} className="rounded-md border bg-white cursor-grab" />
               </div>
+              {viewMode === "table" && (
+                <div className="max-h-[640px] overflow-auto rounded-md border" data-testid="table-topical-map">
+                  <Table>
+                    <TableHeader className="sticky top-0 bg-background z-10">
+                      <TableRow>
+                        <TableHead className="min-w-[260px]">Topic</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Priority</TableHead>
+                        <TableHead>Funnel</TableHead>
+                        <TableHead className="min-w-[180px]">Your page</TableHead>
+                        <TableHead className="text-right">Clicks</TableHead>
+                        <TableHead className="min-w-[220px]">
+                          <span className="flex items-center gap-1">
+                            Competitors ranking
+                            <InfoTip>
+                              Competitor domains already ranking on Google for this topic, from
+                              SERP data captured by your latest keyword-clustering run. Empty
+                              means no stored SERP data matched this topic yet — run Keyword
+                              clustering to widen coverage.
+                            </InfoTip>
+                          </span>
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {orderedRows
+                        .filter(({ node }) => statusFilter[node.status])
+                        .map(({ node, depth }) => (
+                          <TableRow
+                            key={node.id}
+                            className={`cursor-pointer ${selectedNodeId === node.id ? "bg-muted/60" : ""}`}
+                            onClick={() => setSelectedNodeId(node.id)}
+                            data-testid={`row-topic-${node.id}`}
+                          >
+                            <TableCell className="py-2">
+                              <div
+                                className="flex items-center gap-2"
+                                style={{ paddingLeft: `${depth * 16}px` }}
+                              >
+                                <span
+                                  className="h-2.5 w-2.5 rounded-full shrink-0"
+                                  style={{ backgroundColor: STATUS_COLOR[node.status] }}
+                                />
+                                <span className={depth === 0 ? "font-medium" : ""}>{node.title}</span>
+                                {node.section === "outer" && (
+                                  <Badge variant="outline" className="text-[10px] px-1 py-0">
+                                    outer
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="py-2">
+                              <Badge variant="outline" className={STATUS_BADGE[node.status]}>
+                                {node.status === "published"
+                                  ? "covered"
+                                  : node.status === "gap"
+                                    ? "gap"
+                                    : "dismissed"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="py-2 text-xs capitalize">{node.priority}</TableCell>
+                            <TableCell className="py-2 text-xs uppercase">{node.funnelStage}</TableCell>
+                            <TableCell className="py-2 text-xs">
+                              {node.matchedPagePath ? (
+                                <span className="text-emerald-700 break-all">{node.matchedPagePath}</span>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="py-2 text-right text-xs tabular-nums">
+                              {node.gscClicks ?? "—"}
+                            </TableCell>
+                            <TableCell className="py-2">
+                              {node.competitors && node.competitors.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {node.competitors.map((c) => (
+                                    <a
+                                      key={c.domain}
+                                      href={c.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px] hover:bg-muted/60"
+                                      title={`Ranks #${c.bestPosition ?? "?"} for "${c.matchedQuery}"`}
+                                    >
+                                      {c.domain}
+                                      {c.bestPosition != null && (
+                                        <span className="text-muted-foreground">#{c.bestPosition}</span>
+                                      )}
+                                    </a>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">—</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
 

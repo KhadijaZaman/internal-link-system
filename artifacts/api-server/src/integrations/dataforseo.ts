@@ -252,6 +252,11 @@ export async function postSerpTasks(
         ),
       },
     );
+    if (res.status === 402) {
+      throw new Error(
+        "DataForSEO account is out of funds (HTTP 402) — top up the balance at app.dataforseo.com, then run again.",
+      );
+    }
     if (!res.ok) throw new Error(`DataForSEO task_post HTTP ${res.status}`);
     const data = (await res.json()) as {
       status_code?: number;

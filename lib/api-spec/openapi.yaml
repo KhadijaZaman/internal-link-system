@@ -5459,6 +5459,19 @@ components:
         gscClicks: { type: ["integer", "null"] }
         gscImpressions: { type: ["integer", "null"] }
         gscPosition: { type: ["number", "null"] }
+        competitors:
+          type: array
+          description: Competitor domains already ranking for this topic, from stored SERP data (latest keyword-clustering run)
+          items:
+            $ref: "#/components/schemas/TopicalMapNodeCompetitor"
+    TopicalMapNodeCompetitor:
+      type: object
+      required: [domain, url, bestPosition, matchedQuery]
+      properties:
+        domain: { type: string }
+        url: { type: string }
+        bestPosition: { type: ["number", "null"] }
+        matchedQuery: { type: string }
     TopicalMapBridge:
       type: object
       required: [id, sourceNodeId, targetNodeId, bridgeConcept]

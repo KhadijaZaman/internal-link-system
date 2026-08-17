@@ -567,13 +567,9 @@ router.post("/gsc/chat", requireAuth, requireSite, async (req, res) => {
     const contextJson = await buildContext(parsed, site);
     const withCtx = buildPromptMessages(parsed.messages, parsed.includeDefault, contextJson);
     if (!withCtx) {
-      send("error", { error: "no messages" });
-      res.end();
+      res.status(400).json({ error: "no messages" });
       return;
     }
-    send("meta", {
-      contextSummary: `Analyzed ${parsed.startDate} → ${parsed.endDate}${parsed.url ? ` for ${parsed.url}` : ""}`,
-    });
 
     const openai = getOpenAI();
 
@@ -606,9 +602,9 @@ router.post("/gsc/chat", requireAuth, requireSite, async (req, res) => {
           continue;
         }
         toolCallsUsed++;
-          let args: Record<string, unknown> = {};
+        let args: Record<string, unknown> = {};
         try { args = JSON.parse(tc.function.arguments || "{}"); } catch { /* keep empty */ }
-          const result = await executeTool(tc.name, args, toolOpts);
+        const result = await executeTool(tc.function.name, args, toolOpts);
         history.push({ role: "tool", tool_call_id: tc.id, content: result });
       }
     }

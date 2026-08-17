@@ -5,6 +5,7 @@
  * Linkweave internal linking system API
  * OpenAPI spec version: 0.1.0
  */
+import type { TopicalMapNodeCompetitor } from './topicalMapNodeCompetitor';
 import type { TopicalMapNodeFunnelStage } from './topicalMapNodeFunnelStage';
 import type { TopicalMapNodeLevel } from './topicalMapNodeLevel';
 import type { TopicalMapNodeMatchSource } from './topicalMapNodeMatchSource';
@@ -52,4 +53,6 @@ export interface TopicalMapNode {
   gscImpressions: number | null;
   /** @nullable */
   gscPosition: number | null;
+  /** Competitor domains already ranking for this topic, from stored SERP data (latest keyword-clustering run) */
+  competitors?: TopicalMapNodeCompetitor[];
 }

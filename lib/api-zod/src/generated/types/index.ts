@@ -326,6 +326,7 @@ export * from './topicalMapBridge';
 export * from './topicalMapCoverage';
 export * from './topicalMapDetail';
 export * from './topicalMapNode';
+export * from './topicalMapNodeCompetitor';
 export * from './topicalMapNodeFunnelStage';
 export * from './topicalMapNodeLevel';
 export * from './topicalMapNodeMatchSource';
