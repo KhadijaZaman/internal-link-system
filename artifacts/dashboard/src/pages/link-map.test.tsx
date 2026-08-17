@@ -117,10 +117,13 @@ vi.mock("@workspace/api-client-react", () => ({
   useGetLinkGraphFocus: () => ({ data: null, isLoading: false, error: null }),
   useGetJobStatus: () => ({ data: [], isLoading: false }),
   useRunJob: () => noopMutation(),
+  useExportLinkMapSheet: () => noopMutation(),
+  useGetLinkMapSheetInfo: () => ({ data: null, isLoading: false }),
   getGetLinkGraphQueryKey: () => ["getLinkGraph"],
   getGetInventoryPageQueryKey: () => ["getInventoryPage"],
   getGetLinkGraphFocusQueryKey: () => ["getLinkGraphFocus"],
   getGetJobStatusQueryKey: () => ["getJobStatus"],
+  getGetLinkMapSheetInfoQueryKey: () => ["getLinkMapSheetInfo"],
 }));
 
 vi.mock("@/hooks/use-toast", () => ({

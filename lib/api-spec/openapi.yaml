@@ -521,6 +521,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LinkGraph"
+  /link-graph/sheet-info:
+    get:
+      operationId: getLinkMapSheetInfo
+      tags: [graph]
+      summary: URL of the site's persistent Link Map Google Sheet, if one exists
+      responses:
+        "200":
+          description: Stored link map sheet info (url is null when no sheet exists yet)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkMapSheetInfo"
+  /link-graph/export-sheet:
+    post:
+      operationId: exportLinkMapSheet
+      tags: [graph]
+      summary: Export the site's link graph to a persistent Google Sheet — only the Link Map tab is written, all other tabs are preserved
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkMapSheetExportInput"
+      responses:
+        "200":
+          description: Spreadsheet created or updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkMapSheetExportResult"
+        "400":
+          description: No link graph data found for this site
+        "502":
+          description: Google Sheets request failed
   /link-graph/focus:
     get:
       operationId: getLinkGraphFocus
@@ -2936,6 +2970,35 @@ components:
         auditSimilarity:
           type: ["number", "null"]
           description: Source→target embedding cosine (null when either page has no embedding or the edge is unaudited).
+    LinkMapSheetInfo:
+      type: object
+      required: [url, sheetShared]
+      properties:
+        url: { type: ["string", "null"] }
+        sheetShared:
+          type: boolean
+          description: True when the sheet is link-viewable (anyone with the link)
+    LinkMapSheetExportInput:
+      type: object
+      properties:
+        showNav:
+          type: boolean
+          default: false
+          description: Include navigation-placement links (mirrors the Nav toggle in the Table view)
+        showFooter:
+          type: boolean
+          default: false
+          description: Include footer-placement links (mirrors the Footer toggle in the Table view)
+    LinkMapSheetExportResult:
+      type: object
+      required: [url, title, rowCount, sheetShared]
+      properties:
+        url: { type: string }
+        title: { type: string }
+        rowCount: { type: integer }
+        sheetShared:
+          type: boolean
+          description: True when the sheet is link-viewable (anyone with the link)
     LinkGraphAuditSummary:
       type: object
       required: [auditedAt, contentEdges, auditedEdges, offTopic, tierViolations, genericAnchors]

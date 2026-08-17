@@ -738,6 +738,28 @@ export interface LinkGraphEdge {
   auditSimilarity?: number | null;
 }
 
+export interface LinkMapSheetInfo {
+  /** @nullable */
+  url: string | null;
+  /** True when the sheet is link-viewable (anyone with the link) */
+  sheetShared: boolean;
+}
+
+export interface LinkMapSheetExportInput {
+  /** Include navigation-placement links (mirrors the Nav toggle in the Table view) */
+  showNav?: boolean;
+  /** Include footer-placement links (mirrors the Footer toggle in the Table view) */
+  showFooter?: boolean;
+}
+
+export interface LinkMapSheetExportResult {
+  url: string;
+  title: string;
+  rowCount: number;
+  /** True when the sheet is link-viewable (anyone with the link) */
+  sheetShared: boolean;
+}
+
 export interface LinkGraphAuditSummary {
   /** @nullable */
   auditedAt: string | null;

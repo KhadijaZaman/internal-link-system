@@ -505,7 +505,7 @@ export const GetLinkGraphResponse = zod.object({
   "source": zod.string(),
   "target": zod.string(),
   "anchorText": zod.string().nullish(),
-  "placement": zod.enum(['content', 'nav', 'header', 'footer']).describe('Where the link sits on the source page. \"content\" = editorial in-body link; nav\/header\/footer are template (chrome) links. Sidebar\/complementary links are classified as \"nav\" by the crawler.'),
+  "placement": zod.enum(['content', 'nav', 'header', 'footer']).describe('Where the link sits on the source page. \"content\" = editorial in-body link; nav\/header\/footer are template (chrome) links.'),
   "auditFlags": zod.array(zod.enum(['off_topic', 'tier_violation', 'generic_anchor'])).nullish().describe('Link-quality flags from the audit_link_quality job. Null = not audited yet (or a chrome edge).'),
   "auditSimilarity": zod.number().nullish().describe('Source→target embedding cosine (null when either page has no embedding or the edge is unaudited).')
 })),
@@ -517,6 +517,34 @@ export const GetLinkGraphResponse = zod.object({
   "tierViolations": zod.number(),
   "genericAnchors": zod.number()
 })
+})
+
+
+/**
+ * @summary URL of the site's persistent Link Map Google Sheet, if one exists
+ */
+export const GetLinkMapSheetInfoResponse = zod.object({
+  "url": zod.string().nullable(),
+  "sheetShared": zod.boolean().describe('True when the sheet is link-viewable (anyone with the link)')
+})
+
+
+/**
+ * @summary Export the site's link graph to a persistent Google Sheet — only the Link Map tab is written, all other tabs are preserved
+ */
+export const exportLinkMapSheetBodyShowNavDefault = false;
+export const exportLinkMapSheetBodyShowFooterDefault = false;
+
+export const ExportLinkMapSheetBody = zod.object({
+  "showNav": zod.boolean().default(exportLinkMapSheetBodyShowNavDefault).describe('Include navigation-placement links (mirrors the Nav toggle in the Table view)'),
+  "showFooter": zod.boolean().default(exportLinkMapSheetBodyShowFooterDefault).describe('Include footer-placement links (mirrors the Footer toggle in the Table view)')
+})
+
+export const ExportLinkMapSheetResponse = zod.object({
+  "url": zod.string(),
+  "title": zod.string(),
+  "rowCount": zod.number(),
+  "sheetShared": zod.boolean().describe('True when the sheet is link-viewable (anyone with the link)')
 })
 
 

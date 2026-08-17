@@ -6,6 +6,12 @@ import { requireSite, getSite } from "../lib/site";
 import { sectionFor } from "../lib/sections";
 import { buildFocus } from "../services/linkFocus";
 import { GetLinkGraphFocusQueryParams } from "@workspace/api-zod";
+import {
+  exportLinkMapSheet,
+  getStoredLinkMapSheetUrl,
+  isLinkMapSheetShared,
+  NoLinkDataError,
+} from "../services/linkMapSheet";
 
 const router: IRouter = Router();
 
@@ -78,6 +84,38 @@ router.get("/link-graph", requireAuth, requireSite, async (req, res) => {
     },
   });
 });
+
+// ─── Google Sheets export ─────────────────────────────────────────────────────
+
+router.get("/link-graph/sheet-info", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
+  const [url, sheetShared] = await Promise.all([
+    getStoredLinkMapSheetUrl(site.id),
+    isLinkMapSheetShared(site.id),
+  ]);
+  res.json({ url, sheetShared });
+});
+
+router.post("/link-graph/export-sheet", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
+  const body = req.body ?? {};
+  const showNav = body.showNav === true;
+  const showFooter = body.showFooter === true;
+  try {
+    const result = await exportLinkMapSheet(site, { showNav, showFooter });
+    req.log.info({ rowCount: result.rowCount, showNav, showFooter }, "exported link map sheet");
+    res.json(result);
+  } catch (err) {
+    if (err instanceof NoLinkDataError) {
+      res.status(400).json({ error: "No link graph data found for this site" });
+      return;
+    }
+    req.log.error({ err }, "link map sheet export failed");
+    res.status(502).json({ error: "Google Sheets request failed" });
+  }
+});
+
+// ─── Focus subgraph ───────────────────────────────────────────────────────────
 
 router.get("/link-graph/focus", requireAuth, requireSite, async (req, res) => {
   const site = getSite(req);

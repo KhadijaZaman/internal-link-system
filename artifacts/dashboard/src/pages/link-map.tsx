@@ -7,7 +7,11 @@ import {
   useGetLinkGraphFocus,
   getGetLinkGraphFocusQueryKey,
   useRunJob,
+  useExportLinkMapSheet,
+  useGetLinkMapSheetInfo,
+  getGetLinkMapSheetInfoQueryKey,
 } from "@workspace/api-client-react";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +22,7 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } f
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
-import { Search, Filter, AlertTriangle, Link2, Target, X, Sparkles, ArrowRight, ExternalLink, Network, Table as TableIcon, ArrowUpDown, ShieldAlert, Download } from "lucide-react";
+import { Search, Filter, AlertTriangle, Link2, Target, X, Sparkles, ArrowRight, ExternalLink, Network, Table as TableIcon, ArrowUpDown, ShieldAlert, Download, FileSpreadsheet } from "lucide-react";
 import { InfoTip } from "@/components/info-tip";
 import { HowThisWorks } from "@/components/how-this-works";
 import { JobSpendCapNotice } from "@/components/spend-cap-badge";
@@ -71,6 +75,37 @@ export default function LinkMap() {
   const svgRef = useRef<SVGSVGElement>(null);
   const focusSvgRef = useRef<SVGSVGElement>(null);
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const sheetInfoQ = useGetLinkMapSheetInfo();
+  const exportSheetMutation = useExportLinkMapSheet();
+
+  const handleExportToSheets = () => {
+    exportSheetMutation.mutate({ data: { showNav, showFooter } }, {
+      onSuccess: (result) => {
+        window.open(result.url, "_blank", "noopener,noreferrer");
+        queryClient.invalidateQueries({ queryKey: getGetLinkMapSheetInfoQueryKey() });
+        toast({
+          title: "Google Sheet updated",
+          description: (
+            <a
+              href={result.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2"
+            >
+              {result.title}
+            </a>
+          ),
+        });
+      },
+      onError: () =>
+        toast({
+          variant: "destructive",
+          title: "Export failed",
+          description: "Google Sheets didn't respond. Try again in a moment.",
+        }),
+    });
+  };
 
   const [orphansOnly, setOrphansOnly] = useState(false);
   const [deadEndsOnly, setDeadEndsOnly] = useState(false);
@@ -791,6 +826,20 @@ export default function LinkMap() {
                     >
                       <Download className="h-4 w-4 mr-1" />
                       Download CSV
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleExportToSheets}
+                      disabled={exportSheetMutation.isPending}
+                      title={sheetInfoQ.data?.url ? "Rewrite the existing sheet" : "Create a new Google Sheet"}
+                    >
+                      <FileSpreadsheet className="h-4 w-4 mr-1" />
+                      {exportSheetMutation.isPending
+                        ? "Exporting…"
+                        : sheetInfoQ.data?.url
+                        ? "Update Sheet"
+                        : "Export to Sheets"}
                     </Button>
                   </div>
                 )}

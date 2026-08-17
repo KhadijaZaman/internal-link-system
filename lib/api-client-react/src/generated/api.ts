@@ -111,6 +111,9 @@ import type {
   LinkLookup,
   LinkLookupCreateInput,
   LinkMapGenerationResponse,
+  LinkMapSheetExportInput,
+  LinkMapSheetExportResult,
+  LinkMapSheetInfo,
   LinkSuggestion,
   LinkingSettings,
   LinkingSettingsInput,
@@ -2018,6 +2021,154 @@ export function useGetLinkGraph<TData = Awaited<ReturnType<typeof getLinkGraph>>
 
 
 
+
+export const getGetLinkMapSheetInfoUrl = () => {
+
+
+
+
+  return `/api/link-graph/sheet-info`
+}
+
+/**
+ * @summary URL of the site's persistent Link Map Google Sheet, if one exists
+ */
+export const getLinkMapSheetInfo = async ( options?: RequestInit): Promise<LinkMapSheetInfo> => {
+
+  return customFetch<LinkMapSheetInfo>(getGetLinkMapSheetInfoUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLinkMapSheetInfoQueryKey = () => {
+    return [
+    `/api/link-graph/sheet-info`
+    ] as const;
+    }
+
+
+export const getGetLinkMapSheetInfoQueryOptions = <TData = Awaited<ReturnType<typeof getLinkMapSheetInfo>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLinkMapSheetInfo>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLinkMapSheetInfoQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLinkMapSheetInfo>>> = ({ signal }) => getLinkMapSheetInfo({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLinkMapSheetInfo>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLinkMapSheetInfoQueryResult = NonNullable<Awaited<ReturnType<typeof getLinkMapSheetInfo>>>
+export type GetLinkMapSheetInfoQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary URL of the site's persistent Link Map Google Sheet, if one exists
+ */
+
+export function useGetLinkMapSheetInfo<TData = Awaited<ReturnType<typeof getLinkMapSheetInfo>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLinkMapSheetInfo>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLinkMapSheetInfoQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getExportLinkMapSheetUrl = () => {
+
+
+
+
+  return `/api/link-graph/export-sheet`
+}
+
+/**
+ * @summary Export the site's link graph to a persistent Google Sheet — only the Link Map tab is written, all other tabs are preserved
+ */
+export const exportLinkMapSheet = async (linkMapSheetExportInput?: LinkMapSheetExportInput, options?: RequestInit): Promise<LinkMapSheetExportResult> => {
+
+  return customFetch<LinkMapSheetExportResult>(getExportLinkMapSheetUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      linkMapSheetExportInput,)
+  }
+);}
+
+
+
+
+export const getExportLinkMapSheetMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportLinkMapSheet>>, TError,{data?: BodyType<LinkMapSheetExportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof exportLinkMapSheet>>, TError,{data?: BodyType<LinkMapSheetExportInput>}, TContext> => {
+
+const mutationKey = ['exportLinkMapSheet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof exportLinkMapSheet>>, {data?: BodyType<LinkMapSheetExportInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  exportLinkMapSheet(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ExportLinkMapSheetMutationResult = NonNullable<Awaited<ReturnType<typeof exportLinkMapSheet>>>
+    export type ExportLinkMapSheetMutationBody = BodyType<LinkMapSheetExportInput> | undefined
+    export type ExportLinkMapSheetMutationError = ErrorType<void>
+
+    /**
+ * @summary Export the site's link graph to a persistent Google Sheet — only the Link Map tab is written, all other tabs are preserved
+ */
+export const useExportLinkMapSheet = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportLinkMapSheet>>, TError,{data?: BodyType<LinkMapSheetExportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof exportLinkMapSheet>>,
+        TError,
+        {data?: BodyType<LinkMapSheetExportInput>},
+        TContext
+      > => {
+      return useMutation(getExportLinkMapSheetMutationOptions(options));
+    }
 
 export const getGetLinkGraphFocusUrl = (params: GetLinkGraphFocusParams,) => {
   const normalizedParams = new URLSearchParams();
