@@ -41,6 +41,8 @@ router.get("/link-graph", requireAuth, requireSite, async (req, res) => {
       source: e.sourceUrl,
       target: e.targetUrl,
       anchorText: e.anchorText,
+      // Where the link sits on the page: content (editorial) vs nav/header/footer chrome.
+      placement: e.placement,
       // null = not audited yet (or chrome edge — audit only scores content links)
       auditFlags: e.auditFlags ?? null,
       auditSimilarity: e.auditSimilarity ?? null,

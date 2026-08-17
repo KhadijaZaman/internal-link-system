@@ -505,6 +505,7 @@ export const GetLinkGraphResponse = zod.object({
   "source": zod.string(),
   "target": zod.string(),
   "anchorText": zod.string().nullish(),
+  "placement": zod.enum(['content', 'nav', 'header', 'footer', 'sidebar']).describe('Where the link sits on the source page. \"content\" = editorial in-body link; nav\/header\/footer are template (chrome) links.'),
   "auditFlags": zod.array(zod.enum(['off_topic', 'tier_violation', 'generic_anchor'])).nullish().describe('Link-quality flags from the audit_link_quality job. Null = not audited yet (or a chrome edge).'),
   "auditSimilarity": zod.number().nullish().describe('Source→target embedding cosine (null when either page has no embedding or the edge is unaudited).')
 })),
@@ -1619,7 +1620,7 @@ export const ListTopicalMapRunsResponseItem = zod.object({
   "createdAt": zod.string(),
   "startedAt": zod.string().nullable(),
   "finishedAt": zod.string().nullable(),
-  "competitorScanStatus": zod.string().nullish().describe('null | queued | running | complete | failed — current state of the per-map SERP competitor scan'),
+  "competitorScanStatus": zod.string().nullish().describe('null | queued | running | complete | partial | failed — current state of the per-map SERP competitor scan. \'partial\' means the scan ran but some topics were not covered (budget cap, timeouts, or task failures); re-run to make more progress.'),
   "competitorScanError": zod.string().nullish().describe('Last error from the competitor scan (includes out-of-funds notice)')
 })
 export const ListTopicalMapRunsResponse = zod.array(ListTopicalMapRunsResponseItem)
@@ -1658,7 +1659,7 @@ export const GetTopicalMapRunResponse = zod.object({
   "createdAt": zod.string(),
   "startedAt": zod.string().nullable(),
   "finishedAt": zod.string().nullable(),
-  "competitorScanStatus": zod.string().nullish().describe('null | queued | running | complete | failed — current state of the per-map SERP competitor scan'),
+  "competitorScanStatus": zod.string().nullish().describe('null | queued | running | complete | partial | failed — current state of the per-map SERP competitor scan. \'partial\' means the scan ran but some topics were not covered (budget cap, timeouts, or task failures); re-run to make more progress.'),
   "competitorScanError": zod.string().nullish().describe('Last error from the competitor scan (includes out-of-funds notice)')
 }),
   "nodes": zod.array(zod.object({
@@ -1740,7 +1741,7 @@ export const GetLatestTopicalMapResponse = zod.object({
   "createdAt": zod.string(),
   "startedAt": zod.string().nullable(),
   "finishedAt": zod.string().nullable(),
-  "competitorScanStatus": zod.string().nullish().describe('null | queued | running | complete | failed — current state of the per-map SERP competitor scan'),
+  "competitorScanStatus": zod.string().nullish().describe('null | queued | running | complete | partial | failed — current state of the per-map SERP competitor scan. \'partial\' means the scan ran but some topics were not covered (budget cap, timeouts, or task failures); re-run to make more progress.'),
   "competitorScanError": zod.string().nullish().describe('Last error from the competitor scan (includes out-of-funds notice)')
 }),
   "nodes": zod.array(zod.object({

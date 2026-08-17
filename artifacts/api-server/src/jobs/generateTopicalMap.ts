@@ -258,6 +258,10 @@ async function processMap(
   const bridgeSpecs: BridgeSpec[] = [];
   let failedPillars = 0;
 
+  // Pillar expansions run independently, so two pillars can propose the same
+  // topic (same title). Keep the first occurrence only — a repeated topic in
+  // the map is noise, and its subtree would duplicate coverage.
+  const seenTitles = new Set<string>();
   const pushNode = (
     meta: TopicalNodeMeta,
     level: FlatNode["level"],
@@ -265,7 +269,13 @@ async function processMap(
     parentIdx: number,
     sortOrder: number,
   ): number => {
-    if (nodes.length >= MAX_NODES) return -1;
+    if (nodes.length >= MAX_NODES) return -1; // capacity exhausted — stop expansion
+    const titleKey = meta.title.trim().toLowerCase();
+    if (seenTitles.has(titleKey)) {
+      logger.info({ mapId: map.id, title: meta.title }, "Topical map: skipping duplicate topic");
+      return -2; // duplicate — skip this subtree but keep going
+    }
+    seenTitles.add(titleKey);
     nodes.push({
       meta,
       level,
@@ -283,7 +293,8 @@ async function processMap(
   for (let pi = 0; pi < pillars.length; pi++) {
     const pillar = pillars[pi]!;
     const pillarIdx = pushNode(pillar, "pillar", pillar.section, -1, pi);
-    if (pillarIdx < 0) break;
+    if (pillarIdx === -2) continue; // duplicate pillar — skip it, keep the rest
+    if (pillarIdx < 0) break; // MAX_NODES hit — stop expansion entirely
     if (!budget.take("llmCalls")) {
       logger.warn(
         { mapId: map.id, pillar: pillar.suggested_slug },

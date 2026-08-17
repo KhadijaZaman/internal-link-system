@@ -6,12 +6,15 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { LinkGraphEdgeAuditFlagsItem } from './linkGraphEdgeAuditFlagsItem';
+import type { LinkGraphEdgePlacement } from './linkGraphEdgePlacement';
 
 export interface LinkGraphEdge {
   source: string;
   target: string;
   /** @nullable */
   anchorText?: string | null;
+  /** Where the link sits on the source page. "content" = editorial in-body link; nav/header/footer are template (chrome) links. */
+  placement: LinkGraphEdgePlacement;
   /**
      * Link-quality flags from the audit_link_quality job. Null = not audited yet (or a chrome edge).
      * @nullable

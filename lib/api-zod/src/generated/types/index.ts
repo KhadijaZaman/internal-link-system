@@ -205,6 +205,7 @@ export * from './linkGraph';
 export * from './linkGraphAuditSummary';
 export * from './linkGraphEdge';
 export * from './linkGraphEdgeAuditFlagsItem';
+export * from './linkGraphEdgePlacement';
 export * from './linkGraphFocus';
 export * from './linkGraphFocusNeighbor';
 export * from './linkGraphFocusNeighborDirection';

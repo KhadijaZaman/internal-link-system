@@ -2918,11 +2918,15 @@ components:
         clicks: { type: ["integer", "null"] }
     LinkGraphEdge:
       type: object
-      required: [source, target]
+      required: [source, target, placement]
       properties:
         source: { type: string }
         target: { type: string }
         anchorText: { type: ["string", "null"] }
+        placement:
+          type: string
+          description: Where the link sits on the source page. "content" = editorial in-body link; nav/header/footer are template (chrome) links.
+          enum: [content, nav, header, footer, sidebar]
         auditFlags:
           type: ["array", "null"]
           description: Link-quality flags from the audit_link_quality job. Null = not audited yet (or a chrome edge).

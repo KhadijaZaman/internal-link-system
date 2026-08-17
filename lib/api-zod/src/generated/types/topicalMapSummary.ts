@@ -30,7 +30,7 @@ export interface TopicalMapSummary {
   /** @nullable */
   finishedAt: string | null;
   /**
-     * null | queued | running | complete | failed — current state of the per-map SERP competitor scan
+     * null | queued | running | complete | partial | failed — current state of the per-map SERP competitor scan. 'partial' means the scan ran but some topics were not covered (budget cap, timeouts, or task failures); re-run to make more progress.
      * @nullable
      */
   competitorScanStatus?: string | null;

@@ -73,6 +73,11 @@ export default function LinkMap() {
   const [orphansOnly, setOrphansOnly] = useState(false);
   const [deadEndsOnly, setDeadEndsOnly] = useState(false);
   const [sectionFilter, setSectionFilter] = useState<string>("all");
+  // Placement filters: in-content links are always shown (the editorial
+  // linking); navigation (nav+header) and footer template links are opt-in.
+  const [showNav, setShowNav] = useState(false);
+  const [showFooter, setShowFooter] = useState(false);
+  const [globalView, setGlobalView] = useState<"map" | "table">("map");
   // Deep-link support: /link-map?url=<page> pre-fills the search so other
   // pages (e.g. keyword clusters) can jump straight to a page's link view.
   const [searchQuery, setSearchQuery] = useState(
@@ -191,7 +196,18 @@ export default function LinkMap() {
     }
 
     const nodeIds = new Set(filteredNodes.map((n) => n.id));
-    const allEdges = graph.edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
+    const placementOk = (p: string) =>
+      p === "content" ? true : p === "footer" ? showFooter : showNav;
+    const allEdges = graph.edges.filter(
+      (e) => placementOk(e.placement) && nodeIds.has(e.source) && nodeIds.has(e.target),
+    );
+
+    // Dot size = number of connections under the current filters.
+    const degree = new Map<string, number>();
+    for (const e of allEdges) {
+      degree.set(e.source, (degree.get(e.source) ?? 0) + 1);
+      degree.set(e.target, (degree.get(e.target) ?? 0) + 1);
+    }
 
     let renderEdges = allEdges;
     if (allEdges.length > EDGE_RENDER_CAP) {
@@ -207,12 +223,33 @@ export default function LinkMap() {
         })
         .slice(0, EDGE_RENDER_CAP);
     }
-    return { filteredNodes, renderEdges, totalEdges: allEdges.length };
-  }, [graph, orphansOnly, deadEndsOnly, sectionFilter, debouncedSearch]);
+    return { filteredNodes, allEdges, renderEdges, totalEdges: allEdges.length, degree };
+  }, [graph, orphansOnly, deadEndsOnly, sectionFilter, debouncedSearch, showNav, showFooter]);
+
+  // Table rows: every link under the current filters, one row per
+  // source→destination→position, with the number of links and their anchors.
+  const linkRows = useMemo(() => {
+    if (!globalGraph) return [];
+    const byKey = new Map<
+      string,
+      { source: string; target: string; position: string; links: number; anchors: Set<string> }
+    >();
+    for (const e of globalGraph.allEdges) {
+      const key = `${e.source}\u0000${e.target}\u0000${e.placement}`;
+      let row = byKey.get(key);
+      if (!row) {
+        row = { source: e.source, target: e.target, position: e.placement, links: 0, anchors: new Set() };
+        byKey.set(key, row);
+      }
+      row.links++;
+      if (e.anchorText?.trim()) row.anchors.add(e.anchorText.trim());
+    }
+    return [...byKey.values()].sort((a, b) => b.links - a.links || a.source.localeCompare(b.source));
+  }, [globalGraph]);
 
   // Global force graph — only when NOT in focus mode
   useEffect(() => {
-    if (focusUrl) return;
+    if (focusUrl || globalView !== "map") return;
     if (!globalGraph || !svgRef.current) return;
 
     // Copy nodes/edges so d3's force simulation mutates throwaway objects,
@@ -240,7 +277,7 @@ export default function LinkMap() {
       .force("link", d3.forceLink<any, any>(filteredEdges).id((d: any) => d.id).distance(50))
       .force("charge", d3.forceManyBody().strength(-200))
       .force("center", d3.forceCenter(0, 0))
-      .force("collide", d3.forceCollide().radius((d: any) => Math.sqrt((d as any).pagerank || 0) * 10 + 10));
+      .force("collide", d3.forceCollide().radius((d: any) => Math.min(26, 3 + Math.sqrt(globalGraph.degree.get(d.id) ?? 0) * 2) + 6));
 
     const link = g.append("g")
       .selectAll("line")
@@ -254,7 +291,7 @@ export default function LinkMap() {
       .selectAll("circle")
       .data(filteredNodes as any)
       .join("circle")
-      .attr("r", (d: any) => Math.max(4, Math.sqrt(d.pagerank || 0) * 20))
+      .attr("r", (d: any) => Math.min(26, Math.max(4, 3 + Math.sqrt(globalGraph.degree.get(d.id) ?? 0) * 2)))
       .attr("fill", (d: any) => (d.section === "core" ? "hsl(var(--primary))" : "hsl(var(--secondary-foreground))"))
       .attr("stroke", (d: any) => ((d.isOrphan || d.isDeadEnd) ? "hsl(var(--destructive))" : "hsl(var(--background))"))
       .attr("stroke-width", (d: any) => ((d.isOrphan || d.isDeadEnd) ? 3 : 1.5))
@@ -276,7 +313,10 @@ export default function LinkMap() {
           d.fy = null;
         }));
 
-    node.append("title").text((d: any) => d.id);
+    node.append("title").text(
+      (d: any) =>
+        `${d.id}\n${globalGraph.degree.get(d.id) ?? 0} connections under current filters · click for inbound & outbound links`,
+    );
 
     simulation.on("tick", () => {
       link
@@ -290,7 +330,7 @@ export default function LinkMap() {
     return () => {
       simulation.stop();
     };
-  }, [globalGraph, focusUrl]);
+  }, [globalGraph, focusUrl, globalView]);
 
   // Focused hub-and-spoke render
   useEffect(() => {
@@ -410,18 +450,22 @@ export default function LinkMap() {
           Link Map
           <InfoTip>Force-directed visualization of your site's internal link graph. Enter a full URL in Search URL to see a focused view of that page's neighbors, with scores combining semantic relevance, popularity, and prominence.</InfoTip>
         </h2>
-        <p className="text-muted-foreground mt-1 text-sm">Interactive visualization of site structure</p>
+        <p className="text-muted-foreground mt-1 text-sm">
+          Each dot is a page; each line is at least one hyperlink between two pages. Dot size = number of
+          connections under the current filters; color = site section. Hover or click a page for its inbound
+          and outbound links.
+        </p>
         <JobSpendCapNotice jobName="crawl_link_map" />
         <div className="mt-3">
           <HowThisWorks
-            summary="Force-directed view of every internal link on your site. Nodes are pages, edges are content-area links. Focused mode shows one page's neighborhood ranked by combined semantic / popularity / prominence score."
+            summary="Every internal link on your site as a map. Each dot is a page, each line is at least one hyperlink between two pages. By default only in-content (editorial) links are shown — turn on Navigation and Footer in the filter row to add template links, which dominate the raw totals."
             steps={[
-              { title: "Pick a view", body: "Leave the URL blank to see the global graph filtered by section and problem type. Paste a full URL into Search URL to switch to focused mode for that page." },
-              { title: "Read the colors and sizes", body: "Outbound links are blue, inbound are green. Node size scales with link degree, so big nodes are hubs and tiny nodes are orphans or dead-ends." },
-              { title: "Click a node to drill in", body: "Opens the side drawer with the page's title, tier, inbound/outbound counts, and the option to add the URL to the optimization queue." },
+              { title: "Pick a view", body: "Leave the URL blank to see the global map, or switch to the Table tab to list every link with its anchor text. Paste a full URL into Search URL to zoom into one page's neighborhood." },
+              { title: "Read the dots and lines", body: "Dot size = number of connections under the current filters, so big dots are hubs and tiny dots are barely linked. Color = site section (core vs outer). A red outline marks orphans and dead-ends." },
+              { title: "Click a page to drill in", body: "Opens the side drawer with the page's inbound links, outbound links, and the option to add the URL to the optimization queue." },
             ]}
             faqs={[
-              { title: "Why are some links not shown?", body: "Only content-area links count — header, footer, and sidebar links are filtered out by the placement classifier so the graph reflects editorial linking only." },
+              { title: "Why are some links not shown by default?", body: "The default view shows in-content links only — the editorial linking that actually shapes SEO. Navigation and footer template links are hidden because they dominate the raw link counts; flip them on in the Link placement filters to see them." },
               { title: "Why does my page look orphaned?", body: "Either nothing links to it from content, or those links were tagged as nav/sidebar. Check the Semantic Links Inbox for proposals targeting the page." },
             ]}
           />
@@ -484,6 +528,31 @@ export default function LinkMap() {
                       <SelectItem value="outer">Outer</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5">
+                    Link placement
+                    <InfoTip>
+                      In-content links (the editorial linking inside articles) are always shown.
+                      Turn on Navigation and Footer to add template links — these dominate the raw
+                      totals, so they're off by default.
+                    </InfoTip>
+                  </Label>
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <p className="text-sm">Navigation</p>
+                      <p className="text-xs text-muted-foreground">Menu &amp; header links</p>
+                    </div>
+                    <Switch checked={showNav} onCheckedChange={setShowNav} data-testid="switch-placement-nav" />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <p className="text-sm">Footer</p>
+                      <p className="text-xs text-muted-foreground">Footer template links</p>
+                    </div>
+                    <Switch checked={showFooter} onCheckedChange={setShowFooter} data-testid="switch-placement-footer" />
+                  </div>
                 </div>
 
                 <div className="space-y-4 pt-2">
@@ -671,14 +740,46 @@ export default function LinkMap() {
             </div>
           ) : (
             <>
-              {globalGraph && globalGraph.totalEdges > globalGraph.renderEdges.length && (
-                <div className="absolute top-3 left-3 right-3 z-10 rounded-md border bg-background/95 px-3 py-2 text-xs text-muted-foreground shadow-sm" data-testid="banner-edge-cap">
-                  Showing the {globalGraph.renderEdges.length.toLocaleString()} most important of{" "}
-                  {globalGraph.totalEdges.toLocaleString()} links so the map stays fast. Flagged links are
-                  always shown. Use the filters, or paste a page URL above to see everything around one page.
+              <div className="flex-none flex items-center gap-2 px-3 py-2 border-b bg-background/60">
+                <div className="inline-flex rounded-md border border-border/60 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setGlobalView("map")}
+                    aria-pressed={globalView === "map"}
+                    className={`px-2 py-1 inline-flex items-center gap-1 text-xs ${globalView === "map" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                    data-testid="button-global-view-map"
+                  >
+                    <Network className="h-3 w-3" /> Map
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGlobalView("table")}
+                    aria-pressed={globalView === "table"}
+                    className={`px-2 py-1 inline-flex items-center gap-1 text-xs ${globalView === "table" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                    data-testid="button-global-view-table"
+                  >
+                    <TableIcon className="h-3 w-3" /> Table
+                  </button>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {globalGraph ? `${globalGraph.totalEdges.toLocaleString()} links under current filters` : ""}
+                  {!showNav && !showFooter ? " · in-content only" : ""}
+                </span>
+              </div>
+              {globalView === "table" ? (
+                <GlobalLinksTable rows={linkRows} onSelectUrl={setSelectedNodeId} />
+              ) : (
+                <div className="relative flex-1 min-h-0">
+                  {globalGraph && globalGraph.totalEdges > globalGraph.renderEdges.length && (
+                    <div className="absolute top-3 left-3 right-3 z-10 rounded-md border bg-background/95 px-3 py-2 text-xs text-muted-foreground shadow-sm" data-testid="banner-edge-cap">
+                      Drawing the {globalGraph.renderEdges.length.toLocaleString()} most important of{" "}
+                      {globalGraph.totalEdges.toLocaleString()} links so the map stays fast. Flagged links are
+                      always shown — the Table tab lists every link under the current filters.
+                    </div>
+                  )}
+                  <svg ref={svgRef} className="w-full h-full" />
                 </div>
               )}
-              <svg ref={svgRef} className="w-full h-full" />
             </>
           )}
         </Card>
@@ -1367,6 +1468,92 @@ function ScoreBar({ label, value, color }: { label: string; value: number; color
       <div className="h-1.5 rounded bg-muted overflow-hidden">
         <div className="h-full" style={{ width: `${pct}%`, background: color }} />
       </div>
+    </div>
+  );
+}
+
+/** Global Table tab: every link under the current filters, one row per
+ *  source→destination→position, with the link count and anchor text. */
+const GLOBAL_TABLE_CAP = 800;
+function GlobalLinksTable({
+  rows,
+  onSelectUrl,
+}: {
+  rows: Array<{ source: string; target: string; position: string; links: number; anchors: Set<string> }>;
+  onSelectUrl: (url: string) => void;
+}) {
+  const shown = rows.slice(0, GLOBAL_TABLE_CAP);
+  const positionLabel: Record<string, string> = {
+    content: "In-content",
+    nav: "Navigation",
+    header: "Header",
+    footer: "Footer",
+    sidebar: "Sidebar",
+  };
+  return (
+    <div className="flex-1 min-h-0 overflow-auto">
+      {rows.length === 0 ? (
+        <div className="p-8 text-center text-sm text-muted-foreground">
+          No links match the current filters.
+        </div>
+      ) : (
+        <table className="w-full text-xs" data-testid="table-global-links">
+          <thead className="sticky top-0 bg-background border-b z-10">
+            <tr className="text-left text-muted-foreground">
+              <th className="py-2 px-3 font-medium">Source</th>
+              <th className="py-2 px-3 font-medium">Destination</th>
+              <th className="py-2 px-3 font-medium">Position</th>
+              <th className="py-2 px-3 font-medium text-right">Links</th>
+              <th className="py-2 px-3 font-medium">Anchor text</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((r, i) => (
+              <tr key={i} className="border-b border-border/40 hover:bg-muted/30 align-top">
+                <td className="py-2 px-3 max-w-[280px]">
+                  <button
+                    type="button"
+                    className="font-mono break-all text-left hover:text-primary hover:underline"
+                    onClick={() => onSelectUrl(r.source)}
+                    title="Open page details"
+                  >
+                    {r.source.replace(/^https?:\/\/[^/]+/, "") || "/"}
+                  </button>
+                </td>
+                <td className="py-2 px-3 max-w-[280px]">
+                  <button
+                    type="button"
+                    className="font-mono break-all text-left hover:text-primary hover:underline"
+                    onClick={() => onSelectUrl(r.target)}
+                    title="Open page details"
+                  >
+                    {r.target.replace(/^https?:\/\/[^/]+/, "") || "/"}
+                  </button>
+                </td>
+                <td className="py-2 px-3 whitespace-nowrap">
+                  <Badge variant={r.position === "content" ? "default" : "secondary"} className="text-[10px]">
+                    {positionLabel[r.position] ?? r.position}
+                  </Badge>
+                </td>
+                <td className="py-2 px-3 text-right font-mono">{r.links}</td>
+                <td className="py-2 px-3 max-w-[320px]">
+                  {r.anchors.size > 0 ? (
+                    <span className="break-words">{[...r.anchors].join(" · ")}</span>
+                  ) : (
+                    <span className="text-muted-foreground italic">(no anchor text)</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {rows.length > GLOBAL_TABLE_CAP && (
+        <div className="p-3 text-center text-xs text-muted-foreground border-t">
+          Showing the {GLOBAL_TABLE_CAP.toLocaleString()} most-linked of {rows.length.toLocaleString()} rows —
+          narrow the filters or search a URL to see the rest.
+        </div>
+      )}
     </div>
   );
 }

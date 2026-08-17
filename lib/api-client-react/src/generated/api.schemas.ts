@@ -697,6 +697,20 @@ export interface LinkGraphNode {
   clicks?: number | null;
 }
 
+/**
+ * Where the link sits on the source page. "content" = editorial in-body link; nav/header/footer are template (chrome) links.
+ */
+export type LinkGraphEdgePlacement = typeof LinkGraphEdgePlacement[keyof typeof LinkGraphEdgePlacement];
+
+
+export const LinkGraphEdgePlacement = {
+  content: 'content',
+  nav: 'nav',
+  header: 'header',
+  footer: 'footer',
+  sidebar: 'sidebar',
+} as const;
+
 export type LinkGraphEdgeAuditFlagsItem = typeof LinkGraphEdgeAuditFlagsItem[keyof typeof LinkGraphEdgeAuditFlagsItem];
 
 
@@ -711,6 +725,8 @@ export interface LinkGraphEdge {
   target: string;
   /** @nullable */
   anchorText?: string | null;
+  /** Where the link sits on the source page. "content" = editorial in-body link; nav/header/footer are template (chrome) links. */
+  placement: LinkGraphEdgePlacement;
   /**
      * Link-quality flags from the audit_link_quality job. Null = not audited yet (or a chrome edge).
      * @nullable
@@ -3212,7 +3228,7 @@ export interface TopicalMapSummary {
   /** @nullable */
   finishedAt: string | null;
   /**
-     * null | queued | running | complete | failed — current state of the per-map SERP competitor scan
+     * null | queued | running | complete | partial | failed — current state of the per-map SERP competitor scan. 'partial' means the scan ran but some topics were not covered (budget cap, timeouts, or task failures); re-run to make more progress.
      * @nullable
      */
   competitorScanStatus?: string | null;
