@@ -1503,7 +1503,7 @@ function ScoreBar({ label, value, color }: { label: string; value: number; color
 
 /** Global Table tab: every link under the current filters, one row per
  *  source→destination→position, with the link count and anchor text. */
-const GLOBAL_TABLE_CAP = 800;
+export const GLOBAL_TABLE_CAP = 800;
 
 const POSITION_LABEL: Record<string, string> = {
   content: "In-content",
@@ -1598,7 +1598,7 @@ function downloadLinksCsv(rows: Array<{ source: string; target: string; position
   URL.revokeObjectURL(a.href);
 }
 
-function buildLinksCsv(rows: Array<{ source: string; target: string; position: string; links: number; anchors: Set<string> }>): string {
+export function buildLinksCsv(rows: Array<{ source: string; target: string; position: string; links: number; anchors: Set<string> }>): string {
   const tsv = rowsToTsv(
     ["Source", "Destination", "Position", "Links", "Anchor text"],
     rows.map((r) => [
