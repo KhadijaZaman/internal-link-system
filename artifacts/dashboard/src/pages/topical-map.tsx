@@ -906,6 +906,8 @@ export default function TopicalMapPage() {
             onValueChange={(v) => {
               setSelectedRunId(Number(v));
               setSelectedNodeId(null);
+              setStatusFilter({ published: true, gap: true, ignored: true });
+              setPriorityFilter({ high: true, medium: true, low: true });
             }}
           >
             <SelectTrigger className="w-[320px]" data-testid="select-run">
