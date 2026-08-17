@@ -1026,12 +1026,12 @@ async function executeTool(
         });
       }
 
-      // Aggregate into weekly buckets when requested.
-      let points: { date: string; clicks: number; impressions: number }[];
-      if (granularity === "weekly") {
+      // Helper: aggregate daily rows into ISO-week buckets (YYYY-Www).
+      const toWeeklyPoints = (
+        rows: { key: string; clicks: number; impressions: number; ctr: number; position: number }[],
+      ): { date: string; clicks: number; impressions: number }[] => {
         const byWeek: Record<string, { clicks: number; impressions: number }> = {};
-        for (const row of dateRows) {
-          // ISO week label: YYYY-Www
+        for (const row of rows) {
           const d = new Date(`${row.key}T00:00:00Z`);
           const jan4 = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
           const startOfWeek = new Date(jan4.getTime() - ((jan4.getUTCDay() + 6) % 7) * 86_400_000);
@@ -1041,9 +1041,34 @@ async function executeTool(
           byWeek[label]!.clicks += row.clicks;
           byWeek[label]!.impressions += row.impressions;
         }
-        points = Object.entries(byWeek)
+        return Object.entries(byWeek)
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([date, v]) => ({ date, ...v }));
+      };
+
+      // Aggregate into weekly buckets when requested.
+      let points: { date: string; clicks: number; impressions: number }[];
+      let effectiveGranularity = granularity;
+      let notice: string | undefined;
+
+      if (granularity === "weekly") {
+        const weeklyPoints = toWeeklyPoints(dateRows);
+        // Fewer than 3 weekly buckets cannot show momentum — auto-downgrade to
+        // daily so the model works with the actual data shape.
+        if (weeklyPoints.length < 3) {
+          effectiveGranularity = "daily";
+          notice =
+            `Weekly granularity was requested but the date range (${startDate} to ${endDate}) ` +
+            `produced only ${weeklyPoints.length} weekly bucket${weeklyPoints.length === 1 ? "" : "s"} — ` +
+            `not enough to show momentum. Switched to daily granularity. ` +
+            `Treat this as a snapshot, not a trend.`;
+          points = dateRows
+            .slice()
+            .sort((a, b) => a.key.localeCompare(b.key))
+            .map((r) => ({ date: r.key, clicks: r.clicks, impressions: r.impressions }));
+        } else {
+          points = weeklyPoints;
+        }
       } else {
         points = dateRows
           .slice()
@@ -1060,10 +1085,12 @@ async function executeTool(
       return JSON.stringify({
         target,
         targetType: isPage ? "page" : "query",
-        granularity,
+        granularity: effectiveGranularity,
+        requestedGranularity: granularity,
         range: { startDate, endDate },
         pointCount: points.length,
         points,
+        ...(notice ? { notice } : {}),
       });
     } catch (err) {
       return JSON.stringify({ error: "GSC trend query failed", detail: String(err) });
