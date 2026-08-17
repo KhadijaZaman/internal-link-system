@@ -10,7 +10,7 @@
  *   - generateSkipGrams            (Auto-Suggest dominant words, LLM)
  *   - generateGrammar              (Grammar Generator, LLM)
  *
- * All LLM calls use gpt-4o-mini for cost. JSON-mode responses where possible.
+ * All LLM calls use gpt-5.4-mini for cost. JSON-mode responses where possible.
  * Fail-soft: every function catches OpenAI errors and returns a defensible
  * fallback (empty array / empty object) so a single bad call doesn't sink
  * the whole brief pipeline.
@@ -20,7 +20,7 @@ import OpenAI from "openai";
 import * as cheerio from "cheerio";
 import { logger } from "../lib/logger";
 
-export const SEMANTIC_MODEL = "gpt-4o-mini";
+export const SEMANTIC_MODEL = "gpt-5.4-mini";
 
 const STOPWORDS = new Set([
   "the","a","an","and","or","but","if","of","for","to","in","on","at","by","with","as","is","are","was","were","be","been","being","this","that","these","those","it","its","they","them","their","there","here","then","than","so","such","not","no","do","does","did","done","have","has","had","having","will","would","can","could","should","shall","may","might","must","i","you","we","he","she","him","her","our","your","my","mine","ours","yours","theirs","about","into","from","up","down","over","under","out","off","very","more","most","less","least","also","just","only","some","any","all","each","every","because","while","when","where","what","which","who","whom","whose","how","why","yes","ok","like","via","per",
@@ -121,7 +121,7 @@ async function callJson<T>(
     const client = getClient();
     const res = await client.chat.completions.create({
       model: SEMANTIC_MODEL,
-      max_tokens: maxTokens,
+      max_completion_tokens: maxTokens,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },

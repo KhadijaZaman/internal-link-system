@@ -35,14 +35,14 @@ import type { GroundingPassage } from "@workspace/db";
  *        skip-grams, grammar ontology.
  *   5. Build a master prompt that injects GSC perf + research signals +
  *      Khadija voice system prompt + Koray SEO rules.
- *   6. Generate the brief once with gpt-4o-mini.
+ *   6. Generate the brief once with gpt-5.4-mini.
  *   7. Run the Khadija quality gate (deterministic linter + LLM structure
  *      pass) and append a "## Quality Gate" markdown block to the brief.
  *
  * The brief is still on-demand only — no cron — per scheduler.ts.
  */
 
-export const BRIEF_MODEL = "gpt-4o-mini";
+export const BRIEF_MODEL = "gpt-5.4-mini";
 
 function getClient(): OpenAI {
   // Prefer the Replit AI-integrations proxy (credits managed by Replit).
@@ -319,7 +319,7 @@ VOICE NON-NEGOTIABLES (re-read system prompt):
   // 4) Generate brief
   const res = await client.chat.completions.create({
     model: BRIEF_MODEL,
-    max_tokens: 4000,
+    max_completion_tokens: 4000,
     messages: [
       { role: "system", content: `${KHADIJA_SYSTEM_PROMPT}\n\n${KORAY_SEO_RULES}` },
       { role: "user", content: master },

@@ -307,8 +307,8 @@ Return STRICT JSON only (no preamble, no markdown fences):
     try {
       const completion = await openai.chat.completions.create(
         {
-          model: "gpt-4o-mini",
-          max_tokens: 1400,
+          model: "gpt-5.4-mini",
+          max_completion_tokens: 1400,
           response_format: { type: "json_object" },
           messages: [
             { role: "system", content: system },

@@ -4,13 +4,13 @@ import { logger } from "../lib/logger";
 /**
  * Per-article topic/theme extraction for the Content Similarity Explorer.
  *
- * One gpt-4o-mini call per article returns its key topics and a one-sentence
+ * One gpt-5.4-mini call per article returns its key topics and a one-sentence
  * main theme. Fail-soft by design: any error returns empty topics and a null
  * theme — the article still participates in cosine-similarity scoring, which
  * only depends on the embedding.
  */
 
-const MODEL = "gpt-4o-mini";
+const MODEL = "gpt-5.4-mini";
 const TIMEOUT_MS = 60_000;
 /** Body text budget per article (title is sent separately). */
 export const ANALYSIS_INPUT_CHARS = 5000;

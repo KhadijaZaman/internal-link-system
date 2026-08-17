@@ -19,7 +19,7 @@ import { and, eq, desc, inArray, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
 
-const CHAT_MODEL = "gpt-4o-mini";
+const CHAT_MODEL = "gpt-5.4-mini";
 
 function getOpenAI(): OpenAI {
   // Prefer the Replit AI-integrations proxy (billed via Replit, no separate
@@ -588,7 +588,7 @@ router.post("/gsc/chat", requireAuth, requireSite, async (req, res) => {
     for (;;) {
       const completion = await openai.chat.completions.create({
         model: CHAT_MODEL,
-        max_tokens: 1400,
+        max_completion_tokens: 1400,
         messages: history,
         ...(toolCallsUsed < MAX_TOOL_CALLS ? { tools: TOOLS, tool_choice: "auto" as const } : {}),
       });
@@ -701,7 +701,7 @@ router.post("/gsc/chat/stream", requireAuth, requireSite, async (req, res) => {
 
       const stream = await openai.chat.completions.create({
         model: CHAT_MODEL,
-        max_tokens: 1400,
+        max_completion_tokens: 1400,
         stream: true,
         // Disable tools once the cap is reached to force a text reply.
         ...(toolCallsUsed < MAX_TOOL_CALLS ? { tools: TOOLS, tool_choice: "auto" } : {}),

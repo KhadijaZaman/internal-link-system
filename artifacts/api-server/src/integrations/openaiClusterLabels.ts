@@ -4,14 +4,14 @@ import { logger } from "../lib/logger";
 /**
  * AI topic labels for keyword clusters.
  *
- * One gpt-4o-mini call per batch of clusters returns a concise, human-readable
+ * One gpt-5.4-mini call per batch of clusters returns a concise, human-readable
  * label per cluster (e.g. "Startup & Business Ideas" instead of a raw member
  * keyword). Fail-soft by design: any error, timeout, or malformed response
  * leaves the caller's fallback label (the TF-IDF representative keyword) in
  * place — labeling must never fail a clustering run.
  */
 
-export const CLUSTER_LABEL_MODEL = "gpt-4o-mini";
+export const CLUSTER_LABEL_MODEL = "gpt-5.4-mini";
 const BATCH_SIZE = 40;
 const TIMEOUT_MS = 60_000;
 const MAX_KEYWORDS_PER_CLUSTER = 10;
