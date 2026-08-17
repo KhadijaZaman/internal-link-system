@@ -148,6 +148,39 @@ describe("weekly_digest cron loop — per-site error isolation", () => {
     expect(loggerErrorMock).not.toHaveBeenCalled();
   });
 
+  it("does not log an error when a site's digest job resolves immediately (subscriber-skip path)", async () => {
+    // Site 2 simulates the no-subscriber case: runWeeklyDigest detects no
+    // owner and returns without doing any work — the completion promise still
+    // resolves cleanly, so the cron loop must treat it as a quiet success,
+    // not an error.
+    runJobMock.mockImplementation(async (_name: string, site: { id: number }) => {
+      // All sites resolve — site 2 just resolves immediately (subscriber skip).
+      return { started: true, completion: Promise.resolve() };
+    });
+
+    await runJobForAllSites("weekly_digest");
+
+    expect(loggerErrorMock).not.toHaveBeenCalled();
+    // All three sites were still attempted; the skip does not abort the loop.
+    expect(runJobMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("processes all remaining sites after a no-subscriber site resolves quietly", async () => {
+    const calledSiteIds: number[] = [];
+    runJobMock.mockImplementation(async (_name: string, site: { id: number }) => {
+      calledSiteIds.push(site.id);
+      // Site 2 is the no-subscriber site: job starts, completion resolves
+      // immediately because runWeeklyDigest returned early.
+      return { started: true, completion: Promise.resolve() };
+    });
+
+    await runJobForAllSites("weekly_digest");
+
+    expect(calledSiteIds).toEqual([1, 2, 3]);
+    // Sites 1 and 3 (with owners) ran after the no-subscriber site 2.
+    expect(calledSiteIds.indexOf(2)).toBeLessThan(calledSiteIds.indexOf(3));
+  });
+
   it("handles the case where runJob itself throws (defensive catch path)", async () => {
     // runJob itself throwing (not the completion) is the outer defensive case —
     // e.g. the template renderer crashes before an email is even attempted.

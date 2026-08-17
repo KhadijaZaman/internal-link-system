@@ -201,6 +201,13 @@ export async function computeWeeklyDigest(siteId: number, now = new Date()): Pro
 
 /** Job entrypoint — upserts this ISO week's digest row. */
 export async function runWeeklyDigest(site: SiteContext): Promise<void> {
+  // A site with no owner has no subscribers to benefit from the digest.
+  // Return early without error so the cron loop can continue to the next site.
+  if (site.ownerUserId === null) {
+    logger.info({ siteId: site.id }, "Weekly digest: site has no subscribers, skipping");
+    return;
+  }
+
   const payload = await computeWeeklyDigest(site.id);
   await withDbRetry(
     () =>
