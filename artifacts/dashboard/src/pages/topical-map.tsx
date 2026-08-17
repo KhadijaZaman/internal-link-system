@@ -1236,6 +1236,15 @@ export default function TopicalMapPage() {
               {/* Keep the canvas mounted (hidden) so pan/zoom state survives view switches. */}
               <div ref={containerRef} className={viewMode === "map" ? "relative w-full" : "hidden"}>
                 <canvas ref={canvasRef} className="rounded-md border bg-white cursor-grab" />
+                {layout && layout.nodes.length === 0 && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
+                    <MapIcon className="h-8 w-8 text-muted-foreground/30" />
+                    <p className="text-sm font-medium text-muted-foreground">No topics generated</p>
+                    <p className="text-xs text-muted-foreground/70">
+                      The map ran but produced no topics — try regenerating with a broader charter.
+                    </p>
+                  </div>
+                )}
               </div>
               {viewMode === "table" && (
                 <div className="max-h-[640px] overflow-auto rounded-md border" data-testid="table-topical-map">
