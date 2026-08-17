@@ -18,10 +18,12 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } f
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
-import { Search, Filter, AlertTriangle, Link2, Target, X, Sparkles, ArrowRight, ExternalLink, Network, Table as TableIcon, ArrowUpDown, ShieldAlert } from "lucide-react";
+import { Search, Filter, AlertTriangle, Link2, Target, X, Sparkles, ArrowRight, ExternalLink, Network, Table as TableIcon, ArrowUpDown, ShieldAlert, Download } from "lucide-react";
 import { InfoTip } from "@/components/info-tip";
 import { HowThisWorks } from "@/components/how-this-works";
 import { JobSpendCapNotice } from "@/components/spend-cap-badge";
+import { CopyButton } from "@/components/copy-button";
+import { rowsToTsv, tsvToCsv } from "@/lib/clipboard";
 import * as d3 from "d3";
 import type { LinkGraphNode, LinkGraphFocusNeighbor, LinkGraphFocus } from "@workspace/api-client-react";
 
@@ -765,6 +767,33 @@ export default function LinkMap() {
                   {globalGraph ? `${globalGraph.totalEdges.toLocaleString()} links under current filters` : ""}
                   {!showNav && !showFooter ? " · in-content only" : ""}
                 </span>
+                {globalView === "table" && linkRows.length > 0 && (
+                  <div className="ml-auto flex items-center gap-1.5">
+                    <CopyButton
+                      getText={() => rowsToTsv(
+                        ["Source", "Destination", "Position", "Links", "Anchor text"],
+                        linkRows.map((r) => [
+                          r.source,
+                          r.target,
+                          POSITION_LABEL[r.position] ?? r.position,
+                          r.links,
+                          [...r.anchors].join(" · "),
+                        ]),
+                      )}
+                      label="Copy TSV"
+                      size="sm"
+                      toastTitle="Copied — paste into Google Sheets"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => downloadLinksCsv(linkRows)}
+                    >
+                      <Download className="h-4 w-4 mr-1" />
+                      Download CSV
+                    </Button>
+                  </div>
+                )}
               </div>
               {globalView === "table" ? (
                 <GlobalLinksTable rows={linkRows} onSelectUrl={setSelectedNodeId} />
@@ -1475,6 +1504,14 @@ function ScoreBar({ label, value, color }: { label: string; value: number; color
 /** Global Table tab: every link under the current filters, one row per
  *  source→destination→position, with the link count and anchor text. */
 const GLOBAL_TABLE_CAP = 800;
+
+const POSITION_LABEL: Record<string, string> = {
+  content: "In-content",
+  nav: "Navigation",
+  header: "Header",
+  footer: "Footer",
+  sidebar: "Sidebar",
+};
 function GlobalLinksTable({
   rows,
   onSelectUrl,
@@ -1483,12 +1520,6 @@ function GlobalLinksTable({
   onSelectUrl: (url: string) => void;
 }) {
   const shown = rows.slice(0, GLOBAL_TABLE_CAP);
-  const positionLabel: Record<string, string> = {
-    content: "In-content",
-    nav: "Navigation",
-    header: "Header",
-    footer: "Footer",
-  };
   return (
     <div className="flex-1 min-h-0 overflow-auto">
       {rows.length === 0 ? (
@@ -1531,7 +1562,7 @@ function GlobalLinksTable({
                 </td>
                 <td className="py-2 px-3 whitespace-nowrap">
                   <Badge variant={r.position === "content" ? "default" : "secondary"} className="text-[10px]">
-                    {positionLabel[r.position] ?? r.position}
+                    {POSITION_LABEL[r.position] ?? r.position}
                   </Badge>
                 </td>
                 <td className="py-2 px-3 text-right font-mono">{r.links}</td>
@@ -1555,4 +1586,28 @@ function GlobalLinksTable({
       )}
     </div>
   );
+}
+
+function downloadLinksCsv(rows: Array<{ source: string; target: string; position: string; links: number; anchors: Set<string> }>, filename = "internal-links.csv") {
+  const csv = buildLinksCsv(rows);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function buildLinksCsv(rows: Array<{ source: string; target: string; position: string; links: number; anchors: Set<string> }>): string {
+  const tsv = rowsToTsv(
+    ["Source", "Destination", "Position", "Links", "Anchor text"],
+    rows.map((r) => [
+      r.source,
+      r.target,
+      POSITION_LABEL[r.position] ?? r.position,
+      r.links,
+      [...r.anchors].join(" · "),
+    ]),
+  );
+  return tsvToCsv(tsv);
 }
