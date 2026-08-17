@@ -135,6 +135,9 @@ export default function TopicalMapPage() {
   const [statusFilter, setStatusFilter] = useState<
     Record<TopicalMapNode["status"], boolean>
   >({ published: true, gap: true, ignored: true });
+  const [priorityFilter, setPriorityFilter] = useState<
+    Record<"high" | "medium" | "low", boolean>
+  >({ high: true, medium: true, low: true });
   const [showBridges, setShowBridges] = useState(true);
   const [viewMode, setViewMode] = useState<"map" | "table">("map");
   const [formOpen, setFormOpen] = useState(false);
@@ -164,7 +167,7 @@ export default function TopicalMapPage() {
   ];
 
   function buildExportRows(): Cell[][] {
-    return orderedRows.filter(({ node }) => statusFilter[node.status]).map(({ node }) => [
+    return orderedRows.filter(({ node }) => statusFilter[node.status] && priorityFilter[node.priority as "high" | "medium" | "low"]).map(({ node }) => [
       node.title,
       node.level.replace("_", " "),
       node.section,
@@ -1079,6 +1082,40 @@ export default function TopicalMapPage() {
                       {label}
                     </button>
                   ))}
+                  <span className="text-muted-foreground/40 mx-0.5">|</span>
+                  {(
+                    [
+                      { key: "high" as const, label: "High", dot: "bg-rose-500" },
+                      { key: "medium" as const, label: "Medium", dot: "bg-orange-400" },
+                      { key: "low" as const, label: "Low", dot: "bg-sky-400" },
+                    ]
+                  ).map(({ key, label, dot }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() =>
+                        setPriorityFilter((f) => ({ ...f, [key]: !f[key] }))
+                      }
+                      className={`flex items-center gap-1 rounded-full border px-2 py-0.5 transition-colors ${
+                        priorityFilter[key]
+                          ? "border-border bg-muted/60 text-foreground"
+                          : "border-transparent text-muted-foreground/50 line-through"
+                      }`}
+                      title={
+                        priorityFilter[key]
+                          ? `Hide ${label.toLowerCase()}-priority topics`
+                          : `Show ${label.toLowerCase()}-priority topics`
+                      }
+                      data-testid={`button-filter-priority-${key}`}
+                    >
+                      <span
+                        className={`h-2.5 w-2.5 rounded-full inline-block ${dot} ${
+                          priorityFilter[key] ? "" : "opacity-30"
+                        }`}
+                      />
+                      {label}
+                    </button>
+                  ))}
                   <button
                     type="button"
                     onClick={() => setShowBridges((v) => !v)}
@@ -1179,7 +1216,7 @@ export default function TopicalMapPage() {
                     </TableHeader>
                     <TableBody>
                       {orderedRows
-                        .filter(({ node }) => statusFilter[node.status])
+                        .filter(({ node }) => statusFilter[node.status] && priorityFilter[node.priority as "high" | "medium" | "low"])
                         .map(({ node, depth }) => (
                           <TableRow
                             key={node.id}
