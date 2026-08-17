@@ -8,6 +8,7 @@
 
 /**
  * Where the link sits on the source page. "content" = editorial in-body link; nav/header/footer are template (chrome) links.
+ * Sidebar/complementary links are classified as "nav" by the crawler — "sidebar" is not a valid value.
  */
 export type LinkGraphEdgePlacement = typeof LinkGraphEdgePlacement[keyof typeof LinkGraphEdgePlacement];
 
@@ -17,5 +18,4 @@ export const LinkGraphEdgePlacement = {
   nav: 'nav',
   header: 'header',
   footer: 'footer',
-  sidebar: 'sidebar',
 } as const;

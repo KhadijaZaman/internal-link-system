@@ -13,6 +13,14 @@ import type * as cheerio from "cheerio";
  * sitemap crawler and the WP sitemap-content crawler can share the same
  * classifier and avoid drifting apart.
  */
+/**
+ * Sidebar / complementary-widget links are intentionally folded into "nav" by
+ * the classifier (see `classifyPlacement` below). They are excluded from
+ * internal-linking decisions the same way navigation chrome is, and the
+ * dashboard surfaces them under the same "Navigation" toggle. "sidebar" is
+ * therefore NOT a separate value in this union — it must not be added here or
+ * to the OpenAPI enum without also updating the classifier and the UI filter.
+ */
 export type LinkPlacement = "content" | "nav" | "header" | "footer";
 
 // cheerio v1 no longer re-exports htmlparser2 node types. We only need

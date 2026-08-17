@@ -505,7 +505,7 @@ export const GetLinkGraphResponse = zod.object({
   "source": zod.string(),
   "target": zod.string(),
   "anchorText": zod.string().nullish(),
-  "placement": zod.enum(['content', 'nav', 'header', 'footer', 'sidebar']).describe('Where the link sits on the source page. \"content\" = editorial in-body link; nav\/header\/footer are template (chrome) links.'),
+  "placement": zod.enum(['content', 'nav', 'header', 'footer']).describe('Where the link sits on the source page. \"content\" = editorial in-body link; nav\/header\/footer are template (chrome) links. Sidebar\/complementary links are classified as \"nav\" by the crawler.'),
   "auditFlags": zod.array(zod.enum(['off_topic', 'tier_violation', 'generic_anchor'])).nullish().describe('Link-quality flags from the audit_link_quality job. Null = not audited yet (or a chrome edge).'),
   "auditSimilarity": zod.number().nullish().describe('Source→target embedding cosine (null when either page has no embedding or the edge is unaudited).')
 })),

@@ -708,7 +708,6 @@ export const LinkGraphEdgePlacement = {
   nav: 'nav',
   header: 'header',
   footer: 'footer',
-  sidebar: 'sidebar',
 } as const;
 
 export type LinkGraphEdgeAuditFlagsItem = typeof LinkGraphEdgeAuditFlagsItem[keyof typeof LinkGraphEdgeAuditFlagsItem];
