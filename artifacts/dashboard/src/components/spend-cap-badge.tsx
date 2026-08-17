@@ -60,7 +60,15 @@ export function SpendCapBadge({
   );
 }
 
-export function JobSpendCapNotice({ jobName }: { jobName: RunnableJobName }) {
+export function JobSpendCapNotice({
+  jobName,
+  suppressed,
+}: {
+  jobName: RunnableJobName;
+  /** Hide the "run again to continue" notice, e.g. when the last run failed —
+   *  re-running would hit the same failure, not continue partial results. */
+  suppressed?: boolean;
+}) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const runJob = useRunJob();
@@ -69,7 +77,7 @@ export function JobSpendCapNotice({ jobName }: { jobName: RunnableJobName }) {
   });
   const job = jobs?.find((j) => j.name === jobName);
   const budget = job?.lastBudget;
-  if (!budget || !budget.capped) return null;
+  if (suppressed || !budget || !budget.capped) return null;
   const handleRunAgain = () => {
     runJob.mutate(
       { jobName },

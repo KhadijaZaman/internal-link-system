@@ -314,7 +314,7 @@ export default function Clustering() {
           ranking URLs. Each cluster shows your page vs the competitor pages winning
           the clicks.
         </p>
-        <JobSpendCapNotice jobName="keyword_clustering" />
+        <JobSpendCapNotice jobName="keyword_clustering" suppressed={!!failedLatest} />
       </div>
 
       <HowThisWorks
