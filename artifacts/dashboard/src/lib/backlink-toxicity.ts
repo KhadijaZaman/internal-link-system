@@ -6,7 +6,11 @@
  *   - Domain rank: low (<10) or unranked signals low-quality sites
  *   - High backlink volume from one domain (≥50) suggests sitewide/footer placement
  *   - Many links from a low-authority domain
+ *
+ * To add or remove suspicious TLDs, edit `spam-tlds.ts` — not this file.
  */
+
+import { SPAM_TLDS } from "./spam-tlds";
 
 export type RiskLevel = "low" | "medium" | "high";
 
@@ -14,43 +18,6 @@ export interface DomainRisk {
   flags: string[];
   level: RiskLevel;
 }
-
-/** TLDs that are disproportionately represented in link-spam campaigns. */
-const SUSPICIOUS_TLDS = new Set([
-  "xyz",
-  "click",
-  "loan",
-  "top",
-  "club",
-  "gq",
-  "ml",
-  "ga",
-  "cf",
-  "tk",
-  "pw",
-  "country",
-  "stream",
-  "download",
-  "work",
-  "cricket",
-  "science",
-  "racing",
-  "date",
-  "review",
-  "trade",
-  "win",
-  "bid",
-  "party",
-  "accountant",
-  "webcam",
-  "faith",
-  "men",
-  "icu",
-  "buzz",
-  "rest",
-  "online",
-  "site",
-]);
 
 export function scoreDomain(
   domain: string,
@@ -61,7 +28,7 @@ export function scoreDomain(
 
   // 1. Suspicious TLD
   const tld = domain.split(".").pop()?.toLowerCase() ?? "";
-  if (SUSPICIOUS_TLDS.has(tld)) {
+  if (SPAM_TLDS.has(tld)) {
     flags.push("Suspicious TLD");
   }
 
