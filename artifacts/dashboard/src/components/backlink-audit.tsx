@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetBacklinkAudit,
   useRunBacklinkAudit,
   getGetBacklinkAuditQueryKey,
 } from "@workspace/api-client-react";
-import type { BacklinkSummary, TopBacklink } from "@workspace/api-client-react";
+import type { BacklinkSummary, TopBacklink, AuditReferringDomain } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,11 +20,31 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { InfoTip } from "@/components/info-tip";
 import { CopyButton } from "@/components/copy-button";
 import { rowsToTsv } from "@/lib/clipboard";
+import {
+  scoreDomain,
+  isDomainFlagged,
+  buildDisavowTxt,
+  type DomainRisk,
+} from "@/lib/backlink-toxicity";
 import { useToast } from "@/hooks/use-toast";
-import { ShieldCheck, RefreshCw, ExternalLink, Anchor, Globe2 } from "lucide-react";
+import {
+  ShieldCheck,
+  RefreshCw,
+  ExternalLink,
+  Anchor,
+  Globe2,
+  TriangleAlert,
+  Download,
+  Filter,
+} from "lucide-react";
 
 function num(n: number | null | undefined): string {
   return typeof n === "number" ? n.toLocaleString() : "—";
@@ -42,6 +62,33 @@ function FollowBadge({ dofollow }: { dofollow: boolean }) {
     >
       {dofollow ? "dofollow" : "nofollow"}
     </Badge>
+  );
+}
+
+function RiskBadge({ risk }: { risk: DomainRisk }) {
+  if (risk.level === "low") return null;
+  const isHigh = risk.level === "high";
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge
+          variant="outline"
+          className={
+            isHigh
+              ? "text-xs text-red-700 dark:text-red-400 border-red-500/30 bg-red-500/10 cursor-help"
+              : "text-xs text-amber-700 dark:text-amber-400 border-amber-500/30 bg-amber-500/10 cursor-help"
+          }
+        >
+          <TriangleAlert className="h-3 w-3 mr-1" />
+          {isHigh ? "High risk" : "Medium risk"}
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent side="right" className="max-w-[260px] text-xs space-y-1">
+        {risk.flags.map((f) => (
+          <div key={f}>• {f}</div>
+        ))}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -101,6 +148,150 @@ function BenchmarkTable({ own, competitors }: { own: BacklinkSummary; competitor
   );
 }
 
+function downloadFile(filename: string, content: string) {
+  const blob = new Blob([content], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+interface ScoredDomain {
+  domain: AuditReferringDomain;
+  risk: DomainRisk;
+}
+
+function ReferringDomainsCard({ referringDomains }: { referringDomains: AuditReferringDomain[] }) {
+  const [showFlagged, setShowFlagged] = useState(false);
+
+  const scored = useMemo<ScoredDomain[]>(
+    () =>
+      referringDomains.map((d) => ({
+        domain: d,
+        risk: scoreDomain(d.domain, d.rank, d.backlinks),
+      })),
+    [referringDomains],
+  );
+
+  const flagged = useMemo(() => scored.filter((s) => isDomainFlagged(s.risk)), [scored]);
+  const visible = showFlagged ? flagged : scored;
+
+  const handleExportDisavow = () => {
+    const txt = buildDisavowTxt(flagged.map((s) => s.domain.domain));
+    downloadFile("disavow.txt", txt);
+  };
+
+  const handleCopy = () =>
+    rowsToTsv(
+      ["Domain", "Rank", "Backlinks", "First seen"],
+      visible.map((s) => [
+        s.domain.domain,
+        s.domain.rank ?? "",
+        s.domain.backlinks,
+        s.domain.firstSeen ?? "",
+      ]),
+    );
+
+  return (
+    <Card>
+      <CardContent className="pt-5 space-y-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <h3 className="text-sm font-medium flex items-center gap-1.5">
+            <Globe2 className="h-4 w-4" /> Top referring domains
+            <InfoTip>Domains linking to you, ordered by link volume.</InfoTip>
+          </h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            {flagged.length > 0 && (
+              <Button
+                variant={showFlagged ? "default" : "outline"}
+                size="sm"
+                className="h-7 text-xs gap-1.5"
+                onClick={() => setShowFlagged((v) => !v)}
+                data-testid="button-filter-flagged"
+              >
+                <Filter className="h-3.5 w-3.5" />
+                Flagged
+                <Badge
+                  variant={showFlagged ? "secondary" : "outline"}
+                  className="ml-0.5 text-xs px-1.5 py-0"
+                >
+                  {flagged.length}
+                </Badge>
+              </Button>
+            )}
+            {showFlagged && flagged.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1.5 text-red-700 dark:text-red-400 border-red-500/30 hover:bg-red-500/10"
+                onClick={handleExportDisavow}
+                data-testid="button-export-disavow"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export disavow.txt
+              </Button>
+            )}
+            <CopyButton getText={handleCopy} disabled={visible.length === 0} />
+          </div>
+        </div>
+
+        {showFlagged && flagged.length > 0 && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+            <TriangleAlert className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            <span>
+              {flagged.length} domain{flagged.length !== 1 ? "s" : ""} flagged by risk signals. Review
+              carefully before disavowing — legitimate domains can trigger these signals too. Export
+              the list and submit it in Google Search Console's Disavow Links tool.
+            </span>
+          </div>
+        )}
+
+        <div className="border rounded-lg overflow-x-auto max-h-[480px] overflow-y-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Domain</TableHead>
+                <TableHead className="text-right">Rank</TableHead>
+                <TableHead className="text-right">Backlinks</TableHead>
+                {showFlagged && <TableHead>Risk signals</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {visible.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={showFlagged ? 4 : 3} className="text-center text-sm text-muted-foreground py-6">
+                    {showFlagged ? "No flagged domains found." : "No referring domains."}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                visible.map((s) => (
+                  <TableRow key={s.domain.domain}>
+                    <TableCell className="text-sm">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {s.domain.domain}
+                        <RiskBadge risk={s.risk} />
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{s.domain.rank ?? "—"}</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{num(s.domain.backlinks)}</TableCell>
+                    {showFlagged && (
+                      <TableCell className="text-xs text-muted-foreground max-w-[280px]">
+                        {s.risk.flags.join(" · ")}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function BacklinkAuditSection() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -147,6 +338,7 @@ export function BacklinkAuditSection() {
           <p className="text-sm text-muted-foreground mt-1">
             Your complete backlink profile — authority, dofollow quality, anchor
             distribution, and top earned links — benchmarked against competitors.
+            Toxic or spammy referring domains are flagged for disavowal.
           </p>
         </div>
         {audit && (
@@ -308,50 +500,7 @@ export function BacklinkAuditSection() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardContent className="pt-5 space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-medium flex items-center gap-1.5">
-                    <Globe2 className="h-4 w-4" /> Top referring domains
-                    <InfoTip>Domains linking to you, ordered by link volume.</InfoTip>
-                  </h3>
-                  <CopyButton
-                    getText={() =>
-                      rowsToTsv(
-                        ["Domain", "Rank", "Backlinks", "First seen"],
-                        audit.referringDomains.map((d) => [
-                          d.domain,
-                          d.rank ?? "",
-                          d.backlinks,
-                          d.firstSeen ?? "",
-                        ]),
-                      )
-                    }
-                    disabled={audit.referringDomains.length === 0}
-                  />
-                </div>
-                <div className="border rounded-lg overflow-x-auto max-h-[480px] overflow-y-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Domain</TableHead>
-                        <TableHead className="text-right">Rank</TableHead>
-                        <TableHead className="text-right">Backlinks</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {audit.referringDomains.map((d) => (
-                        <TableRow key={d.domain}>
-                          <TableCell className="text-sm">{d.domain}</TableCell>
-                          <TableCell className="text-right tabular-nums text-sm">{d.rank ?? "—"}</TableCell>
-                          <TableCell className="text-right tabular-nums text-sm">{num(d.backlinks)}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
+            <ReferringDomainsCard referringDomains={audit.referringDomains} />
           </div>
 
           <Card>
