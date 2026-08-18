@@ -348,9 +348,9 @@ export default function InsightsPage() {
         <div>
           <h2 className="font-display text-lg">The full report</h2>
           <p className="text-sm text-muted-foreground">
-            Seven sections, one pass — near-miss keywords, intent clusters, content gaps, technical
-            debt, internal linking, backlinks, and this week's movement. Each links to the tool that
-            fixes it.
+            Three questions, one pass — what the demand data says (Google Search Console), what each
+            click was actually worth (Search Console × GA4), and the demand Google never shows you
+            (Bing). Each section says which decision it drives and links to the tool that acts on it.
           </p>
         </div>
         <SeoReportSections />

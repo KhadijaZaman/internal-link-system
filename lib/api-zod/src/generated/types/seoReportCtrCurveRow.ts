@@ -6,9 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface SeoReportPageAtRisk {
+export interface SeoReportCtrCurveRow {
   path: string;
-  clicks: number;
   impressions: number;
-  issue: string;
+  clicks: number;
+  position: number;
+  actualCtr: number;
+  expectedCtr: number;
+  ratio: number;
+  missedClicks: number;
 }

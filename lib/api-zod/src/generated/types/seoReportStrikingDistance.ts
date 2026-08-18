@@ -5,9 +5,9 @@
  * Linkweave internal linking system API
  * OpenAPI spec version: 0.1.0
  */
-import type { SeoReportContentGap } from './seoReportContentGap';
+import type { SeoReportStrikingDistanceQuery } from './seoReportStrikingDistanceQuery';
 
-export interface SeoReportContentGaps {
+export interface SeoReportStrikingDistance {
   available: boolean;
   /** @nullable */
   note: string | null;
@@ -15,5 +15,6 @@ export interface SeoReportContentGaps {
   windowStart: string | null;
   /** @nullable */
   windowEnd: string | null;
-  gaps: SeoReportContentGap[];
+  totalCandidates: number;
+  queries: SeoReportStrikingDistanceQuery[];
 }

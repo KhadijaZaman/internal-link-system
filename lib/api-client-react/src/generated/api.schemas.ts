@@ -2059,7 +2059,55 @@ export interface ResearchRunResponse {
   findings: ResearchFinding[];
 }
 
-export interface SeoReportNearMissQuery {
+export interface SeoReportWindow {
+  /** @nullable */
+  start: string | null;
+  /** @nullable */
+  end: string | null;
+}
+
+export interface SeoReportQueryIntegrityUrl {
+  path: string;
+  impressions: number;
+  sharePct: number;
+  position: number;
+}
+
+export interface SeoReportQueryIntegrityRow {
+  query: string;
+  impressions: number;
+  clicks: number;
+  urls: SeoReportQueryIntegrityUrl[];
+}
+
+export interface SeoReportQueryIntegrity {
+  available: boolean;
+  /** @nullable */
+  note: string | null;
+  totalCount: number;
+  rows: SeoReportQueryIntegrityRow[];
+}
+
+export interface SeoReportCtrCurveRow {
+  path: string;
+  impressions: number;
+  clicks: number;
+  position: number;
+  actualCtr: number;
+  expectedCtr: number;
+  ratio: number;
+  missedClicks: number;
+}
+
+export interface SeoReportCtrCurve {
+  available: boolean;
+  /** @nullable */
+  note: string | null;
+  belowCurve: SeoReportCtrCurveRow[];
+  aboveCurve: SeoReportCtrCurveRow[];
+}
+
+export interface SeoReportStrikingDistanceQuery {
   query: string;
   position: number;
   impressions: number;
@@ -2070,7 +2118,7 @@ export interface SeoReportNearMissQuery {
   bestPath: string | null;
 }
 
-export interface SeoReportNearMiss {
+export interface SeoReportStrikingDistance {
   available: boolean;
   /** @nullable */
   note: string | null;
@@ -2079,144 +2127,136 @@ export interface SeoReportNearMiss {
   /** @nullable */
   windowEnd: string | null;
   totalCandidates: number;
-  queries: SeoReportNearMissQuery[];
+  queries: SeoReportStrikingDistanceQuery[];
 }
 
-export type SeoReportClusterIntent = typeof SeoReportClusterIntent[keyof typeof SeoReportClusterIntent];
-
-
-export const SeoReportClusterIntent = {
-  commercial: 'commercial',
-  informational: 'informational',
-} as const;
-
-export interface SeoReportCluster {
-  topic: string;
-  intent: SeoReportClusterIntent;
-  keywordCount: number;
-  totalImpressions: number;
-  totalClicks: number;
-  /** @nullable */
-  avgPosition: number | null;
+export interface SeoReportQueryDiscoveryRow {
+  path: string;
+  queriesNow: number;
+  queriesBefore: number;
+  delta: number;
 }
 
-export interface SeoReportClusters {
+export interface SeoReportQueryDiscovery {
   available: boolean;
   /** @nullable */
   note: string | null;
   /** @nullable */
-  runFinishedAt: string | null;
-  commercialCount: number;
-  informationalCount: number;
-  clusters: SeoReportCluster[];
+  dateNow: string | null;
+  /** @nullable */
+  dateBefore: string | null;
+  gainers: SeoReportQueryDiscoveryRow[];
+  losers: SeoReportQueryDiscoveryRow[];
 }
 
-export interface SeoReportContentGap {
-  query: string;
+export interface SeoReportIndexingTemplateRow {
+  /** @nullable */
+  section: string | null;
+  totalPages: number;
+  pagesWithImpressions: number;
+  zeroImpressionPct: number;
+}
+
+export interface SeoReportIndexingByTemplate {
+  available: boolean;
+  /** @nullable */
+  note: string | null;
+  sections: SeoReportIndexingTemplateRow[];
+}
+
+export interface SeoReportInvestRow {
+  path: string;
+  /** @nullable */
+  title: string | null;
+  /** @nullable */
+  section: string | null;
+  clicks: number;
+  impressions: number;
+  /** @nullable */
+  position: number | null;
+  sessions: number;
+  /** @nullable */
+  engagementRate: number | null;
+  keyEvents: number;
+  /** @nullable */
+  topQuery: string | null;
+}
+
+export interface SeoReportInvestMap {
+  available: boolean;
+  /** @nullable */
+  note: string | null;
+  pages: SeoReportInvestRow[];
+}
+
+export interface SeoReportTitleRewriteRow {
+  path: string;
+  /** @nullable */
+  title: string | null;
   impressions: number;
   clicks: number;
   position: number;
-  /** @nullable */
-  bestPath: string | null;
+  actualCtr: number;
+  expectedCtr: number;
+  missedClicks: number;
+  keyEvents: number;
 }
 
-export interface SeoReportContentGaps {
+export interface SeoReportTitleRewrites {
   available: boolean;
   /** @nullable */
   note: string | null;
-  /** @nullable */
-  windowStart: string | null;
-  /** @nullable */
-  windowEnd: string | null;
-  gaps: SeoReportContentGap[];
+  pages: SeoReportTitleRewriteRow[];
 }
 
-export interface SeoReportTechAudit {
-  type: string;
-  runAt: string;
-  itemCount: number;
-}
-
-export interface SeoReportPageAtRisk {
+export interface SeoReportWrongIntentRow {
   path: string;
-  clicks: number;
-  impressions: number;
-  issue: string;
-}
-
-export interface SeoReportTechDebt {
-  available: boolean;
-  /** @nullable */
-  note: string | null;
-  audits: SeoReportTechAudit[];
-  notIndexedCount: number;
-  topPagesAtRisk: SeoReportPageAtRisk[];
-}
-
-export interface SeoReportLinkGapItem {
-  url: string;
   /** @nullable */
   title: string | null;
-  isOrphan: boolean;
-  isDeadEnd: boolean;
-  inboundCount: number;
-  outboundCount: number;
+  /** @nullable */
+  topQuery: string | null;
   clicks: number;
+  /** @nullable */
+  engagementRate: number | null;
+  /** @nullable */
+  avgEngagementTime: number | null;
+  keyEvents: number;
 }
 
-export interface SeoReportLinkGaps {
+export interface SeoReportWrongIntent {
   available: boolean;
   /** @nullable */
   note: string | null;
-  orphanCount: number;
-  deadEndCount: number;
-  items: SeoReportLinkGapItem[];
+  pages: SeoReportWrongIntentRow[];
 }
 
-export interface SeoReportBacklinkDomain {
-  domain: string;
-  backlinks: number;
+export interface SeoReportBingOnlyRow {
+  query: string;
+  impressions: number;
+  clicks: number;
   /** @nullable */
-  rank: number | null;
-  /** @nullable */
-  firstSeen: string | null;
-  /** @nullable */
-  lastSeen: string | null;
+  position: number | null;
 }
 
-export interface SeoReportBacklinks {
+export interface SeoReportBingOnlyQueries {
   available: boolean;
   /** @nullable */
   note: string | null;
-  domains: SeoReportBacklinkDomain[];
-}
-
-export interface SeoReportWeekly {
-  available: boolean;
-  /** @nullable */
-  note: string | null;
-  /** @nullable */
-  weekOf: string | null;
-  /** @nullable */
-  healthCurrent: number | null;
-  /** @nullable */
-  healthDelta: number | null;
-  newIssues: number;
-  completed: number;
-  winsImproved: number;
-  winsDeclined: number;
-  openActions: number;
-  priorities: string[];
+  queries: SeoReportBingOnlyRow[];
 }
 
 export interface SeoReportResponse {
-  nearMiss: SeoReportNearMiss;
-  clusters: SeoReportClusters;
-  contentGaps: SeoReportContentGaps;
-  techDebt: SeoReportTechDebt;
-  linkGaps: SeoReportLinkGaps;
-  backlinks: SeoReportBacklinks;
-  weekly: SeoReportWeekly;
+  window: SeoReportWindow;
+  generatedAt: string;
+  queryIntegrity: SeoReportQueryIntegrity;
+  ctrCurve: SeoReportCtrCurve;
+  strikingDistance: SeoReportStrikingDistance;
+  queryDiscovery: SeoReportQueryDiscovery;
+  indexingByTemplate: SeoReportIndexingByTemplate;
+  investMap: SeoReportInvestMap;
+  titleRewrites: SeoReportTitleRewrites;
+  wrongIntent: SeoReportWrongIntent;
+  bingOnlyQueries: SeoReportBingOnlyQueries;
 }
 
 export interface GscDimensionRow {

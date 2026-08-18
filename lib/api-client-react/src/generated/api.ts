@@ -6731,7 +6731,7 @@ export const getGetSeoReportUrl = () => {
 }
 
 /**
- * @summary Comprehensive 7-section GSC analysis report — near-miss keywords, intent clusters, content gaps, technical debt, internal linking gaps, backlink profile, weekly movement
+ * @summary Strategic 9-section SEO report — query integrity, CTR-vs-curve, striking distance, query discovery, indexing by template, invest map, title rewrites, wrong-intent, Bing-only queries
  */
 export const getSeoReport = async ( options?: RequestInit): Promise<SeoReportResponse> => {
 
@@ -6778,7 +6778,7 @@ export type GetSeoReportQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Comprehensive 7-section GSC analysis report — near-miss keywords, intent clusters, content gaps, technical debt, internal linking gaps, backlink profile, weekly movement
+ * @summary Strategic 9-section SEO report — query integrity, CTR-vs-curve, striking distance, query discovery, indexing by template, invest map, title rewrites, wrong-intent, Bing-only queries
  */
 
 export function useGetSeoReport<TData = Awaited<ReturnType<typeof getSeoReport>>, TError = ErrorType<unknown>>(

@@ -1625,10 +1625,10 @@ paths:
     get:
       operationId: getSeoReport
       tags: [report]
-      summary: Comprehensive 7-section GSC analysis report — near-miss keywords, intent clusters, content gaps, technical debt, internal linking gaps, backlink profile, weekly movement
+      summary: Strategic 9-section SEO report — query integrity, CTR-vs-curve, striking distance, query discovery, indexing by template, invest map, title rewrites, wrong-intent, Bing-only queries
       responses:
         "200":
-          description: Seven report sections; each carries `available` + `note` so missing data sources degrade gracefully
+          description: Nine report sections; each carries `available` + `note` so missing data sources degrade gracefully
           content:
             application/json:
               schema:
@@ -4484,7 +4484,71 @@ components:
         findings:
           type: array
           items: { $ref: "#/components/schemas/ResearchFinding" }
-    SeoReportNearMissQuery:
+    SeoReportWindow:
+      type: object
+      required: [start, end]
+      properties:
+        start: { type: ["string", "null"] }
+        end: { type: ["string", "null"] }
+    # --- Section 1: query integrity (cannibalization & mismapping) ---
+    SeoReportQueryIntegrityUrl:
+      type: object
+      required: [path, impressions, sharePct, position]
+      properties:
+        path: { type: string }
+        impressions: { type: integer }
+        # Share of THIS query's impressions across the returned URLs only —
+        # NOT a share of all site queries (GSC anonymizes low-volume queries).
+        sharePct: { type: number }
+        position: { type: number }
+    SeoReportQueryIntegrityRow:
+      type: object
+      required: [query, impressions, clicks, urls]
+      properties:
+        query: { type: string }
+        impressions: { type: integer }
+        clicks: { type: integer }
+        urls:
+          type: array
+          items: { $ref: "#/components/schemas/SeoReportQueryIntegrityUrl" }
+    SeoReportQueryIntegrity:
+      type: object
+      required: [available, note, rows, totalCount]
+      properties:
+        available: { type: boolean }
+        note: { type: ["string", "null"] }
+        totalCount: { type: integer }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/SeoReportQueryIntegrityRow" }
+    # --- Section 2: CTR vs expected curve ---
+    SeoReportCtrCurveRow:
+      type: object
+      required: [path, impressions, clicks, position, actualCtr, expectedCtr, ratio, missedClicks]
+      properties:
+        path: { type: string }
+        impressions: { type: integer }
+        clicks: { type: integer }
+        position: { type: number }
+        actualCtr: { type: number }
+        expectedCtr: { type: number }
+        ratio: { type: number }
+        # Clicks lost vs the position benchmark (expectedCtr*impressions - clicks).
+        missedClicks: { type: integer }
+    SeoReportCtrCurve:
+      type: object
+      required: [available, note, belowCurve, aboveCurve]
+      properties:
+        available: { type: boolean }
+        note: { type: ["string", "null"] }
+        belowCurve:
+          type: array
+          items: { $ref: "#/components/schemas/SeoReportCtrCurveRow" }
+        aboveCurve:
+          type: array
+          items: { $ref: "#/components/schemas/SeoReportCtrCurveRow" }
+    # --- Section 3: striking distance (near-miss) ---
+    SeoReportStrikingDistanceQuery:
       type: object
       required: [query, position, impressions, clicks, score, page2, bestPath]
       properties:
@@ -4494,10 +4558,10 @@ components:
         clicks: { type: integer }
         # position × volume ranking score (impressions × closeness to page 1).
         score: { type: number }
-        # True when the query sits on page 2 (position > 10) — page 2 → page 1 candidates.
+        # True when the query sits on page 2 (position > 10).
         page2: { type: boolean }
         bestPath: { type: ["string", "null"] }
-    SeoReportNearMiss:
+    SeoReportStrikingDistance:
       type: object
       required: [available, note, windowStart, windowEnd, totalCandidates, queries]
       properties:
@@ -4508,152 +4572,162 @@ components:
         totalCandidates: { type: integer }
         queries:
           type: array
-          items: { $ref: "#/components/schemas/SeoReportNearMissQuery" }
-    SeoReportCluster:
+          items: { $ref: "#/components/schemas/SeoReportStrikingDistanceQuery" }
+    # --- Section 4: query discovery (coverage expansion per URL) ---
+    SeoReportQueryDiscoveryRow:
       type: object
-      required: [topic, intent, keywordCount, totalImpressions, totalClicks, avgPosition]
+      required: [path, queriesNow, queriesBefore, delta]
       properties:
-        topic: { type: string }
-        intent:
-          type: string
-          enum: [commercial, informational]
-        keywordCount: { type: integer }
-        totalImpressions: { type: integer }
-        totalClicks: { type: integer }
-        avgPosition: { type: ["number", "null"] }
-    SeoReportClusters:
+        path: { type: string }
+        queriesNow: { type: integer }
+        queriesBefore: { type: integer }
+        delta: { type: integer }
+    SeoReportQueryDiscovery:
       type: object
-      required: [available, note, runFinishedAt, commercialCount, informationalCount, clusters]
+      required: [available, note, dateNow, dateBefore, gainers, losers]
       properties:
         available: { type: boolean }
         note: { type: ["string", "null"] }
-        runFinishedAt: { type: ["string", "null"], format: date-time }
-        commercialCount: { type: integer }
-        informationalCount: { type: integer }
-        clusters:
+        dateNow: { type: ["string", "null"] }
+        dateBefore: { type: ["string", "null"] }
+        gainers:
           type: array
-          items: { $ref: "#/components/schemas/SeoReportCluster" }
-    SeoReportContentGap:
+          items: { $ref: "#/components/schemas/SeoReportQueryDiscoveryRow" }
+        losers:
+          type: array
+          items: { $ref: "#/components/schemas/SeoReportQueryDiscoveryRow" }
+    # --- Section 5: indexing by template (structural coverage proxy) ---
+    SeoReportIndexingTemplateRow:
       type: object
-      required: [query, impressions, clicks, position, bestPath]
+      required: [section, totalPages, pagesWithImpressions, zeroImpressionPct]
+      properties:
+        section: { type: ["string", "null"] }
+        totalPages: { type: integer }
+        pagesWithImpressions: { type: integer }
+        zeroImpressionPct: { type: number }
+    SeoReportIndexingByTemplate:
+      type: object
+      required: [available, note, sections]
+      properties:
+        available: { type: boolean }
+        note: { type: ["string", "null"] }
+        sections:
+          type: array
+          items: { $ref: "#/components/schemas/SeoReportIndexingTemplateRow" }
+    # --- Section 6: invest map (where to invest) ---
+    SeoReportInvestRow:
+      type: object
+      required: [path, title, section, clicks, impressions, position, sessions, engagementRate, keyEvents, topQuery]
+      properties:
+        path: { type: string }
+        title: { type: ["string", "null"] }
+        section: { type: ["string", "null"] }
+        clicks: { type: integer }
+        impressions: { type: integer }
+        position: { type: ["number", "null"] }
+        sessions: { type: integer }
+        engagementRate: { type: ["number", "null"] }
+        keyEvents: { type: integer }
+        topQuery: { type: ["string", "null"] }
+    SeoReportInvestMap:
+      type: object
+      required: [available, note, pages]
+      properties:
+        available: { type: boolean }
+        note: { type: ["string", "null"] }
+        pages:
+          type: array
+          items: { $ref: "#/components/schemas/SeoReportInvestRow" }
+    # --- Section 7: title rewrites ---
+    SeoReportTitleRewriteRow:
+      type: object
+      required: [path, title, impressions, clicks, position, actualCtr, expectedCtr, missedClicks, keyEvents]
+      properties:
+        path: { type: string }
+        title: { type: ["string", "null"] }
+        impressions: { type: integer }
+        clicks: { type: integer }
+        position: { type: number }
+        actualCtr: { type: number }
+        expectedCtr: { type: number }
+        missedClicks: { type: integer }
+        keyEvents: { type: integer }
+    SeoReportTitleRewrites:
+      type: object
+      required: [available, note, pages]
+      properties:
+        available: { type: boolean }
+        note: { type: ["string", "null"] }
+        pages:
+          type: array
+          items: { $ref: "#/components/schemas/SeoReportTitleRewriteRow" }
+    # --- Section 8: wrong intent ---
+    SeoReportWrongIntentRow:
+      type: object
+      required: [path, title, topQuery, clicks, engagementRate, avgEngagementTime, keyEvents]
+      properties:
+        path: { type: string }
+        title: { type: ["string", "null"] }
+        topQuery: { type: ["string", "null"] }
+        clicks: { type: integer }
+        engagementRate: { type: ["number", "null"] }
+        avgEngagementTime: { type: ["number", "null"] }
+        keyEvents: { type: integer }
+    SeoReportWrongIntent:
+      type: object
+      required: [available, note, pages]
+      properties:
+        available: { type: boolean }
+        note: { type: ["string", "null"] }
+        pages:
+          type: array
+          items: { $ref: "#/components/schemas/SeoReportWrongIntentRow" }
+    # --- Section 9: Bing-only queries ---
+    SeoReportBingOnlyRow:
+      type: object
+      required: [query, impressions, clicks, position]
       properties:
         query: { type: string }
         impressions: { type: integer }
         clicks: { type: integer }
-        position: { type: number }
-        # The page currently ranking for the query, if any.
-        bestPath: { type: ["string", "null"] }
-    SeoReportContentGaps:
+        position: { type: ["number", "null"] }
+    SeoReportBingOnlyQueries:
       type: object
-      required: [available, note, windowStart, windowEnd, gaps]
+      required: [available, note, queries]
       properties:
         available: { type: boolean }
         note: { type: ["string", "null"] }
-        windowStart: { type: ["string", "null"] }
-        windowEnd: { type: ["string", "null"] }
-        gaps:
+        queries:
           type: array
-          items: { $ref: "#/components/schemas/SeoReportContentGap" }
-    SeoReportTechAudit:
-      type: object
-      required: [type, runAt, itemCount]
-      properties:
-        type: { type: string }
-        runAt: { type: string, format: date-time }
-        itemCount: { type: integer }
-    SeoReportTechDebt:
-      type: object
-      required: [available, note, audits, notIndexedCount, topPagesAtRisk]
-      properties:
-        available: { type: boolean }
-        note: { type: ["string", "null"] }
-        audits:
-          type: array
-          items: { $ref: "#/components/schemas/SeoReportTechAudit" }
-        # Sitemap URLs the crawler/GSC knows about that carry no impressions at all.
-        notIndexedCount: { type: integer }
-        topPagesAtRisk:
-          type: array
-          items: { $ref: "#/components/schemas/SeoReportPageAtRisk" }
-    SeoReportPageAtRisk:
-      type: object
-      required: [path, clicks, impressions, issue]
-      properties:
-        path: { type: string }
-        clicks: { type: integer }
-        impressions: { type: integer }
-        issue: { type: string }
-    SeoReportLinkGapItem:
-      type: object
-      required: [url, title, isOrphan, isDeadEnd, inboundCount, outboundCount, clicks]
-      properties:
-        url: { type: string }
-        title: { type: ["string", "null"] }
-        isOrphan: { type: boolean }
-        isDeadEnd: { type: boolean }
-        inboundCount: { type: integer }
-        outboundCount: { type: integer }
-        # GSC clicks on this page (latest sync) — the traffic at stake.
-        clicks: { type: integer }
-    SeoReportLinkGaps:
-      type: object
-      required: [available, note, orphanCount, deadEndCount, items]
-      properties:
-        available: { type: boolean }
-        note: { type: ["string", "null"] }
-        orphanCount: { type: integer }
-        deadEndCount: { type: integer }
-        items:
-          type: array
-          items: { $ref: "#/components/schemas/SeoReportLinkGapItem" }
-    SeoReportBacklinkDomain:
-      type: object
-      required: [domain, backlinks, rank, firstSeen, lastSeen]
-      properties:
-        domain: { type: string }
-        backlinks: { type: integer }
-        # DataForSEO domain rank (0-1000, comparable to DR). Null when unknown.
-        rank: { type: ["integer", "null"] }
-        firstSeen: { type: ["string", "null"] }
-        lastSeen: { type: ["string", "null"] }
-    SeoReportBacklinks:
-      type: object
-      required: [available, note, domains]
-      properties:
-        available: { type: boolean }
-        note: { type: ["string", "null"] }
-        domains:
-          type: array
-          items: { $ref: "#/components/schemas/SeoReportBacklinkDomain" }
-    SeoReportWeekly:
-      type: object
-      required: [available, note, weekOf, healthCurrent, healthDelta, newIssues, completed, winsImproved, winsDeclined, openActions, priorities]
-      properties:
-        available: { type: boolean }
-        note: { type: ["string", "null"] }
-        weekOf: { type: ["string", "null"] }
-        healthCurrent: { type: ["number", "null"] }
-        healthDelta: { type: ["number", "null"] }
-        newIssues: { type: integer }
-        completed: { type: integer }
-        winsImproved: { type: integer }
-        winsDeclined: { type: integer }
-        openActions: { type: integer }
-        # Up to three plain-English priorities for the week.
-        priorities:
-          type: array
-          items: { type: string }
+          items: { $ref: "#/components/schemas/SeoReportBingOnlyRow" }
     SeoReportResponse:
       type: object
-      required: [nearMiss, clusters, contentGaps, techDebt, linkGaps, backlinks, weekly]
+      required:
+        [
+          window,
+          generatedAt,
+          queryIntegrity,
+          ctrCurve,
+          strikingDistance,
+          queryDiscovery,
+          indexingByTemplate,
+          investMap,
+          titleRewrites,
+          wrongIntent,
+          bingOnlyQueries,
+        ]
       properties:
-        nearMiss: { $ref: "#/components/schemas/SeoReportNearMiss" }
-        clusters: { $ref: "#/components/schemas/SeoReportClusters" }
-        contentGaps: { $ref: "#/components/schemas/SeoReportContentGaps" }
-        techDebt: { $ref: "#/components/schemas/SeoReportTechDebt" }
-        linkGaps: { $ref: "#/components/schemas/SeoReportLinkGaps" }
-        backlinks: { $ref: "#/components/schemas/SeoReportBacklinks" }
-        weekly: { $ref: "#/components/schemas/SeoReportWeekly" }
+        window: { $ref: "#/components/schemas/SeoReportWindow" }
+        generatedAt: { type: string, format: date-time }
+        queryIntegrity: { $ref: "#/components/schemas/SeoReportQueryIntegrity" }
+        ctrCurve: { $ref: "#/components/schemas/SeoReportCtrCurve" }
+        strikingDistance: { $ref: "#/components/schemas/SeoReportStrikingDistance" }
+        queryDiscovery: { $ref: "#/components/schemas/SeoReportQueryDiscovery" }
+        indexingByTemplate: { $ref: "#/components/schemas/SeoReportIndexingByTemplate" }
+        investMap: { $ref: "#/components/schemas/SeoReportInvestMap" }
+        titleRewrites: { $ref: "#/components/schemas/SeoReportTitleRewrites" }
+        wrongIntent: { $ref: "#/components/schemas/SeoReportWrongIntent" }
+        bingOnlyQueries: { $ref: "#/components/schemas/SeoReportBingOnlyQueries" }
     GscDimensionRow:
       type: object
       required: [key, clicks, impressions, ctr, position]

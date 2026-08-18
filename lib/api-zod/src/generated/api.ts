@@ -2464,10 +2464,55 @@ export const GetSeoInsightsResponse = zod.object({
 
 
 /**
- * @summary Comprehensive 7-section GSC analysis report — near-miss keywords, intent clusters, content gaps, technical debt, internal linking gaps, backlink profile, weekly movement
+ * @summary Strategic 9-section SEO report — query integrity, CTR-vs-curve, striking distance, query discovery, indexing by template, invest map, title rewrites, wrong-intent, Bing-only queries
  */
 export const GetSeoReportResponse = zod.object({
-  "nearMiss": zod.object({
+  "window": zod.object({
+  "start": zod.string().nullable(),
+  "end": zod.string().nullable()
+}),
+  "generatedAt": zod.coerce.date(),
+  "queryIntegrity": zod.object({
+  "available": zod.boolean(),
+  "note": zod.string().nullable(),
+  "totalCount": zod.number(),
+  "rows": zod.array(zod.object({
+  "query": zod.string(),
+  "impressions": zod.number(),
+  "clicks": zod.number(),
+  "urls": zod.array(zod.object({
+  "path": zod.string(),
+  "impressions": zod.number(),
+  "sharePct": zod.number(),
+  "position": zod.number()
+}))
+}))
+}),
+  "ctrCurve": zod.object({
+  "available": zod.boolean(),
+  "note": zod.string().nullable(),
+  "belowCurve": zod.array(zod.object({
+  "path": zod.string(),
+  "impressions": zod.number(),
+  "clicks": zod.number(),
+  "position": zod.number(),
+  "actualCtr": zod.number(),
+  "expectedCtr": zod.number(),
+  "ratio": zod.number(),
+  "missedClicks": zod.number()
+})),
+  "aboveCurve": zod.array(zod.object({
+  "path": zod.string(),
+  "impressions": zod.number(),
+  "clicks": zod.number(),
+  "position": zod.number(),
+  "actualCtr": zod.number(),
+  "expectedCtr": zod.number(),
+  "ratio": zod.number(),
+  "missedClicks": zod.number()
+}))
+}),
+  "strikingDistance": zod.object({
   "available": zod.boolean(),
   "note": zod.string().nullable(),
   "windowStart": zod.string().nullable(),
@@ -2483,88 +2528,87 @@ export const GetSeoReportResponse = zod.object({
   "bestPath": zod.string().nullable()
 }))
 }),
-  "clusters": zod.object({
+  "queryDiscovery": zod.object({
   "available": zod.boolean(),
   "note": zod.string().nullable(),
-  "runFinishedAt": zod.coerce.date().nullable(),
-  "commercialCount": zod.number(),
-  "informationalCount": zod.number(),
-  "clusters": zod.array(zod.object({
-  "topic": zod.string(),
-  "intent": zod.enum(['commercial', 'informational']),
-  "keywordCount": zod.number(),
-  "totalImpressions": zod.number(),
-  "totalClicks": zod.number(),
-  "avgPosition": zod.number().nullable()
+  "dateNow": zod.string().nullable(),
+  "dateBefore": zod.string().nullable(),
+  "gainers": zod.array(zod.object({
+  "path": zod.string(),
+  "queriesNow": zod.number(),
+  "queriesBefore": zod.number(),
+  "delta": zod.number()
+})),
+  "losers": zod.array(zod.object({
+  "path": zod.string(),
+  "queriesNow": zod.number(),
+  "queriesBefore": zod.number(),
+  "delta": zod.number()
 }))
 }),
-  "contentGaps": zod.object({
+  "indexingByTemplate": zod.object({
   "available": zod.boolean(),
   "note": zod.string().nullable(),
-  "windowStart": zod.string().nullable(),
-  "windowEnd": zod.string().nullable(),
-  "gaps": zod.array(zod.object({
-  "query": zod.string(),
+  "sections": zod.array(zod.object({
+  "section": zod.string().nullable(),
+  "totalPages": zod.number(),
+  "pagesWithImpressions": zod.number(),
+  "zeroImpressionPct": zod.number()
+}))
+}),
+  "investMap": zod.object({
+  "available": zod.boolean(),
+  "note": zod.string().nullable(),
+  "pages": zod.array(zod.object({
+  "path": zod.string(),
+  "title": zod.string().nullable(),
+  "section": zod.string().nullable(),
+  "clicks": zod.number(),
+  "impressions": zod.number(),
+  "position": zod.number().nullable(),
+  "sessions": zod.number(),
+  "engagementRate": zod.number().nullable(),
+  "keyEvents": zod.number(),
+  "topQuery": zod.string().nullable()
+}))
+}),
+  "titleRewrites": zod.object({
+  "available": zod.boolean(),
+  "note": zod.string().nullable(),
+  "pages": zod.array(zod.object({
+  "path": zod.string(),
+  "title": zod.string().nullable(),
   "impressions": zod.number(),
   "clicks": zod.number(),
   "position": zod.number(),
-  "bestPath": zod.string().nullable()
+  "actualCtr": zod.number(),
+  "expectedCtr": zod.number(),
+  "missedClicks": zod.number(),
+  "keyEvents": zod.number()
 }))
 }),
-  "techDebt": zod.object({
+  "wrongIntent": zod.object({
   "available": zod.boolean(),
   "note": zod.string().nullable(),
-  "audits": zod.array(zod.object({
-  "type": zod.string(),
-  "runAt": zod.coerce.date(),
-  "itemCount": zod.number()
-})),
-  "notIndexedCount": zod.number(),
-  "topPagesAtRisk": zod.array(zod.object({
+  "pages": zod.array(zod.object({
   "path": zod.string(),
-  "clicks": zod.number(),
-  "impressions": zod.number(),
-  "issue": zod.string()
-}))
-}),
-  "linkGaps": zod.object({
-  "available": zod.boolean(),
-  "note": zod.string().nullable(),
-  "orphanCount": zod.number(),
-  "deadEndCount": zod.number(),
-  "items": zod.array(zod.object({
-  "url": zod.string(),
   "title": zod.string().nullable(),
-  "isOrphan": zod.boolean(),
-  "isDeadEnd": zod.boolean(),
-  "inboundCount": zod.number(),
-  "outboundCount": zod.number(),
-  "clicks": zod.number()
+  "topQuery": zod.string().nullable(),
+  "clicks": zod.number(),
+  "engagementRate": zod.number().nullable(),
+  "avgEngagementTime": zod.number().nullable(),
+  "keyEvents": zod.number()
 }))
 }),
-  "backlinks": zod.object({
+  "bingOnlyQueries": zod.object({
   "available": zod.boolean(),
   "note": zod.string().nullable(),
-  "domains": zod.array(zod.object({
-  "domain": zod.string(),
-  "backlinks": zod.number(),
-  "rank": zod.number().nullable(),
-  "firstSeen": zod.string().nullable(),
-  "lastSeen": zod.string().nullable()
+  "queries": zod.array(zod.object({
+  "query": zod.string(),
+  "impressions": zod.number(),
+  "clicks": zod.number(),
+  "position": zod.number().nullable()
 }))
-}),
-  "weekly": zod.object({
-  "available": zod.boolean(),
-  "note": zod.string().nullable(),
-  "weekOf": zod.string().nullable(),
-  "healthCurrent": zod.number().nullable(),
-  "healthDelta": zod.number().nullable(),
-  "newIssues": zod.number(),
-  "completed": zod.number(),
-  "winsImproved": zod.number(),
-  "winsDeclined": zod.number(),
-  "openActions": zod.number(),
-  "priorities": zod.array(zod.string())
 })
 })
 

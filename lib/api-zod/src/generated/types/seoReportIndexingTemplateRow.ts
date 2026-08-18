@@ -6,11 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface SeoReportContentGap {
-  query: string;
-  impressions: number;
-  clicks: number;
-  position: number;
+export interface SeoReportIndexingTemplateRow {
   /** @nullable */
-  bestPath: string | null;
+  section: string | null;
+  totalPages: number;
+  pagesWithImpressions: number;
+  zeroImpressionPct: number;
 }

@@ -6,13 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface SeoReportBacklinkDomain {
-  domain: string;
-  backlinks: number;
+export interface SeoReportWindow {
   /** @nullable */
-  rank: number | null;
+  start: string | null;
   /** @nullable */
-  firstSeen: string | null;
-  /** @nullable */
-  lastSeen: string | null;
+  end: string | null;
 }

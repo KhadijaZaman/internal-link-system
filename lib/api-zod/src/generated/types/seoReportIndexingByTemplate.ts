@@ -5,11 +5,11 @@
  * Linkweave internal linking system API
  * OpenAPI spec version: 0.1.0
  */
-import type { SeoReportBacklinkDomain } from './seoReportBacklinkDomain';
+import type { SeoReportIndexingTemplateRow } from './seoReportIndexingTemplateRow';
 
-export interface SeoReportBacklinks {
+export interface SeoReportIndexingByTemplate {
   available: boolean;
   /** @nullable */
   note: string | null;
-  domains: SeoReportBacklinkDomain[];
+  sections: SeoReportIndexingTemplateRow[];
 }

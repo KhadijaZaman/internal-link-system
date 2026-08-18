@@ -5,20 +5,27 @@
  * Linkweave internal linking system API
  * OpenAPI spec version: 0.1.0
  */
-import type { SeoReportBacklinks } from './seoReportBacklinks';
-import type { SeoReportClusters } from './seoReportClusters';
-import type { SeoReportContentGaps } from './seoReportContentGaps';
-import type { SeoReportLinkGaps } from './seoReportLinkGaps';
-import type { SeoReportNearMiss } from './seoReportNearMiss';
-import type { SeoReportTechDebt } from './seoReportTechDebt';
-import type { SeoReportWeekly } from './seoReportWeekly';
+import type { SeoReportBingOnlyQueries } from './seoReportBingOnlyQueries';
+import type { SeoReportCtrCurve } from './seoReportCtrCurve';
+import type { SeoReportIndexingByTemplate } from './seoReportIndexingByTemplate';
+import type { SeoReportInvestMap } from './seoReportInvestMap';
+import type { SeoReportQueryDiscovery } from './seoReportQueryDiscovery';
+import type { SeoReportQueryIntegrity } from './seoReportQueryIntegrity';
+import type { SeoReportStrikingDistance } from './seoReportStrikingDistance';
+import type { SeoReportTitleRewrites } from './seoReportTitleRewrites';
+import type { SeoReportWindow } from './seoReportWindow';
+import type { SeoReportWrongIntent } from './seoReportWrongIntent';
 
 export interface SeoReportResponse {
-  nearMiss: SeoReportNearMiss;
-  clusters: SeoReportClusters;
-  contentGaps: SeoReportContentGaps;
-  techDebt: SeoReportTechDebt;
-  linkGaps: SeoReportLinkGaps;
-  backlinks: SeoReportBacklinks;
-  weekly: SeoReportWeekly;
+  window: SeoReportWindow;
+  generatedAt: Date;
+  queryIntegrity: SeoReportQueryIntegrity;
+  ctrCurve: SeoReportCtrCurve;
+  strikingDistance: SeoReportStrikingDistance;
+  queryDiscovery: SeoReportQueryDiscovery;
+  indexingByTemplate: SeoReportIndexingByTemplate;
+  investMap: SeoReportInvestMap;
+  titleRewrites: SeoReportTitleRewrites;
+  wrongIntent: SeoReportWrongIntent;
+  bingOnlyQueries: SeoReportBingOnlyQueries;
 }

@@ -5,13 +5,11 @@
  * Linkweave internal linking system API
  * OpenAPI spec version: 0.1.0
  */
-import type { SeoReportLinkGapItem } from './seoReportLinkGapItem';
+import type { SeoReportInvestRow } from './seoReportInvestRow';
 
-export interface SeoReportLinkGaps {
+export interface SeoReportInvestMap {
   available: boolean;
   /** @nullable */
   note: string | null;
-  orphanCount: number;
-  deadEndCount: number;
-  items: SeoReportLinkGapItem[];
+  pages: SeoReportInvestRow[];
 }

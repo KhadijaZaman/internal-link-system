@@ -6,8 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface SeoReportTechAudit {
-  type: string;
-  runAt: Date;
-  itemCount: number;
+export interface SeoReportBingOnlyRow {
+  query: string;
+  impressions: number;
+  clicks: number;
+  /** @nullable */
+  position: number | null;
 }

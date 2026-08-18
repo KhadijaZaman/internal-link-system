@@ -6,13 +6,15 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface SeoReportLinkGapItem {
-  url: string;
+export interface SeoReportTitleRewriteRow {
+  path: string;
   /** @nullable */
   title: string | null;
-  isOrphan: boolean;
-  isDeadEnd: boolean;
-  inboundCount: number;
-  outboundCount: number;
+  impressions: number;
   clicks: number;
+  position: number;
+  actualCtr: number;
+  expectedCtr: number;
+  missedClicks: number;
+  keyEvents: number;
 }

@@ -6,7 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface SeoReportNearMissQuery {
+export interface SeoReportStrikingDistanceQuery {
   query: string;
   position: number;
   impressions: number;
