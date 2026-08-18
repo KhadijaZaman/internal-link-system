@@ -134,8 +134,24 @@ async function fetchSitemapUrls(sitemapUrl: string, domain: string): Promise<str
     // partial crawl with stale edges and no visible failure signal.
     const nested = await Promise.all(
       children.map(async (c) => {
+        // The origin's CDN intermittently caches an empty-but-200 child
+        // sitemap body. Retry a 0-URL result with a cache-busting query param
+        // (forces an origin fetch) before accepting it; genuinely empty
+        // sitemaps still pass after the retries.
         try {
-          return await fetchSitemapUrls(c, domain);
+          let urls: string[] = [];
+          for (let attempt = 0; attempt < 3; attempt++) {
+            if (attempt > 0) await new Promise((r) => setTimeout(r, 2000 * attempt));
+            const url =
+              attempt === 0 ? c : `${c}${c.includes("?") ? "&" : "?"}_cb=${Date.now()}`;
+            urls = await fetchSitemapUrls(url, domain);
+            if (urls.length > 0) break;
+            logger.warn(
+              { child: c, attempt: attempt + 1 },
+              "Crawl: child sitemap returned 0 URLs — retrying with cache-buster",
+            );
+          }
+          return urls;
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           throw new Error(`Child sitemap ${c} failed: ${msg}`);
