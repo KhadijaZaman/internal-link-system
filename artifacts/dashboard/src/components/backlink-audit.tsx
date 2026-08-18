@@ -3,9 +3,18 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetBacklinkAudit,
   useRunBacklinkAudit,
+  useGetBacklinkHistory,
   getGetBacklinkAuditQueryKey,
 } from "@workspace/api-client-react";
-import type { BacklinkSummary, TopBacklink, AuditReferringDomain } from "@workspace/api-client-react";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip as RechartsTooltip,
+} from "recharts";
+import type { BacklinkHistoryPoint, BacklinkSummary, TopBacklink, AuditReferringDomain } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,9 +53,8 @@ import {
   TriangleAlert,
   Download,
   Filter,
+  TrendingUp,
 } from "lucide-react";
-import type { BacklinkHistoryPoint, BacklinkSummary, TopBacklink } from "@workspace/api-client-react";
-import { ShieldCheck, RefreshCw, ExternalLink, Anchor, Globe2, TrendingUp } from "lucide-react";
 
 function num(n: number | null | undefined): string {
   return typeof n === "number" ? n.toLocaleString() : "—";
@@ -607,7 +615,7 @@ function MiniSparkline({
       <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
         <XAxis dataKey="date" hide />
         <YAxis domain={["auto", "auto"]} hide />
-        <Tooltip
+        <RechartsTooltip
           contentStyle={{ fontSize: "11px", padding: "4px 8px" }}
           labelFormatter={(v) => String(v)}
           formatter={(v: number) => [v.toLocaleString(), METRIC_LABELS[metric]]}
