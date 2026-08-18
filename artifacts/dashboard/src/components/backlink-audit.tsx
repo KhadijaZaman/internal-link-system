@@ -1,20 +1,12 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetBacklinkAudit,
   useRunBacklinkAudit,
-  useGetBacklinkHistory,
   getGetBacklinkAuditQueryKey,
+  useGetBacklinkHistory,
 } from "@workspace/api-client-react";
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip as RechartsTooltip,
-} from "recharts";
-import type { BacklinkHistoryPoint, BacklinkSummary, TopBacklink, AuditReferringDomain } from "@workspace/api-client-react";
+import type { BacklinkSummary, TopBacklink, AuditReferringDomain, BacklinkHistoryPoint } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,11 +29,13 @@ import {
 import { InfoTip } from "@/components/info-tip";
 import { CopyButton } from "@/components/copy-button";
 import { rowsToTsv } from "@/lib/clipboard";
+import { useSiteContext } from "@/lib/site-context";
 import {
   scoreDomain,
   scoreAnchor,
   isDomainFlagged,
   buildDisavowTxt,
+  mergeDisavowDomains,
   type DomainRisk,
   type AnchorRisk,
 } from "@/lib/backlink-toxicity";
@@ -56,7 +50,16 @@ import {
   Download,
   Filter,
   TrendingUp,
+  Flag,
 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  LineChart,
+  XAxis,
+  YAxis,
+  Tooltip as RechartsTooltip,
+  Line,
+} from "recharts";
 
 function num(n: number | null | undefined): string {
   return typeof n === "number" ? n.toLocaleString() : "—";
@@ -189,14 +192,38 @@ function downloadFile(filename: string, content: string) {
   a.click();
   URL.revokeObjectURL(url);
 }
-
 interface ScoredDomain {
   domain: AuditReferringDomain;
   risk: DomainRisk;
 }
 
 export function ReferringDomainsCard({ referringDomains }: { referringDomains: AuditReferringDomain[] }) {
+  const { activeSite } = useSiteContext();
+  const siteId = activeSite?.id ?? null;
+  const storageKey = siteId != null ? disavowStorageKey(siteId) : null;
+
   const [showFlagged, setShowFlagged] = useState(false);
+  const [manualDisavow, setManualDisavow] = useState<Set<string>>(() =>
+    storageKey ? loadManualDisavow(storageKey) : new Set()
+  );
+
+  // Reload persisted decisions whenever the active site changes.
+  useEffect(() => {
+    setManualDisavow(storageKey ? loadManualDisavow(storageKey) : new Set());
+  }, [storageKey]);
+
+  const toggleManualDisavow = useCallback((domain: string) => {
+    setManualDisavow((prev) => {
+      const next = new Set(prev);
+      if (next.has(domain)) {
+        next.delete(domain);
+      } else {
+        next.add(domain);
+      }
+      if (storageKey) persistManualDisavow(storageKey, next);
+      return next;
+    });
+  }, [storageKey]);
 
   const scored = useMemo<ScoredDomain[]>(
     () =>
@@ -210,8 +237,13 @@ export function ReferringDomainsCard({ referringDomains }: { referringDomains: A
   const flagged = useMemo(() => scored.filter((s) => isDomainFlagged(s.risk)), [scored]);
   const visible = showFlagged ? flagged : scored;
 
+  const totalForExport = useMemo(
+    () => mergeDisavowDomains(flagged.map((s) => s.domain.domain), manualDisavow),
+    [flagged, manualDisavow],
+  );
+
   const handleExportDisavow = () => {
-    const txt = buildDisavowTxt(flagged.map((s) => s.domain.domain));
+    const txt = buildDisavowTxt(totalForExport);
     downloadFile("disavow.txt", txt);
   };
 
@@ -225,6 +257,8 @@ export function ReferringDomainsCard({ referringDomains }: { referringDomains: A
         s.domain.firstSeen ?? "",
       ]),
     );
+
+  const showExportButton = totalForExport.length > 0 && (showFlagged || manualDisavow.size > 0);
 
   return (
     <Card>
@@ -253,7 +287,7 @@ export function ReferringDomainsCard({ referringDomains }: { referringDomains: A
                 </Badge>
               </Button>
             )}
-            {showFlagged && flagged.length > 0 && (
+            {showExportButton && (
               <Button
                 variant="outline"
                 size="sm"
@@ -263,6 +297,11 @@ export function ReferringDomainsCard({ referringDomains }: { referringDomains: A
               >
                 <Download className="h-3.5 w-3.5" />
                 Export disavow.txt
+                {totalForExport.length > 0 && (
+                  <Badge variant="outline" className="ml-0.5 text-xs px-1.5 py-0">
+                    {totalForExport.length}
+                  </Badge>
+                )}
               </Button>
             )}
             <CopyButton getText={handleCopy} disabled={visible.length === 0} />
@@ -273,9 +312,10 @@ export function ReferringDomainsCard({ referringDomains }: { referringDomains: A
           <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
             <TriangleAlert className="h-3.5 w-3.5 mt-0.5 shrink-0" />
             <span>
-              {flagged.length} domain{flagged.length !== 1 ? "s" : ""} flagged by risk signals. Review
-              carefully before disavowing — legitimate domains can trigger these signals too. Export
-              the list and submit it in Google Search Console's Disavow Links tool.
+              {flagged.length} domain{flagged.length !== 1 ? "s" : ""} flagged by risk signals.
+              {manualDisavow.size > 0 && ` ${manualDisavow.size} additional domain${manualDisavow.size !== 1 ? "s" : ""} manually marked.`}{" "}
+              Review carefully before disavowing — legitimate domains can trigger these signals too.
+              Export the list and submit it in Google Search Console's Disavow Links tool.
             </span>
           </div>
         )}
@@ -288,33 +328,58 @@ export function ReferringDomainsCard({ referringDomains }: { referringDomains: A
                 <TableHead className="text-right">Rank</TableHead>
                 <TableHead className="text-right">Backlinks</TableHead>
                 {showFlagged && <TableHead>Risk signals</TableHead>}
+                <TableHead className="w-8">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Flag className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent side="left" className="text-xs max-w-[200px]">
+                      Flag a domain to include it in the disavow export, even if it isn't auto-flagged by risk signals.
+                    </TooltipContent>
+                  </Tooltip>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {visible.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={showFlagged ? 4 : 3} className="text-center text-sm text-muted-foreground py-6">
+                  <TableCell colSpan={showFlagged ? 5 : 4} className="text-center text-sm text-muted-foreground py-6">
                     {showFlagged ? "No flagged domains found." : "No referring domains."}
                   </TableCell>
                 </TableRow>
               ) : (
-                visible.map((s) => (
-                  <TableRow key={s.domain.domain}>
-                    <TableCell className="text-sm">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {s.domain.domain}
-                        <RiskBadge risk={s.risk} />
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{s.domain.rank ?? "—"}</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{num(s.domain.backlinks)}</TableCell>
-                    {showFlagged && (
-                      <TableCell className="text-xs text-muted-foreground max-w-[280px]">
-                        {s.risk.flags.join(" · ")}
+                visible.map((s) => {
+                  const isManual = manualDisavow.has(s.domain.domain);
+                  return (
+                    <TableRow key={s.domain.domain}>
+                      <TableCell className="text-sm">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {s.domain.domain}
+                          <RiskBadge risk={s.risk} />
+                        </div>
                       </TableCell>
-                    )}
-                  </TableRow>
-                ))
+                      <TableCell className="text-right tabular-nums text-sm">{s.domain.rank ?? "—"}</TableCell>
+                      <TableCell className="text-right tabular-nums text-sm">{num(s.domain.backlinks)}</TableCell>
+                      {showFlagged && (
+                        <TableCell className="text-xs text-muted-foreground max-w-[280px]">
+                          {s.risk.flags.join(" · ")}
+                        </TableCell>
+                      )}
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className={`h-6 w-6 p-0 ${isManual ? "text-red-500 hover:text-red-600" : "text-muted-foreground hover:text-foreground"}`}
+                          onClick={() => toggleManualDisavow(s.domain.domain)}
+                          title={isManual ? "Remove from disavow list" : "Mark for disavowal"}
+                          data-testid={`button-toggle-disavow-${s.domain.domain}`}
+                        >
+                          <Flag className="h-3.5 w-3.5" fill={isManual ? "currentColor" : "none"} />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -715,3 +780,23 @@ const METRIC_LABELS: Record<HistoryMetric, string> = {
   referringDomains: "Ref. domains",
   dofollow: "Dofollow",
 };
+
+export function disavowStorageKey(siteId: number): string {
+  return `linkweave:disavow:manual:${siteId}`;
+}
+export function loadManualDisavow(key: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? new Set<string>(JSON.parse(raw) as string[]) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+export function persistManualDisavow(key: string, set: Set<string>): void {
+  try {
+    localStorage.setItem(key, JSON.stringify([...set]));
+  } catch {
+    /* storage unavailable — silently skip */
+  }
+}

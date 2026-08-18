@@ -8,14 +8,29 @@
  *   - Clean (low-risk) domains are absent from the flagged view
  *   - The badge count on the Flagged button equals the number of flagged domains
  *   - The "Export disavow.txt" button is absent when zero flagged domains exist
+ *   - Manually saved disavow decisions survive an audit re-run (new referringDomains prop)
+ *   - Manual decisions are scoped per site ID and never bleed across sites
  */
 
 import React from "react";
-import { describe, it, expect, vi, beforeAll, afterEach } from "vitest";
-import { render, fireEvent, cleanup, within } from "@testing-library/react";
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
+import { render, fireEvent, cleanup } from "@testing-library/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { ReferringDomainsCard } from "./backlink-audit";
+import { ReferringDomainsCard, disavowStorageKey, loadManualDisavow } from "./backlink-audit";
 import type { AuditReferringDomain } from "@workspace/api-client-react";
+
+// ---------------------------------------------------------------------------
+// Mock useSiteContext so the component works without a full SiteProvider
+// ---------------------------------------------------------------------------
+let mockSiteId: number = 1;
+
+vi.mock("@/lib/site-context", () => ({
+  useSiteContext: () => ({
+    activeSite: { id: mockSiteId, displayName: `Site ${mockSiteId}` },
+    sites: [],
+    switchSite: vi.fn(),
+  }),
+}));
 
 // ---------------------------------------------------------------------------
 // jsdom stubs for the download helper (URL.createObjectURL / anchor.click)
@@ -33,6 +48,11 @@ beforeAll(() => {
       writable: true,
     });
   }
+});
+
+beforeEach(() => {
+  mockSiteId = 1;
+  localStorage.clear();
 });
 
 afterEach(() => {
@@ -247,5 +267,137 @@ describe("ReferringDomainsCard — empty list", () => {
     const { getByText } = renderCard([]);
 
     expect(getByText("No referring domains.")).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: manual disavow decisions survive an audit re-run
+//
+// "Re-run" = the parent re-renders ReferringDomainsCard with new referringDomains
+// data (exactly what happens when React Query cache is updated after an audit).
+// The manualDisavow state persists because it is keyed by siteId in localStorage
+// and reloaded via useEffect whenever storageKey changes.
+// ---------------------------------------------------------------------------
+
+describe("ReferringDomainsCard — manual disavow decisions survive audit re-run", () => {
+  it("manual flag toggle shows the export button even for a clean domain", () => {
+    const { getByTestId } = renderCard([cleanDomain, cleanDomain2]);
+
+    // No flagged domains → export button hidden by default
+    expect(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`)).toBeTruthy();
+
+    // Toggle a clean domain into the manual disavow set
+    fireEvent.click(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`));
+
+    // Export button should now appear
+    expect(getByTestId("button-export-disavow")).toBeTruthy();
+  });
+
+  it("manual decision persists to localStorage under the site-scoped key", () => {
+    const { getByTestId } = renderCard([cleanDomain]);
+
+    fireEvent.click(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`));
+
+    const key = disavowStorageKey(mockSiteId);
+    const stored = loadManualDisavow(key);
+    expect(stored.has(cleanDomain.domain)).toBe(true);
+  });
+
+  it("manual decision survives a re-render with new referringDomains (simulated audit re-run)", () => {
+    const { getByTestId, rerender } = renderCard([cleanDomain, flaggedMedium]);
+
+    // Manually mark the clean domain
+    fireEvent.click(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`));
+    expect(getByTestId("button-export-disavow")).toBeTruthy();
+
+    // Simulate audit re-run: new referringDomains prop with same domains
+    rerender(
+      <TooltipProvider>
+        <ReferringDomainsCard referringDomains={[cleanDomain, flaggedMedium]} />
+      </TooltipProvider>,
+    );
+
+    // Export button must still be visible — manual decision was not lost
+    expect(getByTestId("button-export-disavow")).toBeTruthy();
+  });
+
+  it("manual decision survives a re-render with entirely new referringDomains list", () => {
+    const { getByTestId, rerender } = renderCard([cleanDomain]);
+
+    fireEvent.click(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`));
+
+    // Audit re-run returns a different domain set
+    rerender(
+      <TooltipProvider>
+        <ReferringDomainsCard referringDomains={[cleanDomain, cleanDomain2]} />
+      </TooltipProvider>,
+    );
+
+    // The manually marked domain's toggle must still be active (flag icon filled)
+    const toggleBtn = getByTestId(`button-toggle-disavow-${cleanDomain.domain}`);
+    expect(toggleBtn.title).toBe("Remove from disavow list");
+  });
+
+  it("un-marking a domain removes it from localStorage and hides the export button", () => {
+    const { getByTestId, queryByTestId } = renderCard([cleanDomain]);
+
+    // Mark then unmark
+    fireEvent.click(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`));
+    fireEvent.click(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`));
+
+    const key = disavowStorageKey(mockSiteId);
+    expect(loadManualDisavow(key).has(cleanDomain.domain)).toBe(false);
+    expect(queryByTestId("button-export-disavow")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: manual disavow decisions are scoped per site — no cross-site bleed
+// ---------------------------------------------------------------------------
+
+describe("ReferringDomainsCard — manual decisions are scoped per site ID", () => {
+  it("decisions saved under site 1 are not loaded when siteId changes to 2", () => {
+    // Render as site 1 and mark a clean domain
+    mockSiteId = 1;
+    const { getByTestId, rerender } = renderCard([cleanDomain]);
+    fireEvent.click(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`));
+
+    // Confirm it was saved under site 1's key
+    expect(loadManualDisavow(disavowStorageKey(1)).has(cleanDomain.domain)).toBe(true);
+
+    // Switch to site 2 (mockSiteId drives useSiteContext)
+    mockSiteId = 2;
+    rerender(
+      <TooltipProvider>
+        <ReferringDomainsCard referringDomains={[cleanDomain]} />
+      </TooltipProvider>,
+    );
+
+    // Site 2 has no saved decisions → export button must be hidden
+    expect(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`).title).toBe(
+      "Mark for disavowal",
+    );
+  });
+
+  it("site 1 and site 2 maintain independent disavow sets in localStorage", () => {
+    // Mark a domain under site 1
+    mockSiteId = 1;
+    const { getByTestId, rerender } = renderCard([cleanDomain, cleanDomain2]);
+    fireEvent.click(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`));
+
+    // Switch to site 2 and mark a different domain
+    mockSiteId = 2;
+    rerender(
+      <TooltipProvider>
+        <ReferringDomainsCard referringDomains={[cleanDomain, cleanDomain2]} />
+      </TooltipProvider>,
+    );
+    fireEvent.click(getByTestId(`button-toggle-disavow-${cleanDomain2.domain}`));
+
+    // Verify the two site keys are independent
+    expect(loadManualDisavow(disavowStorageKey(1)).has(cleanDomain.domain)).toBe(true);
+    expect(loadManualDisavow(disavowStorageKey(1)).has(cleanDomain2.domain)).toBe(false);
+    expect(loadManualDisavow(disavowStorageKey(2)).has(cleanDomain2.domain)).toBe(true);
+    expect(loadManualDisavow(disavowStorageKey(2)).has(cleanDomain.domain)).toBe(false);
   });
 });

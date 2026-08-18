@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildDisavowTxt,
   isDomainFlagged,
+  mergeDisavowDomains,
   scoreAnchor,
   scoreDomain,
 } from "./backlink-toxicity";
@@ -205,6 +206,151 @@ describe("buildDisavowTxt", () => {
       .split("\n")
       .filter((l) => l.startsWith("domain:"));
     expect(domainLines).toHaveLength(domains.length);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mergeDisavowDomains — production merge function
+// ---------------------------------------------------------------------------
+describe("mergeDisavowDomains", () => {
+  it("returns only auto-flagged domains when manual set is empty", () => {
+    const result = mergeDisavowDomains(["spam.xyz", "bad.loan"], new Set());
+    expect(result).toEqual(["spam.xyz", "bad.loan"]);
+  });
+
+  it("adds manual-only domains that are not in the auto-flagged list", () => {
+    const result = mergeDisavowDomains(["spam.xyz"], new Set(["manual.com"]));
+    expect(result).toContain("spam.xyz");
+    expect(result).toContain("manual.com");
+  });
+
+  it("deduplicates a domain that is both auto-flagged and manually saved", () => {
+    const result = mergeDisavowDomains(["spam.xyz", "bad.loan"], new Set(["spam.xyz", "extra.com"]));
+    const occurrences = result.filter((d) => d === "spam.xyz").length;
+    expect(occurrences).toBe(1);
+  });
+
+  it("preserves auto-flagged domains first, manual-only additions after", () => {
+    const result = mergeDisavowDomains(["auto.xyz"], new Set(["manual.com"]));
+    expect(result.indexOf("auto.xyz")).toBeLessThan(result.indexOf("manual.com"));
+  });
+
+  it("returns an empty array when both inputs are empty", () => {
+    expect(mergeDisavowDomains([], new Set())).toEqual([]);
+  });
+
+  it("handles an empty auto-flagged list with non-empty manual set", () => {
+    const result = mergeDisavowDomains([], new Set(["manual.com", "also.net"]));
+    expect(result).toContain("manual.com");
+    expect(result).toContain("also.net");
+    expect(result).toHaveLength(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Disavow decisions survive audit re-run
+//
+// These tests exercise the full production pipeline:
+//   scoreDomain → isDomainFlagged → mergeDisavowDomains → buildDisavowTxt
+// The "audit re-run" is simulated by calling scoreDomain again from scratch
+// on the same domain set, matching what ReferringDomainsCard does on every
+// render after new audit data arrives via React Query.
+// ---------------------------------------------------------------------------
+describe("disavow decisions survive audit re-run", () => {
+  const domainFixtures = [
+    // auto-flagged (high risk): suspicious TLD + very low rank + sitewide links
+    { domain: "spam.xyz", rank: 5, backlinks: 60 },
+    // auto-flagged (medium risk): suspicious TLD only
+    { domain: "mediocre.loan", rank: 700, backlinks: 3 },
+    // clean domain — NOT auto-flagged by the scorer
+    { domain: "clean.com", rank: 900, backlinks: 3 },
+    // clean domain the user manually marks for disavowal
+    { domain: "manual-override.com", rank: 850, backlinks: 5 },
+  ];
+
+  /**
+   * Mirrors what ReferringDomainsCard does on each render / re-run:
+   *   1. Re-score all domains from scratch (scoreDomain is pure — same input → same output).
+   *   2. Collect auto-flagged domains via isDomainFlagged.
+   *   3. Merge with the persisted manual disavow set via mergeDisavowDomains.
+   */
+  function simulateAuditRun(manualDecisions: ReadonlySet<string>): string[] {
+    const autoFlagged = domainFixtures
+      .filter((d) => isDomainFlagged(scoreDomain(d.domain, d.rank, d.backlinks)))
+      .map((d) => d.domain);
+    return mergeDisavowDomains(autoFlagged, manualDecisions);
+  }
+
+  it("auto-flagged domains appear in the disavow export after the first audit run", () => {
+    const txt = buildDisavowTxt(simulateAuditRun(new Set()));
+    expect(txt).toContain("domain:spam.xyz");
+    expect(txt).toContain("domain:mediocre.loan");
+  });
+
+  it("a manually saved low-risk domain still appears after a re-run", () => {
+    // Confirm the scorer alone does NOT flag this domain
+    expect(isDomainFlagged(scoreDomain("manual-override.com", 850, 5))).toBe(false);
+
+    // But with a saved manual decision it must appear in the export
+    const txt = buildDisavowTxt(simulateAuditRun(new Set(["manual-override.com"])));
+    expect(txt).toContain("domain:manual-override.com");
+  });
+
+  it("saved decisions produce identical results across multiple re-runs", () => {
+    const saved = new Set<string>(["manual-override.com"]);
+    const run1 = simulateAuditRun(saved);
+    const run2 = simulateAuditRun(saved);
+    const run3 = simulateAuditRun(saved);
+    expect(run1).toEqual(run2);
+    expect(run2).toEqual(run3);
+  });
+
+  it("manually saved domain appears in every re-run", () => {
+    const saved = new Set<string>(["manual-override.com"]);
+    for (let i = 0; i < 3; i++) {
+      expect(simulateAuditRun(saved)).toContain("manual-override.com");
+    }
+  });
+
+  it("a domain that is both auto-flagged and manually saved appears exactly once in the export", () => {
+    const saved = new Set<string>(["spam.xyz", "manual-override.com"]);
+    const merged = simulateAuditRun(saved);
+    const txt = buildDisavowTxt(merged);
+    const domainLines = txt.split("\n").filter((l) => l.startsWith("domain:spam.xyz"));
+    expect(domainLines).toHaveLength(1);
+  });
+
+  it("clean domains not in the saved set are excluded from the export after a re-run", () => {
+    const txt = buildDisavowTxt(simulateAuditRun(new Set(["manual-override.com"])));
+    expect(txt).not.toContain("domain:clean.com");
+  });
+
+  it("all domain lines in the merged export are correctly prefixed", () => {
+    const txt = buildDisavowTxt(simulateAuditRun(new Set(["manual-override.com"])));
+    const nonCommentLines = txt
+      .split("\n")
+      .filter((l) => l.trim() !== "" && !l.startsWith("#"));
+    for (const line of nonCommentLines) {
+      expect(line.startsWith("domain:")).toBe(true);
+    }
+  });
+
+  it("every domain in the fixture appears in the export when all are manually saved", () => {
+    const allManual = new Set<string>(domainFixtures.map((d) => d.domain));
+    const txt = buildDisavowTxt(simulateAuditRun(allManual));
+    for (const { domain } of domainFixtures) {
+      expect(txt).toContain(`domain:${domain}`);
+    }
+  });
+
+  it("removing a domain from saved decisions excludes it from the export when it scores low", () => {
+    // With the saved decision: domain appears
+    const txtWith = buildDisavowTxt(simulateAuditRun(new Set(["manual-override.com"])));
+    expect(txtWith).toContain("domain:manual-override.com");
+
+    // After the decision is removed: domain must be absent
+    const txtWithout = buildDisavowTxt(simulateAuditRun(new Set()));
+    expect(txtWithout).not.toContain("domain:manual-override.com");
   });
 });
 

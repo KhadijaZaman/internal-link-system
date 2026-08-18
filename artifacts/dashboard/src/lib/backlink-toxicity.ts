@@ -68,6 +68,29 @@ export function isDomainFlagged(risk: DomainRisk): boolean {
   return risk.level === "medium" || risk.level === "high";
 }
 
+/**
+ * Merge auto-flagged domains with manually saved disavow decisions.
+ *
+ * The auto-flagged list (derived from scoreDomain + isDomainFlagged) is always
+ * included. The manual set adds any additional domains the user has explicitly
+ * marked, even if they score "low" risk. The result is deduplicated so a domain
+ * that appears in both lists is listed exactly once.
+ */
+export function mergeDisavowDomains(
+  autoFlagged: string[],
+  manualDecisions: ReadonlySet<string>,
+): string[] {
+  const seen = new Set<string>(autoFlagged);
+  const merged = [...autoFlagged];
+  for (const d of manualDecisions) {
+    if (!seen.has(d)) {
+      seen.add(d);
+      merged.push(d);
+    }
+  }
+  return merged;
+}
+
 // ---------------------------------------------------------------------------
 // Anchor-text spam scoring
 // ---------------------------------------------------------------------------
