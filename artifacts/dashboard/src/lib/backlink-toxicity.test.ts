@@ -4,6 +4,7 @@ import {
   isDomainFlagged,
   scoreDomain,
 } from "./backlink-toxicity";
+import { SPAM_TLDS } from "./spam-tlds";
 
 // ---------------------------------------------------------------------------
 // scoreDomain
@@ -23,6 +24,36 @@ describe("scoreDomain", () => {
   it("does not flag a legitimate TLD (.com)", () => {
     const result = scoreDomain("example.com", 800, 5);
     expect(result.flags).not.toContain("Suspicious TLD");
+  });
+
+  // --- Config-only update path: every SPAM_TLDS entry must reach the scorer --
+  it("every TLD in SPAM_TLDS scores at least 'medium' on a decent-rank, low-link-count domain", () => {
+    // Use rank=500 (well above the <30 low-authority threshold) and backlinks=1
+    // so the only flag that can fire is "Suspicious TLD".  The scorer must
+    // elevate level to at least "medium" from that single high-weight signal alone.
+    for (const tld of SPAM_TLDS) {
+      const domain = `test-domain.${tld}`;
+      const result = scoreDomain(domain, 500, 1);
+      expect(result.flags, `${domain} should carry "Suspicious TLD"`).toContain(
+        "Suspicious TLD",
+      );
+      expect(
+        result.level,
+        `${domain} should be at least "medium" risk`,
+      ).not.toBe("low");
+    }
+  });
+
+  it("a TLD not in SPAM_TLDS never triggers the 'Suspicious TLD' flag", () => {
+    // Use a TLD that is explicitly not in SPAM_TLDS and is considered clean.
+    const cleanTLDs = ["com", "org", "net", "gov", "edu", "io", "co"];
+    for (const tld of cleanTLDs) {
+      const result = scoreDomain(`reputable.${tld}`, 800, 5);
+      expect(
+        result.flags,
+        `.${tld} must not be flagged as a suspicious TLD`,
+      ).not.toContain("Suspicious TLD");
+    }
   });
 
   // --- Rank signals ---------------------------------------------------------
