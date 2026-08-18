@@ -50,10 +50,13 @@ const PRESETS: [Preset, string][] = [
   ["custom", "Custom"],
 ];
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({ label, value, tip }: { label: string; value: string; tip?: React.ReactNode }) {
   return (
     <div className="border rounded-lg p-4 bg-card">
-      <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-xs uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1">
+        {label}
+        {tip ? <InfoTip>{tip}</InfoTip> : null}
+      </div>
       <div className="text-2xl font-display mt-1">{value}</div>
     </div>
   );
@@ -211,18 +214,33 @@ export default function Ga4PagesPage() {
             <StatCard
               label={channel === "organic" ? "Organic sessions" : "Sessions (all)"}
               value={data.totals.sessions.toLocaleString()}
+              tip="A session is one visit to your site. One person can start several sessions on different days, so this counts visits, not people."
             />
-            <StatCard label="Engaged sessions" value={data.totals.engagedSessions.toLocaleString()} />
+            <StatCard
+              label="Engaged sessions"
+              value={data.totals.engagedSessions.toLocaleString()}
+              tip="Visits where the person actually paid attention — they stayed at least 10 seconds, viewed more than one page, or took a key action. The rest were quick bounces."
+            />
             <StatCard
               label="Engagement rate"
               value={`${(data.totals.engagementRate * 100).toFixed(1)}%`}
+              tip="The share of visits that were engaged rather than a quick bounce. Higher is better. On very few sessions the percentage is noisy, so read it next to the session count."
             />
             <StatCard
               label="Avg engagement / session"
               value={fmtTime(data.totals.avgEngagementTime)}
+              tip="How long, on average, a visitor was actively looking at the page during a visit. Longer usually means the content held their interest."
             />
-            <StatCard label="Key events" value={data.totals.keyEvents.toLocaleString()} />
-            <StatCard label="AI sessions" value={data.totals.aiSessions.toLocaleString()} />
+            <StatCard
+              label="Key events"
+              value={data.totals.keyEvents.toLocaleString()}
+              tip="The actions you care about most — here, signups and demo bookings. This counts how many happened on this page."
+            />
+            <StatCard
+              label="AI sessions"
+              value={data.totals.aiSessions.toLocaleString()}
+              tip="Visits that came from AI assistants like ChatGPT, Claude, Perplexity, Gemini, or Copilot — someone followed a link the AI showed them."
+            />
           </div>
 
           <div className="flex gap-2 items-center">
@@ -262,12 +280,12 @@ export default function Ga4PagesPage() {
                 <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <SortableHeader col="path" label="Path" sort={sort} onChange={setSort} align="left" />
-                    <SortableHeader col="engagementRate" label="Engagement Rate" sort={sort} onChange={setSort} />
-                    <SortableHeader col="sessions" label="Sessions" sort={sort} onChange={setSort} />
-                    <SortableHeader col="engagedSessions" label="Engaged" sort={sort} onChange={setSort} />
-                    <SortableHeader col="avgEngagementTime" label="Avg Eng. Time" sort={sort} onChange={setSort} />
-                    <SortableHeader col="keyEvents" label="Key Events" sort={sort} onChange={setSort} />
-                    <SortableHeader col="aiSessions" label="AI Sessions" sort={sort} onChange={setSort} />
+                    <SortableHeader col="engagementRate" label="Engagement Rate" sort={sort} onChange={setSort} tip="The share of visits to this page that were engaged (stayed 10s+, viewed multiple pages, or took an action) rather than a quick bounce. Higher is better." />
+                    <SortableHeader col="sessions" label="Sessions" sort={sort} onChange={setSort} tip="How many visits this page received. One person can make several visits, so this counts visits, not people." />
+                    <SortableHeader col="engagedSessions" label="Engaged" sort={sort} onChange={setSort} tip="The number of those visits where the person actually engaged — stayed a while, viewed more pages, or took an action." />
+                    <SortableHeader col="avgEngagementTime" label="Avg Eng. Time" sort={sort} onChange={setSort} tip="On average, how long a visitor was actively looking at this page per visit. Longer usually means the content held their attention." />
+                    <SortableHeader col="keyEvents" label="Key Events" sort={sort} onChange={setSort} tip="How many of your most important actions (signups and demo bookings) happened on this page." />
+                    <SortableHeader col="aiSessions" label="AI Sessions" sort={sort} onChange={setSort} tip="Visits to this page that came from AI assistants like ChatGPT, Claude, Perplexity, Gemini, or Copilot." />
                   </tr>
                 </thead>
                 <tbody>

@@ -231,8 +231,15 @@ function TrendSparkline({ data }: { data: TrendData }) {
 
   return (
     <div className="mt-3 pt-3 border-t border-border/40">
-      <p className="text-xs text-muted-foreground mb-2">
+      <p className="text-xs text-muted-foreground mb-2 inline-flex items-center gap-1">
         Clicks &amp; impressions — {label} ({granularity})
+        <InfoTip>
+          A quick trend for this {targetType === "page" ? "page" : "keyword"} the assistant looked up.
+          Solid line = clicks (people who visited), dashed line = impressions (times it appeared in Google).
+          {granularity === "weekly"
+            ? " Grouped by week because the date range is long — each point is a full week."
+            : " Grouped by day — each point is one day."}
+        </InfoTip>
       </p>
       <ResponsiveContainer width="100%" height={110}>
         <LineChart data={displayPoints} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>

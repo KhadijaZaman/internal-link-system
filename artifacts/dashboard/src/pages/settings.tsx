@@ -51,17 +51,25 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/hooks/use-toast";
 import { useSiteContext } from "@/lib/site-context";
+import { InfoTip } from "@/components/info-tip";
 import { CheckCircle2, Circle, Plug, Trash2, Unplug } from "lucide-react";
 
 function StatusBadge({ connected }: { connected: boolean }) {
-  return connected ? (
-    <Badge className="gap-1 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-      <CheckCircle2 className="h-3 w-3" /> Connected
-    </Badge>
-  ) : (
-    <Badge variant="secondary" className="gap-1">
-      <Circle className="h-3 w-3" /> Not connected
-    </Badge>
+  return (
+    <span className="inline-flex items-center gap-1">
+      {connected ? (
+        <Badge className="gap-1 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+          <CheckCircle2 className="h-3 w-3" /> Connected
+        </Badge>
+      ) : (
+        <Badge variant="secondary" className="gap-1">
+          <Circle className="h-3 w-3" /> Not connected
+        </Badge>
+      )}
+      <InfoTip>
+        "Connected" means this app can pull data from this service. "Not connected" means you need to link your account below before its data will show up.
+      </InfoTip>
+    </span>
   );
 }
 
@@ -302,7 +310,10 @@ function SpendLimitsCard() {
   return (
     <Card data-testid="card-spend-limits">
       <CardHeader>
-        <CardTitle>Job spend limits</CardTitle>
+        <CardTitle className="flex items-center gap-1.5">
+          Job spend limits
+          <InfoTip>Safety caps on how much paid work each background job can do in one run, so your costs stay predictable. Raise a limit if runs stop short; lower it to spend less.</InfoTip>
+        </CardTitle>
         <CardDescription>
           Per-run guardrails for background jobs on this site. When a job hits
           a cap it stops that kind of paid work early — raise a limit if runs
@@ -546,7 +557,10 @@ export default function SettingsPage() {
           ) : null}
           {gscConnected && props && props.properties.length > 0 ? (
             <div className="space-y-2">
-              <Label>Property feeding this site</Label>
+              <Label className="flex items-center gap-1.5">
+                Property feeding this site
+                <InfoTip>A "property" is a website (or a section of one) registered in Google Search Console. Pick the one that matches this site so its search data flows in.</InfoTip>
+              </Label>
               <Select
                 value={props.selected ?? undefined}
                 onValueChange={(v) =>

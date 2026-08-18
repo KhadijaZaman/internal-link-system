@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useSiteContext } from "@/lib/site-context";
+import { InfoTip } from "@/components/info-tip";
 import { Globe, KeyRound, LogOut, Plus } from "lucide-react";
 
 const LOCKOUT_STORAGE_KEY = "claim-legacy-lockout-until";
@@ -241,9 +242,10 @@ export function WelcomePage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="add-site-sitemap">
+                <Label htmlFor="add-site-sitemap" className="inline-flex items-center gap-1.5">
                   Sitemap URL{" "}
                   <span className="text-muted-foreground font-normal">(optional)</span>
+                  <InfoTip>A sitemap is a list of all the pages on your website. If you have one, adding its link helps us find your pages faster. You can skip this.</InfoTip>
                 </Label>
                 <Input
                   id="add-site-sitemap"
@@ -287,8 +289,11 @@ export function WelcomePage() {
             ) : (
               <p className="text-sm text-muted-foreground flex items-start gap-2">
                 <Globe className="h-4 w-4 mt-0.5 shrink-0" />
-                Add your website above to get started — you'll connect Google
-                Search Console right after.
+                <span className="inline-flex flex-wrap items-center gap-1">
+                  Add your website above to get started — you'll connect Google
+                  Search Console right after.
+                  <InfoTip>Google Search Console is Google's free tool that shows how your site performs in Google search. Connecting it lets this app read that data for you.</InfoTip>
+                </span>
               </p>
             )}
             <Button

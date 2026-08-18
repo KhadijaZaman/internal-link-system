@@ -234,10 +234,10 @@ function OverviewBody() {
             <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left p-3">{gran === "weekly" ? "Week" : "Date"}</th>
-                <th className="text-right p-3">Clicks</th>
-                <th className="text-right p-3">Impressions</th>
-                <th className="text-right p-3">CTR</th>
-                <th className="text-right p-3">Position</th>
+                <th className="text-right p-3"><span className="inline-flex items-center gap-1 justify-end">Clicks<InfoTip>Times someone clicked through to your site from Google's results.</InfoTip></span></th>
+                <th className="text-right p-3"><span className="inline-flex items-center gap-1 justify-end">Impressions<InfoTip>Times your site appeared in Google's results, whether or not it was clicked.</InfoTip></span></th>
+                <th className="text-right p-3"><span className="inline-flex items-center gap-1 justify-end">CTR<InfoTip>Click-through rate: clicks divided by impressions. Higher means more people who saw you clicked.</InfoTip></span></th>
+                <th className="text-right p-3"><span className="inline-flex items-center gap-1 justify-end">Position<InfoTip>Your average ranking spot in Google. Lower is better — 1 is the very top of the results.</InfoTip></span></th>
               </tr>
             </thead>
             <tbody>

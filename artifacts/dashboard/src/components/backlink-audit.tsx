@@ -31,6 +31,7 @@ import { CopyButton } from "@/components/copy-button";
 import { rowsToTsv } from "@/lib/clipboard";
 import { useSiteContext } from "@/lib/site-context";
 import {
+  scoreDomain,
   scoreAnchor,
   buildDisavowTxt,
   mergeDisavowDomains,
@@ -103,6 +104,7 @@ function RiskBadge({ risk }: { risk: DomainRisk }) {
         </Badge>
       </TooltipTrigger>
       <TooltipContent side="right" className="max-w-[260px] text-xs space-y-1">
+        <div className="font-medium">How likely this link is spam that could hurt your rankings. Higher risk = review it first.</div>
         {risk.flags.map((f) => (
           <div key={f}>• {f}</div>
         ))}
@@ -124,8 +126,9 @@ function AnchorRiskBadge({ risk }: { risk: AnchorRisk }) {
           Anchor spam
         </Badge>
       </TooltipTrigger>
-      <TooltipContent side="right" className="max-w-[260px] text-xs">
-        Matched spam phrase: <span className="font-medium">&ldquo;{risk.matchedPhrase}&rdquo;</span>
+      <TooltipContent side="right" className="max-w-[260px] text-xs space-y-1">
+        <div className="font-medium">The link's clickable text is stuffed with commercial keywords, a common spam sign.</div>
+        <div>Matched spam phrase: <span className="font-medium">&ldquo;{risk.matchedPhrase}&rdquo;</span></div>
       </TooltipContent>
     </Tooltip>
   );
@@ -173,11 +176,36 @@ function BenchmarkTable({ own, competitors }: { own: BacklinkSummary; competitor
         <TableHeader>
           <TableRow>
             <TableHead>Domain</TableHead>
-            <TableHead className="text-right">Domain rank</TableHead>
-            <TableHead className="text-right">Backlinks</TableHead>
-            <TableHead className="text-right">Ref. domains</TableHead>
-            <TableHead className="text-right">Dofollow %</TableHead>
-            <TableHead className="text-right">Broken</TableHead>
+            <TableHead className="text-right">
+              <span className="inline-flex items-center justify-end gap-1">
+                Domain rank
+                <InfoTip>A 0–1000 score for how strong and trusted a whole site looks to search engines. Higher is better. Compare yours to competitors here.</InfoTip>
+              </span>
+            </TableHead>
+            <TableHead className="text-right">
+              <span className="inline-flex items-center justify-end gap-1">
+                Backlinks
+                <InfoTip>The total number of links pointing to that site from other websites.</InfoTip>
+              </span>
+            </TableHead>
+            <TableHead className="text-right">
+              <span className="inline-flex items-center justify-end gap-1">
+                Ref. domains
+                <InfoTip>How many separate websites link to that site (counting each site once). Often more meaningful than raw link count.</InfoTip>
+              </span>
+            </TableHead>
+            <TableHead className="text-right">
+              <span className="inline-flex items-center justify-end gap-1">
+                Dofollow %
+                <InfoTip>The share of links that pass ranking credit to the site. Higher generally means more of the links help rankings.</InfoTip>
+              </span>
+            </TableHead>
+            <TableHead className="text-right">
+              <span className="inline-flex items-center justify-end gap-1">
+                Broken
+                <InfoTip>Links pointing to pages that no longer load. Fixing these reclaims lost link value.</InfoTip>
+              </span>
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -325,7 +353,7 @@ export function ReferringDomainsCard({ referringDomains, topBacklinks = [] }: Re
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <h3 className="text-sm font-medium flex items-center gap-1.5">
             <Globe2 className="h-4 w-4" /> Top referring domains
-            <InfoTip>Domains linking to you, ordered by link volume.</InfoTip>
+            <InfoTip>A referring domain is another website that links to you. This lists them from most links to fewest, so you can spot both your best partners and any spammy sites.</InfoTip>
           </h3>
           <div className="flex items-center gap-2 flex-wrap">
             {flagged.length > 0 && (
@@ -363,6 +391,9 @@ export function ReferringDomainsCard({ referringDomains, topBacklinks = [] }: Re
                 )}
               </Button>
             )}
+            {showExportButton && (
+              <InfoTip>A disavow file is a list you upload to Google telling it to ignore certain links to your site — used for spammy links you can't get removed. Only disavow links you're confident are harmful.</InfoTip>
+            )}
             <CopyButton getText={handleCopy} disabled={visible.length === 0} />
           </div>
         </div>
@@ -387,9 +418,26 @@ export function ReferringDomainsCard({ referringDomains, topBacklinks = [] }: Re
             <TableHeader>
               <TableRow>
                 <TableHead>Domain</TableHead>
-                <TableHead className="text-right">Rank</TableHead>
-                <TableHead className="text-right">Backlinks</TableHead>
-                {showFlagged && <TableHead>Risk signals</TableHead>}
+                <TableHead className="text-right">
+                  <span className="inline-flex items-center justify-end gap-1">
+                    Rank
+                    <InfoTip>A 0–1000 score for how strong the linking site is. Very low ranks on many linking sites can be a sign of spam.</InfoTip>
+                  </span>
+                </TableHead>
+                <TableHead className="text-right">
+                  <span className="inline-flex items-center justify-end gap-1">
+                    Backlinks
+                    <InfoTip>How many links this website sends to you.</InfoTip>
+                  </span>
+                </TableHead>
+                {showFlagged && (
+                  <TableHead>
+                    <span className="inline-flex items-center gap-1">
+                      Risk signals
+                      <InfoTip>The reasons we think this link might be spam that could hurt your rankings. Review before disavowing — legitimate sites can trip these too.</InfoTip>
+                    </span>
+                  </TableHead>
+                )}
                 <TableHead className="w-8">
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -423,12 +471,15 @@ export function ReferringDomainsCard({ referringDomains, topBacklinks = [] }: Re
                           {s.domain.domain}
                           <RiskBadge risk={s.risk} />
                           {isCombinedRisk && (
-                            <Badge
-                              variant="outline"
-                              className="text-xs text-red-700 dark:text-red-400 border-red-500/30 bg-red-500/10 font-semibold"
-                            >
-                              Spam anchor
-                            </Badge>
+                            <span className="inline-flex items-center gap-1">
+                              <Badge
+                                variant="outline"
+                                className="text-xs text-red-700 dark:text-red-400 border-red-500/30 bg-red-500/10 font-semibold"
+                              >
+                                Spam anchor
+                              </Badge>
+                              <InfoTip>This risky site also links to you using spammy commercial keywords. That combination makes it a top candidate to disavow.</InfoTip>
+                            </span>
                           )}
                         </div>
                       </TableCell>
@@ -598,25 +649,40 @@ export function BacklinkAuditSection() {
                   <SummaryStat
                     label="Domain rank"
                     value={summary.rank != null ? String(summary.rank) : "—"}
-                    hint="DataForSEO domain rank, 0–1000 (comparable to DR)."
+                    hint="A 0–1000 score for how strong and trusted your whole site looks to search engines. Higher is better; it grows as more good sites link to you."
                   />
-                  <SummaryStat label="Total backlinks" value={num(summary.backlinks)} />
+                  <SummaryStat
+                    label="Total backlinks"
+                    value={num(summary.backlinks)}
+                    hint="The total number of links pointing to your site from other websites. One website can send several links."
+                  />
                   <SummaryStat
                     label="Referring domains"
                     value={num(summary.referringDomains)}
-                    hint={`${num(summary.referringMainDomains)} unique root domains, ${num(summary.referringIps)} IPs.`}
+                    hint={`How many separate websites link to you (counting each site once). Usually more valuable than raw link count. ${num(summary.referringMainDomains)} unique root domains, ${num(summary.referringIps)} IPs.`}
                   />
-                  <SummaryStat label="Dofollow" value={num(summary.dofollow)} />
-                  <SummaryStat label="Nofollow" value={num(summary.nofollow)} />
+                  <SummaryStat
+                    label="Dofollow"
+                    value={num(summary.dofollow)}
+                    hint="Links that pass ranking credit to your site. These are the ones that help your rankings the most."
+                  />
+                  <SummaryStat
+                    label="Nofollow"
+                    value={num(summary.nofollow)}
+                    hint="Links tagged so search engines don't pass ranking credit through them. They can still bring visitors, but don't directly boost rankings."
+                  />
                   <SummaryStat
                     label="Broken backlinks"
                     value={num(summary.brokenBacklinks)}
-                    hint="Links pointing to pages that no longer resolve — reclaim these first."
+                    hint="Links pointing to pages on your site that no longer load. Fix or redirect these pages to reclaim the lost link value."
                   />
                 </div>
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Dofollow share</span>
+                    <span className="inline-flex items-center gap-1">
+                      Dofollow share
+                      <InfoTip>The share of your links that pass ranking credit. A healthy mix has plenty of these, but a natural profile always has some nofollow links too.</InfoTip>
+                    </span>
                     <span className="tabular-nums">{dfPct}% dofollow</span>
                   </div>
                   <Progress value={dfPct} className="h-2.5" />
@@ -669,10 +735,30 @@ export function BacklinkAuditSection() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Anchor</TableHead>
-                        <TableHead className="text-right">Backlinks</TableHead>
-                        <TableHead className="text-right">Ref. domains</TableHead>
-                        <TableHead className="text-right">Dofollow</TableHead>
+                        <TableHead>
+                          <span className="inline-flex items-center gap-1">
+                            Anchor
+                            <InfoTip>The clickable words other sites use in their links to you. Lots of exact commercial keywords ("cheap loans") can look spammy; your own brand name and plain URLs are healthy.</InfoTip>
+                          </span>
+                        </TableHead>
+                        <TableHead className="text-right">
+                          <span className="inline-flex items-center justify-end gap-1">
+                            Backlinks
+                            <InfoTip>How many links to you use this exact wording.</InfoTip>
+                          </span>
+                        </TableHead>
+                        <TableHead className="text-right">
+                          <span className="inline-flex items-center justify-end gap-1">
+                            Ref. domains
+                            <InfoTip>How many separate websites use this wording to link to you.</InfoTip>
+                          </span>
+                        </TableHead>
+                        <TableHead className="text-right">
+                          <span className="inline-flex items-center justify-end gap-1">
+                            Dofollow
+                            <InfoTip>How many of these links pass ranking credit to your site.</InfoTip>
+                          </span>
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -734,9 +820,24 @@ export function BacklinkAuditSection() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Source page</TableHead>
-                      <TableHead className="text-right">Domain rank</TableHead>
-                      <TableHead>Anchor</TableHead>
-                      <TableHead>Follow</TableHead>
+                      <TableHead className="text-right">
+                        <span className="inline-flex items-center justify-end gap-1">
+                          Domain rank
+                          <InfoTip>A 0–1000 score for how strong the linking site is. A link from a higher-ranked site is worth more.</InfoTip>
+                        </span>
+                      </TableHead>
+                      <TableHead>
+                        <span className="inline-flex items-center gap-1">
+                          Anchor
+                          <InfoTip>The clickable words the other site used for the link to you.</InfoTip>
+                        </span>
+                      </TableHead>
+                      <TableHead>
+                        <span className="inline-flex items-center gap-1">
+                          Follow
+                          <InfoTip>Whether the link passes ranking credit ("dofollow") or not ("nofollow"). Dofollow links help your rankings more.</InfoTip>
+                        </span>
+                      </TableHead>
                       <TableHead>Links to</TableHead>
                     </TableRow>
                   </TableHeader>

@@ -148,8 +148,9 @@ function IndexingBody() {
           {batchMut.data && (
             <div className="p-4 border-b bg-muted/20 space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                <div className="text-xs uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1">
                   GSC coverage reasons ({batchMut.data.inspected} URLs inspected)
+                  <InfoTip>Google's reason for each URL: "Submitted and indexed" means it can show in results; anything else explains why it's being left out (e.g. blocked, duplicate, or crawled but not indexed) so you know what to fix.</InfoTip>
                 </div>
                 <CopyButton
                   getText={() =>
@@ -194,7 +195,7 @@ function IndexingBody() {
               <thead className="bg-muted/40 text-xs uppercase">
                 <tr>
                   <th className="text-left p-3">URL</th>
-                  <th className="text-left p-3">Heuristic</th>
+                  <th className="text-left p-3"><span className="inline-flex items-center gap-1">Heuristic<InfoTip>Our best guess for why this page may be missing from Google, based on your crawl. Click Inspect to get Google's official answer.</InfoTip></span></th>
                   <th className="text-right p-3"></th>
                 </tr>
               </thead>
@@ -260,13 +261,13 @@ function IndexingBody() {
             <div className="border rounded-md p-4 space-y-2 text-sm bg-muted/20">
               <div className="font-mono text-xs truncate">{insp.url}</div>
               <div className="grid grid-cols-2 gap-2">
-                <div><span className="text-muted-foreground">Verdict:</span> <Badge>{insp.verdict ?? "—"}</Badge></div>
-                <div><span className="text-muted-foreground">Coverage:</span> {insp.coverageState ?? "—"}</div>
-                <div><span className="text-muted-foreground">Indexing:</span> {insp.indexingState ?? "—"}</div>
-                <div><span className="text-muted-foreground">Robots:</span> {insp.robotsTxtState ?? "—"}</div>
-                <div><span className="text-muted-foreground">Page fetch:</span> {insp.pageFetchState ?? "—"}</div>
-                <div><span className="text-muted-foreground">Mobile:</span> {insp.mobileUsability ?? "—"}</div>
-                <div className="col-span-2"><span className="text-muted-foreground">Google canonical:</span> <span className="text-xs">{insp.googleCanonical ?? "—"}</span></div>
+                <div><span className="inline-flex items-center gap-1"><span className="text-muted-foreground">Verdict:</span><InfoTip>Google's overall call on this URL. "Pass" means it can show in results; anything else means there's an issue to fix.</InfoTip></span> <Badge>{insp.verdict ?? "—"}</Badge></div>
+                <div><span className="inline-flex items-center gap-1"><span className="text-muted-foreground">Coverage:</span><InfoTip>Whether Google has this page in its index (so it can appear in results) and, if not, the reason it's left out.</InfoTip></span> {insp.coverageState ?? "—"}</div>
+                <div><span className="inline-flex items-center gap-1"><span className="text-muted-foreground">Indexing:</span><InfoTip>Whether the page is allowed to be indexed. A "noindex" tag or block here keeps it out of Google's results.</InfoTip></span> {insp.indexingState ?? "—"}</div>
+                <div><span className="inline-flex items-center gap-1"><span className="text-muted-foreground">Robots:</span><InfoTip>Whether your robots.txt file lets Google crawl this page. If it's blocked, Google can't read it.</InfoTip></span> {insp.robotsTxtState ?? "—"}</div>
+                <div><span className="inline-flex items-center gap-1"><span className="text-muted-foreground">Page fetch:</span><InfoTip>Whether Google could successfully download the page. A failure here usually points to a server or redirect problem.</InfoTip></span> {insp.pageFetchState ?? "—"}</div>
+                <div><span className="inline-flex items-center gap-1"><span className="text-muted-foreground">Mobile:</span><InfoTip>Whether the page works well on phones. Google ranks based on the mobile experience.</InfoTip></span> {insp.mobileUsability ?? "—"}</div>
+                <div className="col-span-2"><span className="inline-flex items-center gap-1"><span className="text-muted-foreground">Google canonical:</span><InfoTip>When several URLs show the same content, the canonical is the one version Google treats as the "real" one and shows in results.</InfoTip></span> <span className="text-xs">{insp.googleCanonical ?? "—"}</span></div>
                 <div className="col-span-2"><span className="text-muted-foreground">Last crawl:</span> {insp.lastCrawlTime ? new Date(insp.lastCrawlTime).toLocaleString() : "—"}</div>
               </div>
             </div>

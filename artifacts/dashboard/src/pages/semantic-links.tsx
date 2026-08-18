@@ -198,9 +198,24 @@ function InboxTab() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Source → Target</TableHead>
-                <TableHead>Anchor + variants</TableHead>
-                <TableHead>Placement hint</TableHead>
+                <TableHead>
+                  <span className="inline-flex items-center gap-1">
+                    Source → Target
+                    <InfoTip>The suggested link: add a link on the "source" page that points to the "target" page. Both are pages on your own site.</InfoTip>
+                  </span>
+                </TableHead>
+                <TableHead>
+                  <span className="inline-flex items-center gap-1">
+                    Anchor + variants
+                    <InfoTip>The clickable words we suggest for the link, plus a few alternative wordings. Pick whichever reads most naturally in your text.</InfoTip>
+                  </span>
+                </TableHead>
+                <TableHead>
+                  <span className="inline-flex items-center gap-1">
+                    Placement hint
+                    <InfoTip>A suggestion of where on the source page to add the link so it fits naturally in the content.</InfoTip>
+                  </span>
+                </TableHead>
                 <TableHead>
                   <span className="inline-flex items-center gap-1">
                     Scores

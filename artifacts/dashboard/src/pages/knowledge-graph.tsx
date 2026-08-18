@@ -801,14 +801,20 @@ export default function KnowledgeGraphPage() {
                       ?.label ?? selected.section}
                   </Badge>
                   {selected.hasEmbedding && (
-                    <Badge variant="secondary" className="gap-1">
-                      <Sparkles className="h-3 w-3" /> embedded
-                    </Badge>
+                    <span className="inline-flex items-center gap-1">
+                      <Badge variant="secondary" className="gap-1">
+                        <Sparkles className="h-3 w-3" /> embedded
+                      </Badge>
+                      <InfoTip>The AI has read this page and made a numeric fingerprint of its meaning. That lets us find pages with matching topics to link together.</InfoTip>
+                    </span>
                   )}
                   {selected.loserSeverity && (
-                    <Badge className={SEVERITY_BADGE[selected.loserSeverity] ?? ""}>
-                      {selected.loserSeverity} ranking loss
-                    </Badge>
+                    <span className="inline-flex items-center gap-1">
+                      <Badge className={SEVERITY_BADGE[selected.loserSeverity] ?? ""}>
+                        {selected.loserSeverity} ranking loss
+                      </Badge>
+                      <InfoTip>This page has been slipping down in Google's results compared to before. Consider refreshing its content or adding internal links to it.</InfoTip>
+                    </span>
                   )}
                   {selected.openActions > 0 && (
                     <Badge
@@ -855,7 +861,10 @@ export default function KnowledgeGraphPage() {
                   <div className="text-right font-medium">{selected.outboundCount}</div>
                   {selected.impressions != null && (
                     <>
-                      <div className="text-muted-foreground">Impressions</div>
+                      <div className="text-muted-foreground flex items-center gap-1">
+                        Impressions
+                        <InfoTip>How many times this page appeared in Google search results. It shows how often people could have seen your page.</InfoTip>
+                      </div>
                       <div className="text-right font-medium">
                         {selected.impressions.toLocaleString()}
                       </div>
@@ -863,7 +872,10 @@ export default function KnowledgeGraphPage() {
                   )}
                   {selected.clicks != null && (
                     <>
-                      <div className="text-muted-foreground">Clicks</div>
+                      <div className="text-muted-foreground flex items-center gap-1">
+                        Clicks
+                        <InfoTip>How many times someone clicked through to this page from Google search results.</InfoTip>
+                      </div>
                       <div className="text-right font-medium">
                         {selected.clicks.toLocaleString()}
                       </div>
@@ -871,7 +883,10 @@ export default function KnowledgeGraphPage() {
                   )}
                   {selected.topQuery && (
                     <>
-                      <div className="text-muted-foreground">Top query</div>
+                      <div className="text-muted-foreground flex items-center gap-1">
+                        Top query
+                        <InfoTip>The search term that brings this page the most clicks. It tells you what people are finding this page for.</InfoTip>
+                      </div>
                       <div className="text-right font-medium truncate" title={selected.topQuery}>
                         {selected.topQuery}
                       </div>
@@ -880,8 +895,9 @@ export default function KnowledgeGraphPage() {
                 </div>
                 {related.length > 0 && (
                   <div>
-                    <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                    <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1">
                       Connected pages
+                      <InfoTip>Pages linked to this one, or closely related to it by topic. A percentage shows how closely two pages' topics match (higher means more alike).</InfoTip>
                     </div>
                     <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
                       {related.map((r) => (

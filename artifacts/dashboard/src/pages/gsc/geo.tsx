@@ -38,9 +38,9 @@ function DimTable({ title, rows, tip }: { title: string; rows: { key: string; cl
             <tr>
               <th className="text-left p-3">Key</th>
               <th className="text-right p-3">Clicks</th>
-              <th className="text-right p-3">Imps</th>
-              <th className="text-right p-3">CTR</th>
-              <th className="text-right p-3">Pos</th>
+              <th className="text-right p-3"><span className="inline-flex items-center gap-1 justify-end">Imps<InfoTip>Impressions: times your site appeared in Google's results, whether or not it was clicked.</InfoTip></span></th>
+              <th className="text-right p-3"><span className="inline-flex items-center gap-1 justify-end">CTR<InfoTip>Click-through rate: clicks divided by impressions. Higher means more of the people who saw you clicked.</InfoTip></span></th>
+              <th className="text-right p-3"><span className="inline-flex items-center gap-1 justify-end">Pos<InfoTip>Position: average ranking spot in Google. Lower is better — 1 is the top.</InfoTip></span></th>
             </tr>
           </thead>
           <tbody>

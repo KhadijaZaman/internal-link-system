@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { HowThisWorks } from "@/components/how-this-works";
+import { InfoTip } from "@/components/info-tip";
 import { useToast } from "@/hooks/use-toast";
 import { Send, ExternalLink, UploadCloud } from "lucide-react";
 
@@ -162,9 +163,12 @@ export default function PublishPage() {
       {result ? (
         <Card data-testid="publish-result">
           <CardContent className="py-4 flex flex-wrap items-center gap-3">
-            <Badge variant={result.status === "publish" ? "default" : "secondary"}>
-              {result.status === "publish" ? "live" : "draft"}
-            </Badge>
+            <span className="inline-flex items-center gap-1">
+              <Badge variant={result.status === "publish" ? "default" : "secondary"}>
+                {result.status === "publish" ? "live" : "draft"}
+              </Badge>
+              <InfoTip>"Live" means the post is public on your site right now. "Draft" means it was saved privately in WordPress so you can review it before it goes public.</InfoTip>
+            </span>
             <span className="text-sm">Post #{result.postId} created.</span>
             <a href={result.link} target="_blank" rel="noreferrer">
               <Button variant="outline" size="sm" className="gap-1.5">

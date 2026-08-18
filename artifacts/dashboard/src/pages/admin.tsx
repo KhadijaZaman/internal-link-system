@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Users, Globe, ShieldCheck, Check, X, Database } from "lucide-react";
+import { InfoTip } from "@/components/info-tip";
 import type { AdminSite } from "@workspace/api-client-react";
 
 function IntegrationBadge({ label, connected }: { label: string; connected: boolean }) {
@@ -24,6 +25,7 @@ function SiteStatusBadges({ site }: { site: AdminSite }) {
       <IntegrationBadge label="GSC" connected={site.integrations.gsc} />
       <IntegrationBadge label="GA4" connected={site.integrations.ga4} />
       <IntegrationBadge label="Bing" connected={site.integrations.bing} />
+      <InfoTip>Which data sources this site has linked: GSC is Google Search Console (Google search data), GA4 is Google Analytics (visitor behavior), and Bing is Bing's search data. A check means it's connected.</InfoTip>
       <Badge
         variant={site.pagesCount > 0 ? "secondary" : "outline"}
         className={`gap-1 text-[10px] px-1.5 py-0 ${site.pagesCount > 0 ? "" : "text-muted-foreground"}`}
@@ -124,9 +126,12 @@ export default function AdminPage() {
                   {u.email ?? <span className="font-mono text-xs">{u.id}</span>}
                 </span>
                 {u.isAdmin && (
-                  <Badge variant="secondary" className="gap-1">
-                    <ShieldCheck className="h-3 w-3" /> Admin
-                  </Badge>
+                  <span className="inline-flex items-center gap-1">
+                    <Badge variant="secondary" className="gap-1">
+                      <ShieldCheck className="h-3 w-3" /> Admin
+                    </Badge>
+                    <InfoTip>This user is a platform administrator — they can see this admin page and manage every account and site, not just their own.</InfoTip>
+                  </span>
                 )}
                 <span className="text-xs text-muted-foreground ml-auto">
                   Joined {formatDate(u.createdAt)}

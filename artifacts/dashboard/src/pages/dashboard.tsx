@@ -819,7 +819,7 @@ export default function Dashboard() {
                       <span>{pipelineHistory.lastRunAt ? new Date(pipelineHistory.lastRunAt).toLocaleDateString() : "Never"}</span>
                     </div>
                     <div className="flex justify-between font-medium mt-1">
-                      <span>Status:</span>
+                      <span className="inline-flex items-center gap-1">Status:<InfoTip>How the last run finished. "completed" means it worked; "failed" means something went wrong — check the error message and try running it again.</InfoTip></span>
                       <span className={pipelineHistory.lastStatus === 'failed' ? 'text-red-500' : 'text-foreground'}>
                         {pipelineHistory.lastStatus || 'Unknown'} {pipelineHistory.lastDurationMs ? `(${Math.round(pipelineHistory.lastDurationMs / 1000)}s)` : ""}
                       </span>
@@ -889,7 +889,7 @@ export default function Dashboard() {
                           <span>{job.lastRunAt ? new Date(job.lastRunAt).toLocaleString(undefined, { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : "Never"}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span>Status:</span>
+                          <span className="inline-flex items-center gap-1">Status:<InfoTip>How this job's last run finished. "completed" means it worked; "failed" means it stopped early — check the error and run it again.</InfoTip></span>
                           <span className={job.lastStatus === 'failed' ? 'text-red-500 font-bold' : ''}>
                             {job.lastStatus || '--'} {job.lastDurationMs ? `(${Math.round(job.lastDurationMs / 1000)}s)` : ""}
                           </span>

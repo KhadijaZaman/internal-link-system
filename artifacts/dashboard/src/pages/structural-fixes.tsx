@@ -215,12 +215,54 @@ export default function StructuralFixes() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Page</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead className="text-right">In</TableHead>
-                    <TableHead className="text-right">Out</TableHead>
-                    <TableHead className="text-right">PageRank</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
+                    <TableHead>
+                      <span className="inline-flex items-center gap-1">
+                        Type
+                        <InfoTip>
+                          Why this page is structurally broken. Orphan = no other page links to it (hard for visitors and search engines to find). Dead-end = it links out to nothing (traffic and ranking value stop here).
+                        </InfoTip>
+                      </span>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <span className="inline-flex items-center gap-1 justify-end">
+                        In
+                        <InfoTip>
+                          Number of in-body internal links pointing TO this page from other pages on your site. Navigation, header and footer links don't count. 0 = orphan.
+                        </InfoTip>
+                      </span>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <span className="inline-flex items-center gap-1 justify-end">
+                        Out
+                        <InfoTip>
+                          Number of in-body internal links FROM this page to other pages on your site. 0 = dead-end.
+                        </InfoTip>
+                      </span>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <span className="inline-flex items-center gap-1 justify-end">
+                        PageRank
+                        <InfoTip>
+                          Internal PageRank — a score of how much authority this page collects from your site's own internal links. Higher = more internal authority. Orphans are always near the minimum because nothing links to them.
+                        </InfoTip>
+                      </span>
+                    </TableHead>
+                    <TableHead>
+                      <span className="inline-flex items-center gap-1">
+                        Status
+                        <InfoTip>
+                          Whether this page is ready for link suggestions. "ready" = crawled and analyzed, click Generate to get suggestions. "needs crawl/embed" = we haven't fully processed this page yet, so Generate is disabled — it becomes ready after the next content crawl. "N pending" = suggestions were already generated and are waiting for your review in the Semantic Links inbox.
+                        </InfoTip>
+                      </span>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <span className="inline-flex items-center gap-1 justify-end">
+                        Action
+                        <InfoTip>
+                          Generate scored internal-link suggestions for this page. Results appear in the Semantic Links review inbox for you to approve or reject — nothing is published automatically.
+                        </InfoTip>
+                      </span>
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

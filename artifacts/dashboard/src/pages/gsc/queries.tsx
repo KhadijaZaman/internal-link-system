@@ -136,10 +136,10 @@ function QueriesBody() {
             <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
               <tr>
                 <SortableHeader col="query" label="Query" sort={sort} onChange={setSort} align="left" />
-                <SortableHeader col="clicks" label="Clicks" sort={sort} onChange={setSort} />
-                <SortableHeader col="impressions" label="Impressions" sort={sort} onChange={setSort} />
-                <SortableHeader col="ctr" label="CTR" sort={sort} onChange={setSort} />
-                <SortableHeader col="position" label="Position" sort={sort} onChange={setSort} />
+                <SortableHeader col="clicks" label="Clicks" sort={sort} onChange={setSort} tip="Times someone clicked through to your site after searching this query." />
+                <SortableHeader col="impressions" label="Impressions" sort={sort} onChange={setSort} tip="Times your site appeared in Google's results for this query, whether or not it was clicked." />
+                <SortableHeader col="ctr" label="CTR" sort={sort} onChange={setSort} tip="Click-through rate: clicks divided by impressions. A low rate means people see you for this query but don't click." />
+                <SortableHeader col="position" label="Position" sort={sort} onChange={setSort} tip="Average ranking spot in Google for this query. Lower is better — 1 is the very top." />
               </tr>
             </thead>
             <tbody>

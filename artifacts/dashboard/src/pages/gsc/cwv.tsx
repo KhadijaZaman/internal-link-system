@@ -28,6 +28,20 @@ const METRIC_LABELS: Record<string, { short: string; full: string; target: strin
   round_trip_time: { short: "RTT", full: "Round Trip Time", target: "≤ 75 ms" },
 };
 
+// Plain-English descriptions of each metric for non-technical users.
+const METRIC_DESCRIPTIONS: Record<string, string> = {
+  largest_contentful_paint: "How fast the main content loads. Aim for under 2.5 seconds so visitors see something useful quickly.",
+  interaction_to_next_paint: "How quickly the page responds when someone taps or clicks. Aim for under 200 ms so it feels snappy, not laggy.",
+  cumulative_layout_shift: "How much the layout jumps around while loading. Aim for under 0.1 so buttons and text don't shift under people's fingers.",
+  first_contentful_paint: "How long until the first text or image shows up. A long blank screen makes people leave.",
+  experimental_time_to_first_byte: "How long the server takes to start sending the page. Everything else waits on this, so faster is better.",
+  round_trip_time: "How long data takes to travel between the visitor and your server. High values usually mean the server is far from your visitors.",
+};
+
+// Plain-English meaning of the good / needs-improvement / poor bands.
+const BAND_TOOLTIP =
+  "Google grades each metric into three bands from real visitors: green (good) means most people get a fast experience, amber (needs improvement) means it's borderline, and red (poor) means it's failing and can hurt your ranking. Fix the red ones first.";
+
 interface Recommendation {
   title: string;
   why: string;
@@ -408,8 +422,11 @@ function CwvBody() {
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       <div className="text-xs uppercase tracking-wider text-muted-foreground truncate">
-                        {label?.full ?? m.metric.replace(/_/g, " ")}
-                        {label && <span className="ml-1 opacity-60">({label.short})</span>}
+                        <span className="inline-flex items-center gap-1">
+                          {label?.full ?? m.metric.replace(/_/g, " ")}
+                          {label && <span className="opacity-60">({label.short})</span>}
+                          {METRIC_DESCRIPTIONS[m.metric] && <InfoTip>{METRIC_DESCRIPTIONS[m.metric]}</InfoTip>}
+                        </span>
                       </div>
                       {label && (
                         <div className="text-[10px] text-muted-foreground/80 mt-0.5">
@@ -417,7 +434,10 @@ function CwvBody() {
                         </div>
                       )}
                     </div>
-                    <Badge className={cn("text-[10px] shrink-0", BAND_COLORS[m.band])}>{m.band}</Badge>
+                    <span className="inline-flex items-center gap-1 shrink-0">
+                      <Badge className={cn("text-[10px]", BAND_COLORS[m.band])}>{m.band}</Badge>
+                      <InfoTip side="left">{BAND_TOOLTIP}</InfoTip>
+                    </span>
                   </div>
                   <div className="text-2xl font-bold mt-2">{formatP75(m.metric, m.p75)}</div>
                   <div className="mt-2 flex h-2 rounded overflow-hidden">

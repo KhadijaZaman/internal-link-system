@@ -140,11 +140,11 @@ function PagesBody() {
             <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
               <tr>
                 <SortableHeader col="url" label="URL" sort={sort} onChange={setSort} align="left" />
-                <SortableHeader col="clicks" label="Clicks" sort={sort} onChange={setSort} />
-                <SortableHeader col="impressions" label="Impressions" sort={sort} onChange={setSort} />
-                <SortableHeader col="ctr" label="CTR" sort={sort} onChange={setSort} />
-                <SortableHeader col="position" label="Position" sort={sort} onChange={setSort} />
-                <SortableHeader col="missedClicks" label="Opportunity" sort={sort} onChange={setSort} />
+                <SortableHeader col="clicks" label="Clicks" sort={sort} onChange={setSort} tip="Times someone clicked through to this page from Google's results." />
+                <SortableHeader col="impressions" label="Impressions" sort={sort} onChange={setSort} tip="Times this page appeared in Google's results, whether or not it was clicked." />
+                <SortableHeader col="ctr" label="CTR" sort={sort} onChange={setSort} tip="Click-through rate: clicks divided by impressions. A low rate means people see you but don't click." />
+                <SortableHeader col="position" label="Position" sort={sort} onChange={setSort} tip="Average ranking spot in Google for this page. Lower is better — 1 is the very top." />
+                <SortableHeader col="missedClicks" label="Opportunity" sort={sort} onChange={setSort} tip="Roughly how many extra clicks you'd get if this page's click-through rate matched the norm for its ranking spot. Send high-opportunity pages to the Optimizer to rewrite the title and description." />
               </tr>
             </thead>
             <tbody>
@@ -243,8 +243,8 @@ function PagesBody() {
                     <tr>
                       <th className="text-left p-2">Query</th>
                       <th className="text-right p-2">Clicks</th>
-                      <th className="text-right p-2">Imps</th>
-                      <th className="text-right p-2">Pos</th>
+                      <th className="text-right p-2"><span className="inline-flex items-center gap-1 justify-end">Imps<InfoTip>Impressions: times this page appeared in Google's results for the query.</InfoTip></span></th>
+                      <th className="text-right p-2"><span className="inline-flex items-center gap-1 justify-end">Pos<InfoTip>Position: average ranking spot in Google. Lower is better — 1 is the top.</InfoTip></span></th>
                     </tr>
                   </thead>
                   <tbody>

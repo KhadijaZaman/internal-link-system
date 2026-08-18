@@ -302,8 +302,12 @@ export default function Optimize() {
               <TableHeader>
                 <TableRow>
                   <TableHead>URL</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Priority</TableHead>
+                  <TableHead>
+                    <span className="inline-flex items-center gap-1">Status<InfoTip>Where this page is in the queue. "Optimize" is waiting, "optimizing"/"running" is in progress, "completed" means the brief is ready, and "failed" means it stopped early — use Requeue to try again.</InfoTip></span>
+                  </TableHead>
+                  <TableHead>
+                    <span className="inline-flex items-center gap-1">Priority<InfoTip>A label you set when adding a page — high, medium, or low. It's a hint about which pages matter most to you.</InfoTip></span>
+                  </TableHead>
                   <TableHead>Added At</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>

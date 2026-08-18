@@ -454,7 +454,10 @@ export default function SimilarityExplorer() {
                     )}
                     {a.mainTheme && (
                       <p className="text-xs text-muted-foreground leading-relaxed">
-                        <span className="font-medium text-foreground">Main theme:</span>{" "}
+                        <span className="font-medium text-foreground inline-flex items-center gap-1">
+                          Main theme:
+                          <InfoTip>The AI's one-line summary of what this page is mainly about. Use it to check the page is focused on the topic you intended.</InfoTip>
+                        </span>{" "}
                         {a.mainTheme}
                       </p>
                     )}
@@ -468,8 +471,9 @@ export default function SimilarityExplorer() {
                         </InfoTip>
                       </p>
                       {a.similar.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground inline-flex items-center gap-1">
                           No similar articles above 35%.
+                          <InfoTip>35% is the cut-off (threshold) for counting two pages as overlapping. Nothing else you compared was that close in topic, so this page doesn't compete with the others.</InfoTip>
                         </p>
                       ) : (
                         <ul className="space-y-1.5">

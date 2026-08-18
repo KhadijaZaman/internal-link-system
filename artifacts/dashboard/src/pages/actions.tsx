@@ -30,6 +30,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { HowThisWorks } from "@/components/how-this-works";
 import { ImpactWins } from "@/components/impact-wins";
+import { InfoTip } from "@/components/info-tip";
 
 type StatusFilter = "open" | "done" | "dismissed" | "all";
 
@@ -137,11 +138,9 @@ function ActionRow({
             <Badge variant="outline" className={cfg.badgeClass}>
               {cfg.label}
             </Badge>
-            <span
-              className="text-xs font-medium text-muted-foreground"
-              title="Priority score — action weight scaled by impressions at stake"
-            >
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
               score {Math.round(item.score)}
+              <InfoTip>How urgent this task is. Higher scores mean a bigger likely payoff, so work down the list from the top.</InfoTip>
             </span>
             {item.status !== "open" && (
               <Badge
@@ -179,8 +178,14 @@ function ActionRow({
             </p>
           )}
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <span>{fmtNum(item.impressionsAtStake)} impressions at stake</span>
-            <span>{fmtNum(item.clicksAtStake)} clicks at stake</span>
+            <span className="inline-flex items-center gap-1">
+              {fmtNum(item.impressionsAtStake)} impressions at stake
+              <InfoTip>Impressions are the times your page showed up in Google's results. "At stake" is roughly how many you could gain or lose depending on whether you do this fix.</InfoTip>
+            </span>
+            <span className="inline-flex items-center gap-1">
+              {fmtNum(item.clicksAtStake)} clicks at stake
+              <InfoTip>Clicks are the times people actually clicked through to your page. "At stake" is roughly how many extra visits this fix could win you.</InfoTip>
+            </span>
             <a
               href={item.targetUrl}
               target="_blank"

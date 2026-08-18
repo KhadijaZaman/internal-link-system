@@ -168,7 +168,10 @@ export default function ContentWriter() {
 
       <Card className="border-border/50">
         <CardHeader>
-          <CardTitle className="text-lg">Brief</CardTitle>
+          <CardTitle className="text-lg flex items-center gap-1.5">
+            Brief
+            <InfoTip>The writing plan you give the AI — the topic, length, and any notes. The AI uses it to produce a full draft article for you.</InfoTip>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleGenerate} className="space-y-4">

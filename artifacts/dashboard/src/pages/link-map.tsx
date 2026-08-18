@@ -981,13 +981,19 @@ export default function LinkMap() {
                     </Card>
                     <Card>
                       <CardContent className="p-4 space-y-1">
-                        <div className="text-sm text-muted-foreground">Top Query</div>
+                        <div className="text-sm text-muted-foreground flex items-center gap-1">
+                          Top Query
+                          <InfoTip>The search term that brings this page the most clicks from Google. It tells you what people are finding this page for.</InfoTip>
+                        </div>
                         <div className="text-lg font-medium truncate">{selectedPage.topQuery || "N/A"}</div>
                       </CardContent>
                     </Card>
                     <Card>
                       <CardContent className="p-4 space-y-1">
-                        <div className="text-sm text-muted-foreground">Position</div>
+                        <div className="text-sm text-muted-foreground flex items-center gap-1">
+                          Position
+                          <InfoTip>This page's average ranking spot in Google search results. Lower is better — 1 means the top result. Aim to move important pages toward the top.</InfoTip>
+                        </div>
                         <div
                           className="text-2xl font-bold font-mono truncate"
                           title={selectedPage.position?.toString() ?? "-"}
@@ -998,7 +1004,10 @@ export default function LinkMap() {
                     </Card>
                     <Card>
                       <CardContent className="p-4 space-y-1">
-                        <div className="text-sm text-muted-foreground">Traffic</div>
+                        <div className="text-sm text-muted-foreground flex items-center gap-1">
+                          Traffic
+                          <InfoTip>How many times someone clicked through to this page from Google search results. More clicks means more visitors from search.</InfoTip>
+                        </div>
                         <div className="text-2xl font-bold font-mono">
                           {selectedPage.clicks || 0} <span className="text-sm text-muted-foreground font-sans">clicks</span>
                         </div>
@@ -1299,7 +1308,10 @@ function FocusView({ focus, svgRef, onSelectUrl, view, onViewChange }: FocusView
             </button>
           )}
           {!seed.hasEmbedding && (
-            <span className="text-amber-600">No embedding — scores limited; run Refresh Post Embeddings</span>
+            <span className="text-amber-600 inline-flex items-center gap-1">
+              No embedding — scores limited; run Refresh Post Embeddings
+              <InfoTip>An embedding is the AI's numeric fingerprint of what this page is about. Without it we can't measure how well pages match, so relevance scores are limited. Run "Refresh Post Embeddings" to fix this.</InfoTip>
+            </span>
           )}
           <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-muted-foreground italic">
             In-text, same-domain links only
@@ -1535,11 +1547,36 @@ function NeighborTable({
               <tr className="border-b text-muted-foreground text-left bg-muted/10">
                 <th className="py-2 px-3 font-medium w-8">#</th>
                 <th className="py-2 px-3 font-medium"><SortBtn k="url">URL</SortBtn></th>
-                <th className="py-2 px-3 font-medium"><SortBtn k="anchor">Anchor text</SortBtn></th>
-                <th className="py-2 px-3 font-medium text-right"><SortBtn k="relevance" right>Relevance</SortBtn></th>
-                <th className="py-2 px-3 font-medium text-right"><SortBtn k="popularity" right>Popularity</SortBtn></th>
-                <th className="py-2 px-3 font-medium text-right"><SortBtn k="prominence" right>Prominence</SortBtn></th>
-                <th className="py-2 px-3 font-medium text-right"><SortBtn k="score" right>Score</SortBtn></th>
+                <th className="py-2 px-3 font-medium">
+                  <span className="inline-flex items-center gap-1">
+                    <SortBtn k="anchor">Anchor text</SortBtn>
+                    <InfoTip>The clickable words used for the link. Descriptive wording (not "click here") helps both visitors and Google understand the linked page.</InfoTip>
+                  </span>
+                </th>
+                <th className="py-2 px-3 font-medium text-right">
+                  <span className="inline-flex items-center justify-end gap-1">
+                    <SortBtn k="relevance" right>Relevance</SortBtn>
+                    <InfoTip>How closely this page's topic matches the focused page (0-100). Higher means the two pages are a natural, on-topic fit to link together.</InfoTip>
+                  </span>
+                </th>
+                <th className="py-2 px-3 font-medium text-right">
+                  <span className="inline-flex items-center justify-end gap-1">
+                    <SortBtn k="popularity" right>Popularity</SortBtn>
+                    <InfoTip>How well-linked this page already is within your site (0-100). Higher means more pages point to it, so it carries more ranking weight.</InfoTip>
+                  </span>
+                </th>
+                <th className="py-2 px-3 font-medium text-right">
+                  <span className="inline-flex items-center justify-end gap-1">
+                    <SortBtn k="prominence" right>Prominence</SortBtn>
+                    <InfoTip>How visible a link would be on the page (0-100). Links high up in the main content count more than ones buried at the bottom.</InfoTip>
+                  </span>
+                </th>
+                <th className="py-2 px-3 font-medium text-right">
+                  <span className="inline-flex items-center justify-end gap-1">
+                    <SortBtn k="score" right>Score</SortBtn>
+                    <InfoTip>The overall strength of this link, combining relevance, popularity, and prominence (0-100). Prioritise the highest-scoring links first.</InfoTip>
+                  </span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -1636,9 +1673,24 @@ function GlobalLinksTable({
             <tr className="text-left text-muted-foreground">
               <th className="py-2 px-3 font-medium">Source</th>
               <th className="py-2 px-3 font-medium">Destination</th>
-              <th className="py-2 px-3 font-medium">Position</th>
-              <th className="py-2 px-3 font-medium text-right">Links</th>
-              <th className="py-2 px-3 font-medium">Anchor text</th>
+              <th className="py-2 px-3 font-medium">
+                <span className="inline-flex items-center gap-1">
+                  Position
+                  <InfoTip>Where the link sits on the page: in the main content, or in the navigation, header, footer, or sidebar. Only in-content links count toward a page being an orphan or dead-end.</InfoTip>
+                </span>
+              </th>
+              <th className="py-2 px-3 font-medium text-right">
+                <span className="inline-flex items-center justify-end gap-1">
+                  Links
+                  <InfoTip>How many separate links go from the source page to the destination page in this spot.</InfoTip>
+                </span>
+              </th>
+              <th className="py-2 px-3 font-medium">
+                <span className="inline-flex items-center gap-1">
+                  Anchor text
+                  <InfoTip>The clickable words used for the link. Descriptive wording (not "click here") helps both visitors and Google understand the linked page.</InfoTip>
+                </span>
+              </th>
             </tr>
           </thead>
           <tbody>

@@ -37,10 +37,13 @@ type SortKey =
 
 const MAX_UPLOAD_CHARS = 1_500_000;
 
-function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function StatCard({ label, value, hint, tip }: { label: string; value: string; hint?: string; tip?: React.ReactNode }) {
   return (
     <div className="border rounded-lg p-4 bg-card">
-      <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-xs uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1">
+        {label}
+        {tip != null && <InfoTip>{tip}</InfoTip>}
+      </div>
       <div className="text-2xl font-display mt-1">{value}</div>
       {hint ? <div className="text-xs text-muted-foreground mt-1">{hint}</div> : null}
     </div>
@@ -347,11 +350,12 @@ export default function BingPage() {
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <StatCard label="Google clicks" value={data.totals.gscClicks.toLocaleString()} hint="latest GSC sync" />
+            <StatCard label="Google clicks" value={data.totals.gscClicks.toLocaleString()} hint="latest GSC sync" tip="Times someone clicked through to your site from Google's results, in the latest Search Console sync." />
             <StatCard
               label="Bing clicks"
               value={data.totals.bingClicks.toLocaleString()}
               hint={`~6 mo · synced ${fmtDate(data.bingSyncedAt)}`}
+              tip="Times someone clicked through to your site from Bing's results, over roughly the last 6 months. Don't compare head-to-head with Google — the time windows differ."
             />
             <StatCard
               label="AI citations"
@@ -361,8 +365,9 @@ export default function BingPage() {
                   ? `from "${data.latestUpload.label}" · ${fmtDate(data.latestUpload.uploadedAt)}`
                   : "no upload yet"
               }
+              tip="How often AI answers (Copilot / Bing AI) quoted your pages as a source. Being cited builds visibility even when there's no click. Upload the AI Performance export to populate this."
             />
-            <StatCard label="AI sessions" value={data.totals.aiSessions.toLocaleString()} hint="GA4, 28-day window" />
+            <StatCard label="AI sessions" value={data.totals.aiSessions.toLocaleString()} hint="GA4, 28-day window" tip="Actual visits sent by AI assistants like ChatGPT, Perplexity, and Copilot in the last 28 days, measured by GA4." />
           </div>
 
           {narrative ? (
@@ -431,14 +436,14 @@ export default function BingPage() {
                 <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <SortableHeader col="path" label="Path" sort={sort} onChange={setSort} align="left" />
-                    <SortableHeader col="gscClicks" label="GSC Clicks" sort={sort} onChange={setSort} />
-                    <SortableHeader col="gscImpressions" label="GSC Impr." sort={sort} onChange={setSort} />
-                    <SortableHeader col="gscPosition" label="GSC Pos." sort={sort} onChange={setSort} />
-                    <SortableHeader col="bingClicks" label="Bing Clicks" sort={sort} onChange={setSort} />
-                    <SortableHeader col="bingImpressions" label="Bing Impr." sort={sort} onChange={setSort} />
-                    <SortableHeader col="bingPosition" label="Bing Pos." sort={sort} onChange={setSort} />
-                    <SortableHeader col="aiCitations" label="AI Citations" sort={sort} onChange={setSort} />
-                    <SortableHeader col="aiSessions" label="AI Sessions" sort={sort} onChange={setSort} />
+                    <SortableHeader col="gscClicks" label="GSC Clicks" sort={sort} onChange={setSort} tip="Times someone clicked through to this page from Google's results." />
+                    <SortableHeader col="gscImpressions" label="GSC Impr." sort={sort} onChange={setSort} tip="Impressions on Google: times this page appeared in Google's results, whether or not it was clicked." />
+                    <SortableHeader col="gscPosition" label="GSC Pos." sort={sort} onChange={setSort} tip="Average ranking spot on Google. Lower is better — 1 is the top." />
+                    <SortableHeader col="bingClicks" label="Bing Clicks" sort={sort} onChange={setSort} tip="Times someone clicked through to this page from Bing's results (rolling ~6-month window)." />
+                    <SortableHeader col="bingImpressions" label="Bing Impr." sort={sort} onChange={setSort} tip="Impressions on Bing: times this page appeared in Bing's results, whether or not it was clicked." />
+                    <SortableHeader col="bingPosition" label="Bing Pos." sort={sort} onChange={setSort} tip="Average ranking spot on Bing. Lower is better — 1 is the top." />
+                    <SortableHeader col="aiCitations" label="AI Citations" sort={sort} onChange={setSort} tip="How often AI answers (Copilot / Bing AI) quoted this page as a source. High citations with low Google clicks mean AI values the page more than search currently does." />
+                    <SortableHeader col="aiSessions" label="AI Sessions" sort={sort} onChange={setSort} tip="Visits to this page sent by AI assistants (ChatGPT, Perplexity, Copilot, etc.), measured by GA4." />
                   </tr>
                 </thead>
                 <tbody>

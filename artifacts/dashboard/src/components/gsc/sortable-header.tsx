@@ -1,5 +1,6 @@
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { InfoTip } from "@/components/info-tip";
 
 export interface SortState<K extends string> {
   key: K;
@@ -12,12 +13,14 @@ export function SortableHeader<K extends string>({
   sort,
   onChange,
   align = "right",
+  tip,
 }: {
   col: K;
   label: string;
   sort: SortState<K>;
   onChange: (s: SortState<K>) => void;
   align?: "left" | "right";
+  tip?: React.ReactNode;
 }) {
   const active = sort.key === col;
   const Icon = !active ? ArrowUpDown : sort.dir === "asc" ? ArrowUp : ArrowDown;
@@ -37,6 +40,11 @@ export function SortableHeader<K extends string>({
       <span className={cn("inline-flex items-center gap-1", align === "right" ? "justify-end" : "")}>
         {label}
         <Icon className={cn("h-3 w-3", active ? "opacity-100" : "opacity-40")} />
+        {tip != null && (
+          <span onClick={(e) => e.stopPropagation()} className="cursor-default font-normal normal-case">
+            <InfoTip>{tip}</InfoTip>
+          </span>
+        )}
       </span>
     </th>
   );
