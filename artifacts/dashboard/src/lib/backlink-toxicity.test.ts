@@ -415,3 +415,49 @@ describe("scoreAnchor", () => {
     expect(result.level).toBe("low");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Category-level smoke test — one representative phrase per spam category
+//
+// Purpose: catch accidental deletion of an entire category from SPAM_ANCHORS.
+// Each entry names the category and one canonical phrase that must still fire.
+// If a category is removed from spam-anchors.ts, the matching assertion below
+// will fail with a clear message naming the deleted category.
+// ---------------------------------------------------------------------------
+describe("scoreAnchor — category coverage smoke test", () => {
+  const CATEGORY_SENTINELS: Array<{ category: string; phrase: string }> = [
+    { category: "pharmaceutical / health spam",  phrase: "buy viagra"             },
+    { category: "gambling / casino spam",         phrase: "online casino"          },
+    { category: "payday / financial spam",        phrase: "payday loans"           },
+    { category: "SEO / link-building spam",       phrase: "buy backlinks"          },
+    { category: "essay / academic fraud",         phrase: "essay writing service"  },
+    { category: "dating / adult spam",            phrase: "dating site"            },
+  ];
+
+  for (const { category, phrase } of CATEGORY_SENTINELS) {
+    it(`"${category}" category: sentinel phrase "${phrase}" is present and detectable`, () => {
+      // 1. The phrase must exist in the SPAM_ANCHORS config — catches deletions.
+      expect(
+        SPAM_ANCHORS,
+        `"${phrase}" was removed from SPAM_ANCHORS — the entire "${category}" category may have been deleted`,
+      ).toContain(phrase);
+
+      // 2. The scorer must fire on the exact phrase (config → scorer pipeline).
+      const exact = scoreAnchor(phrase);
+      expect(
+        exact.matchedPhrase,
+        `scoreAnchor("${phrase}") should match for category "${category}"`,
+      ).toBe(phrase);
+      expect(exact.level).not.toBe("low");
+
+      // 3. The scorer must also fire when the phrase is embedded in surrounding text
+      //    (simulates a realistic anchor like "get the best online casino deals").
+      const embedded = scoreAnchor(`get the best ${phrase} deals here`);
+      expect(
+        embedded.matchedPhrase,
+        `"${phrase}" embedded in longer anchor should still match for category "${category}"`,
+      ).not.toBeNull();
+      expect(embedded.level).not.toBe("low");
+    });
+  }
+});
