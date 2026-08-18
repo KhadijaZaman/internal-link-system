@@ -166,7 +166,7 @@ interface ScoredDomain {
   risk: DomainRisk;
 }
 
-function ReferringDomainsCard({ referringDomains }: { referringDomains: AuditReferringDomain[] }) {
+export function ReferringDomainsCard({ referringDomains }: { referringDomains: AuditReferringDomain[] }) {
   const [showFlagged, setShowFlagged] = useState(false);
 
   const scored = useMemo<ScoredDomain[]>(
