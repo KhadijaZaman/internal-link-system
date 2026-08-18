@@ -5,6 +5,8 @@ import path from "path";
 export default defineConfig({
   plugins: [react()],
   test: {
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    exclude: ["dist/**", "node_modules/**"],
     environment: "node",
     environmentMatchGlobs: [
       // Component tests that use jsdom declare it per-file via @vitest-environment jsdom.
