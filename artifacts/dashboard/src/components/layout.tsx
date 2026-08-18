@@ -56,7 +56,7 @@ const navSections: NavSection[] = [
       { href: "/content/writer", label: "Content Writer", icon: PenLine },
       { href: "/research", label: "Data Research", icon: FlaskConical },
       { href: "/publish", label: "Publish to CMS", icon: UploadCloud },
-      { href: "/backlinks", label: "Backlink Prospects", icon: Link2 },
+      { href: "/backlinks", label: "Backlinks", icon: Link2 },
       { href: "/topical-map", label: "Topical Map", icon: Map },
       { href: "/similarity", label: "Content Similarity", icon: GitCompareArrows },
       { href: "/knowledge-base", label: "Knowledge Base", icon: BookOpen },
