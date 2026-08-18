@@ -1,10 +1,17 @@
 import { Router, type IRouter } from "express";
-import { db, backlinkProspectsTable, backlinkAuditsTable, backlinkHistoryTable } from "@workspace/db";
+import {
+  db,
+  backlinkProspectsTable,
+  backlinkAuditsTable,
+  backlinkHistoryTable,
+  backlinkDisavowTable,
+} from "@workspace/db";
 import { and, eq, desc, asc, sql, inArray } from "drizzle-orm";
 import {
   DiscoverBacklinkProspectsBody,
   RunBacklinkAuditBody,
   UpdateBacklinkProspectBody,
+  SetDisavowDecisionBody,
 } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth";
 import { requireSite, getSite } from "../lib/site";
@@ -90,8 +97,6 @@ router.post("/backlinks/prospects", requireAuth, requireSite, async (req, res, n
       return;
     }
 
-    // One cached pull per target + one for our own site (to exclude domains
-    // that already link to us). DataForSEO referring-domain reads, 6h cache.
     const fetchCached = (target: string): Promise<ReferringDomain[]> =>
       withCache(`s${site.id}|backlinks|${target}`, CACHE_TTL_MS, () =>
         fetchTopReferringDomains(target, PER_TARGET_LIMIT),
@@ -102,7 +107,6 @@ router.post("/backlinks/prospects", requireAuth, requireSite, async (req, res, n
     ]);
     const linksToUs = new Set(ownRefs.map((r) => r.domain.replace(/^www\./, "")));
 
-    // Aggregate: domain -> which competitors it links to, best rank, total backlinks.
     const agg = new Map<string, { rank: number | null; backlinks: number; competitors: Set<string> }>();
     targets.forEach((target, i) => {
       for (const r of competitorRefs[i] ?? []) {
@@ -116,7 +120,6 @@ router.post("/backlinks/prospects", requireAuth, requireSite, async (req, res, n
       }
     });
 
-    // Upsert prospects; never downgrade an existing outreach status.
     const now = new Date();
     for (const [domain, info] of agg) {
       await db
@@ -155,7 +158,6 @@ router.post("/backlinks/prospects", requireAuth, requireSite, async (req, res, n
 
 // ---------- Backlink audit (comprehensive profile, persisted) ----------
 
-/** Audit pulls are paid; refresh at most once a day unless data is missing. */
 const AUDIT_TTL_MS = 24 * 60 * 60 * 1000;
 
 async function loadAudit(siteId: number) {
@@ -217,7 +219,7 @@ router.post("/backlinks/audit", requireAuth, requireSite, async (req, res, next)
     const staleBefore = Date.now() - AUDIT_TTL_MS;
 
     // Current persisted state, per row so freshness is per component.
-    const rows = await db
+    const auditRows = await db
       .select({
         target: backlinkAuditsTable.target,
         kind: backlinkAuditsTable.kind,
@@ -225,13 +227,13 @@ router.post("/backlinks/audit", requireAuth, requireSite, async (req, res, next)
       })
       .from(backlinkAuditsTable)
       .where(eq(backlinkAuditsTable.siteId, site.id));
-    const ownRow = rows.find((r) => r.kind === "own_profile");
+    const ownRow = auditRows.find((r) => r.kind === "own_profile");
     const compFetchedAt = new Map(
-      rows.filter((r) => r.kind === "competitor_summary").map((r) => [r.target, r.fetchedAt.getTime()]),
+      auditRows
+        .filter((r) => r.kind === "competitor_summary")
+        .map((r) => [r.target, r.fetchedAt.getTime()]),
     );
 
-    // If competitors were provided, they define the benchmark set: drop rows
-    // outside it. If omitted, keep the existing benchmark set as-is.
     const benchmarkSet = competitors.length > 0 ? competitors : [...compFetchedAt.keys()];
     const obsolete = [...compFetchedAt.keys()].filter((t) => !benchmarkSet.includes(t));
     if (obsolete.length > 0) {
@@ -257,9 +259,6 @@ router.post("/backlinks/audit", requireAuth, requireSite, async (req, res, next)
       return;
     }
 
-    // All-or-nothing per unit: the own profile persists only if all four legs
-    // succeed; each competitor summary persists independently. A 402 anywhere
-    // surfaces as 402 — a 200 never hides a failed leg.
     try {
       const now = new Date();
       if (needOwn) {
@@ -315,36 +314,46 @@ router.post("/backlinks/audit", requireAuth, requireSite, async (req, res, next)
           });
       }
       // Append a history snapshot for today (UTC). One upsert per calendar day.
+      // Best-effort: does not fail the audit if the table hasn't been migrated yet.
       if (needOwn) {
-        const ownProfileRow = await db
-          .select({ payload: backlinkAuditsTable.payload })
-          .from(backlinkAuditsTable)
-          .where(and(eq(backlinkAuditsTable.siteId, site.id), eq(backlinkAuditsTable.kind, "own_profile")))
-          .limit(1);
-        if (ownProfileRow.length > 0) {
-          const p = ownProfileRow[0]!.payload as { summary?: BacklinkSummary | null };
-          const s = p.summary;
-          const todayUtc = new Date().toISOString().slice(0, 10);
-          await db
-            .insert(backlinkHistoryTable)
-            .values({
-              siteId: site.id,
-              date: todayUtc,
-              rank: s?.rank ?? null,
-              backlinks: s?.backlinks ?? null,
-              referringDomains: s?.referringDomains ?? null,
-              dofollow: s?.dofollow ?? null,
-            })
-            .onConflictDoUpdate({
-              target: [backlinkHistoryTable.siteId, backlinkHistoryTable.date],
-              set: {
+        try {
+          const ownProfileRow = await db
+            .select({ payload: backlinkAuditsTable.payload })
+            .from(backlinkAuditsTable)
+            .where(
+              and(
+                eq(backlinkAuditsTable.siteId, site.id),
+                eq(backlinkAuditsTable.kind, "own_profile"),
+              ),
+            )
+            .limit(1);
+          if (ownProfileRow.length > 0) {
+            const p = ownProfileRow[0]!.payload as { summary?: BacklinkSummary | null };
+            const s = p.summary;
+            const todayUtc = new Date().toISOString().slice(0, 10);
+            await db
+              .insert(backlinkHistoryTable)
+              .values({
+                siteId: site.id,
+                date: todayUtc,
                 rank: s?.rank ?? null,
                 backlinks: s?.backlinks ?? null,
                 referringDomains: s?.referringDomains ?? null,
                 dofollow: s?.dofollow ?? null,
-                recordedAt: now,
-              },
-            });
+              })
+              .onConflictDoUpdate({
+                target: [backlinkHistoryTable.siteId, backlinkHistoryTable.date],
+                set: {
+                  rank: s?.rank ?? null,
+                  backlinks: s?.backlinks ?? null,
+                  referringDomains: s?.referringDomains ?? null,
+                  dofollow: s?.dofollow ?? null,
+                  recordedAt: now,
+                },
+              });
+          }
+        } catch (histErr) {
+          req.log.warn({ err: histErr }, "backlink history snapshot skipped (table may not exist yet)");
         }
       }
       req.log.info(
@@ -367,6 +376,8 @@ router.post("/backlinks/audit", requireAuth, requireSite, async (req, res, next)
   }
 });
 
+// ---------- Backlink history (per-day growth snapshots) ----------
+
 router.get("/backlinks/history", requireAuth, requireSite, async (req, res, next) => {
   try {
     const site = getSite(req);
@@ -382,6 +393,122 @@ router.get("/backlinks/history", requireAuth, requireSite, async (req, res, next
       .where(eq(backlinkHistoryTable.siteId, site.id))
       .orderBy(asc(backlinkHistoryTable.date));
     res.json({ history: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- Disavow decisions (persisted per site, accumulate across audits) ----------
+
+async function loadDisavow(siteId: number) {
+  const rows = await db
+    .select()
+    .from(backlinkDisavowTable)
+    .where(eq(backlinkDisavowTable.siteId, siteId))
+    .orderBy(desc(backlinkDisavowTable.updatedAt));
+  return {
+    decisions: rows.map((r) => ({
+      domain: r.domain,
+      decision: r.decision,
+      updatedAt: r.updatedAt.toISOString(),
+    })),
+  };
+}
+
+router.get("/backlinks/disavow", requireAuth, requireSite, async (req, res, next) => {
+  try {
+    const site = getSite(req);
+    res.json(await loadDisavow(site.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/backlinks/disavow/export", requireAuth, requireSite, async (req, res, next) => {
+  try {
+    const site = getSite(req);
+    const { decisions } = await loadDisavow(site.id);
+    const toDisavow = decisions
+      .filter((d) => d.decision === "disavow")
+      .map((d) => d.domain);
+    const today = new Date().toISOString().slice(0, 10);
+    const txt =
+      [
+        "# Disavow file generated by Linkweave",
+        `# Generated: ${today}`,
+        "# Upload at https://search.google.com/search-console/disavow-links",
+        "",
+      ].join("\n") +
+      toDisavow.map((d) => `domain:${d}`).join("\n") +
+      "\n";
+    res.setHeader("Content-Type", "text/plain");
+    res.setHeader("Content-Disposition", `attachment; filename="disavow.txt"`);
+    res.send(txt);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put("/backlinks/disavow/:domain", requireAuth, requireSite, async (req, res, next) => {
+  try {
+    const site = getSite(req);
+    const domain = normalizeDomain(String(req.params["domain"] ?? ""));
+    if (!domain) {
+      res.status(400).json({ error: "Invalid domain" });
+      return;
+    }
+    const parsed = SetDisavowDecisionBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "decision must be 'disavow' or 'keep'" });
+      return;
+    }
+    const now = new Date();
+    const [row] = await db
+      .insert(backlinkDisavowTable)
+      .values({
+        siteId: site.id,
+        domain,
+        decision: parsed.data.decision,
+        updatedAt: now,
+        createdAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [backlinkDisavowTable.siteId, backlinkDisavowTable.domain],
+        set: { decision: parsed.data.decision, updatedAt: now },
+      })
+      .returning();
+    res.json({
+      domain: row!.domain,
+      decision: row!.decision,
+      updatedAt: row!.updatedAt.toISOString(),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete("/backlinks/disavow/:domain", requireAuth, requireSite, async (req, res, next) => {
+  try {
+    const site = getSite(req);
+    const domain = normalizeDomain(String(req.params["domain"] ?? ""));
+    if (!domain) {
+      res.status(400).json({ error: "Invalid domain" });
+      return;
+    }
+    const [row] = await db
+      .delete(backlinkDisavowTable)
+      .where(
+        and(
+          eq(backlinkDisavowTable.siteId, site.id),
+          eq(backlinkDisavowTable.domain, domain),
+        ),
+      )
+      .returning();
+    if (!row) {
+      res.status(404).json({ error: "Decision not found" });
+      return;
+    }
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

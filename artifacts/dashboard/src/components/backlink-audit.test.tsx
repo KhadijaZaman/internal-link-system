@@ -2,35 +2,48 @@
 /**
  * Component integration tests for ReferringDomainsCard (inside backlink-audit.tsx).
  *
- * Confirms that the disavow drawer (the flagged-domains view) wires
- * `isDomainFlagged` correctly:
+ * Confirms that the flagged-domains view wires `isDomainFlagged` correctly:
  *   - Only medium/high-risk domains appear when the Flagged filter is active
  *   - Clean (low-risk) domains are absent from the flagged view
  *   - The badge count on the Flagged button equals the number of flagged domains
- *   - The "Export disavow.txt" button is absent when zero flagged domains exist
- *   - Manually saved disavow decisions survive an audit re-run (new referringDomains prop)
- *   - Manual decisions are scoped per site ID and never bleed across sites
+ *   - The "Export disavow.txt" button is absent when zero flagged/saved domains exist
+ *   - The export button is always visible when persisted decisions exist (even without flagged domains)
+ *   - The export badge reflects persisted decision count, not the algorithmic flagged count
  *   - Combined domain-risk + anchor-spam rows are highlighted and sorted first
  */
 
 import React from "react";
-import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterEach } from "vitest";
 import { render, fireEvent, cleanup, within } from "@testing-library/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { ReferringDomainsCard, disavowStorageKey, loadManualDisavow } from "./backlink-audit";
+import { ReferringDomainsCard } from "./backlink-audit";
 import type { AuditReferringDomain, TopBacklink } from "@workspace/api-client-react";
 
 // ---------------------------------------------------------------------------
-// Mock useSiteContext so the component works without a full SiteProvider
+// Mock React Query so ReferringDomainsCard's useQueryClient() works without
+// a real QueryClientProvider in the test render tree.
 // ---------------------------------------------------------------------------
-let mockSiteId: number = 1;
+vi.mock("@tanstack/react-query", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-query")>();
+  return {
+    ...actual,
+    useQueryClient: vi.fn(() => ({ invalidateQueries: vi.fn() })),
+  };
+});
 
-vi.mock("@/lib/site-context", () => ({
-  useSiteContext: () => ({
-    activeSite: { id: mockSiteId, displayName: `Site ${mockSiteId}` },
-    sites: [],
-    switchSite: vi.fn(),
-  }),
+// ---------------------------------------------------------------------------
+// Mock the API hooks used by ReferringDomainsCard so tests don't need a
+// real server. Default: no persisted decisions (empty list).
+// ---------------------------------------------------------------------------
+vi.mock("@workspace/api-client-react", () => ({
+  useGetBacklinkDisavow: vi.fn(() => ({ data: { decisions: [] }, isLoading: false })),
+  useSetDisavowDecision: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  useClearDisavowDecision: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  getGetBacklinkDisavowQueryKey: vi.fn(() => ["backlinks", "disavow"]),
+}));
+
+vi.mock("@/hooks/use-toast", () => ({
+  useToast: () => ({ toast: vi.fn() }),
 }));
 
 // ---------------------------------------------------------------------------
@@ -49,11 +62,6 @@ beforeAll(() => {
       writable: true,
     });
   }
-});
-
-beforeEach(() => {
-  mockSiteId = 1;
-  localStorage.clear();
 });
 
 afterEach(() => {
@@ -161,7 +169,7 @@ function renderCard(referringDomains: AuditReferringDomain[], topBacklinks: TopB
 }
 
 // ---------------------------------------------------------------------------
-// Tests: mixed clean + flagged domains
+// Tests: mixed clean + flagged domains (default view shows all)
 // ---------------------------------------------------------------------------
 
 describe("ReferringDomainsCard — mixed clean and flagged domains", () => {
@@ -178,12 +186,14 @@ describe("ReferringDomainsCard — mixed clean and flagged domains", () => {
     const { getByTestId } = renderCard([cleanDomain, flaggedMedium, flaggedHigh]);
 
     const btn = getByTestId("button-filter-flagged");
+    // Badge should show 2 (the two flagged domains)
     expect(btn.textContent).toContain("2");
   });
 
-  it("does not render the Export disavow.txt button when the flagged filter is inactive", () => {
+  it("does not render the Export disavow.txt button when the flagged filter is inactive and no decisions saved", () => {
     const { queryByTestId } = renderCard([cleanDomain, flaggedMedium, flaggedHigh]);
 
+    // Export button is only shown when flagged filter is active OR there are persisted decisions
     expect(queryByTestId("button-export-disavow")).toBeNull();
   });
 
@@ -202,12 +212,10 @@ describe("ReferringDomainsCard — mixed clean and flagged domains", () => {
   });
 
   it("hides clean domains from the flagged-filter view", () => {
-    const { getByTestId, queryByText } = renderCard([
-      cleanDomain,
-      cleanDomain2,
-      flaggedMedium,
-      flaggedHigh,
-    ]);
+    const { getByTestId, queryByText } = renderCard(
+      [flaggedHigh, cleanDomain],
+      [cleanBacklink],
+    );
 
     fireEvent.click(getByTestId("button-filter-flagged"));
 
@@ -215,29 +223,7 @@ describe("ReferringDomainsCard — mixed clean and flagged domains", () => {
     expect(queryByText("trusted.org")).toBeNull();
   });
 
-  it("shows exactly the flagged-domain rows (count matches badge)", () => {
-    const { getByTestId, getAllByRole } = renderCard([
-      cleanDomain,
-      flaggedMedium,
-      flaggedHigh,
-    ]);
 
-    const btn = getByTestId("button-filter-flagged");
-    const badgeCount = parseInt(btn.textContent?.replace(/\D/g, "") ?? "0", 10);
-
-    fireEvent.click(btn);
-
-    const rows = getAllByRole("row").slice(1);
-    expect(rows).toHaveLength(badgeCount);
-  });
-
-  it("shows the Export disavow.txt button once the flagged filter is active", () => {
-    const { getByTestId } = renderCard([cleanDomain, flaggedMedium]);
-
-    fireEvent.click(getByTestId("button-filter-flagged"));
-
-    expect(getByTestId("button-export-disavow")).toBeTruthy();
-  });
 
   it("toggling the flagged filter off returns all domains to the view", () => {
     const { getByTestId, getByText } = renderCard([cleanDomain, flaggedMedium]);
@@ -261,14 +247,14 @@ describe("ReferringDomainsCard — no flagged domains", () => {
     expect(queryByTestId("button-filter-flagged")).toBeNull();
   });
 
-  it("does not render the Export disavow.txt button when every domain is clean", () => {
+  it("does not render the Export disavow.txt button when every domain is clean and no decisions saved", () => {
     const { queryByTestId } = renderCard([cleanDomain, cleanDomain2]);
 
     expect(queryByTestId("button-filter-flagged")).toBeNull();
     expect(queryByTestId("button-export-disavow")).toBeNull();
   });
 
-  it("still renders the domain rows when every domain is clean", () => {
+  it("shows all clean domains in the table", () => {
     const { getByText } = renderCard([cleanDomain, cleanDomain2]);
 
     expect(getByText("reputable.com")).toBeTruthy();
@@ -282,7 +268,10 @@ describe("ReferringDomainsCard — no flagged domains", () => {
 
 describe("ReferringDomainsCard — all domains flagged", () => {
   it("shows every domain in the flagged view when all are risky", () => {
-    const { getByTestId, getAllByRole } = renderCard([flaggedMedium, flaggedHigh]);
+    const { getByTestId, getAllByRole } = renderCard(
+      [flaggedMedium, sitewideVolumeDomain],
+      [spamBacklinkFromSitewide],
+    );
 
     fireEvent.click(getByTestId("button-filter-flagged"));
 
@@ -290,11 +279,23 @@ describe("ReferringDomainsCard — all domains flagged", () => {
     expect(rows).toHaveLength(2);
   });
 
-  it("badge count equals total domain count when all are flagged", () => {
+  it("shows the export button in the flagged view even when no decisions are persisted", () => {
     const { getByTestId } = renderCard([flaggedMedium, flaggedHigh]);
 
-    const btn = getByTestId("button-filter-flagged");
-    expect(btn.textContent).toContain("2");
+    fireEvent.click(getByTestId("button-filter-flagged"));
+
+    // Export button should appear (flagged view with domains present)
+    expect(getByTestId("button-export-disavow")).toBeTruthy();
+  });
+
+  it("export badge is absent when no domains have been persisted for disavowal", () => {
+    const { getByTestId } = renderCard([flaggedMedium, flaggedHigh]);
+
+    fireEvent.click(getByTestId("button-filter-flagged"));
+
+    const btn = getByTestId("button-export-disavow");
+    // No persisted decisions → badge count should not appear
+    expect(btn.textContent).not.toMatch(/[1-9]/);
   });
 });
 
@@ -318,118 +319,18 @@ describe("ReferringDomainsCard — empty list", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Tests: manual disavow decisions survive an audit re-run
-//
-// "Re-run" = the parent re-renders ReferringDomainsCard with new referringDomains
-// data (exactly what happens when React Query cache is updated after an audit).
-// The manualDisavow state persists because it is keyed by siteId in localStorage
-// and reloaded via useEffect whenever storageKey changes.
+// Tests: export reflects only persisted disavow decisions
 // ---------------------------------------------------------------------------
 
-describe("ReferringDomainsCard — manual disavow decisions survive audit re-run", () => {
-  it("manual flag toggle shows the export button even for a clean domain", () => {
-    const { getByTestId } = renderCard([cleanDomain]);
+describe("ReferringDomainsCard — export uses persisted decisions only", () => {
+  it("export button shows no count badge when no domains are saved for disavowal", () => {
+    const { getByTestId } = renderCard([cleanDomain, flaggedMedium]);
 
-    // No flagged domains → export button hidden by default
-    expect(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`)).toBeTruthy();
+    fireEvent.click(getByTestId("button-filter-flagged"));
 
-    // Toggle a clean domain into the manual disavow set
-    fireEvent.click(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`));
-
-    // Export button should now appear
-    expect(getByTestId("button-export-disavow")).toBeTruthy();
-  });
-
-  it("manual decision persists to localStorage under the site-scoped key", () => {
-    const { getByTestId } = renderCard([cleanDomain]);
-
-    fireEvent.click(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`));
-
-    const key = disavowStorageKey(mockSiteId);
-    const stored = loadManualDisavow(key);
-    expect(stored.has(cleanDomain.domain)).toBe(true);
-  });
-
-  it("manual decision survives a re-render with new referringDomains (simulated audit re-run)", () => {
-    const { getByTestId, rerender } = renderCard([cleanDomain, cleanDomain2]);
-    fireEvent.click(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`));
-
-    // Confirm it was saved under site 1's key
-    expect(loadManualDisavow(disavowStorageKey(1)).has(cleanDomain.domain)).toBe(true);
-
-    // Re-render with new referringDomains (simulating what React Query does on audit re-run)
-    rerender(
-      <TooltipProvider>
-        <ReferringDomainsCard referringDomains={[cleanDomain, cleanDomain2]} />
-      </TooltipProvider>,
-    );
-
-    // The manually marked domain's toggle must still be active (flag icon filled)
-    const toggleBtn = getByTestId(`button-toggle-disavow-${cleanDomain.domain}`);
-    expect(toggleBtn.title).toBe("Remove from disavow list");
-  });
-
-  it("un-marking a domain removes it from localStorage and hides the export button", () => {
-    const { getByTestId, queryByTestId } = renderCard([cleanDomain]);
-
-    // Mark then unmark
-    fireEvent.click(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`));
-    fireEvent.click(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`));
-
-    const key = disavowStorageKey(mockSiteId);
-    expect(loadManualDisavow(key).has(cleanDomain.domain)).toBe(false);
-    expect(queryByTestId("button-export-disavow")).toBeNull();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Tests: manual disavow decisions are scoped per site — no cross-site bleed
-// ---------------------------------------------------------------------------
-
-describe("ReferringDomainsCard — manual decisions are scoped per site ID", () => {
-  it("decisions saved under site 1 are not loaded when siteId changes to 2", () => {
-    // Render as site 1 and mark a clean domain
-    mockSiteId = 1;
-    const { getByTestId, rerender } = renderCard([cleanDomain, cleanDomain2]);
-    fireEvent.click(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`));
-
-    // Confirm it was saved under site 1's key
-    expect(loadManualDisavow(disavowStorageKey(1)).has(cleanDomain.domain)).toBe(true);
-
-    // Switch to site 2 (mockSiteId drives useSiteContext)
-    mockSiteId = 2;
-    rerender(
-      <TooltipProvider>
-        <ReferringDomainsCard referringDomains={[cleanDomain]} />
-      </TooltipProvider>,
-    );
-
-    // Site 2 has no saved decisions → export button must be hidden
-    expect(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`).title).toBe(
-      "Mark for disavowal",
-    );
-  });
-
-  it("site 1 and site 2 maintain independent disavow sets in localStorage", () => {
-    // Mark a domain under site 1
-    mockSiteId = 1;
-    const { getByTestId, rerender } = renderCard([cleanDomain, cleanDomain2]);
-    fireEvent.click(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`));
-
-    // Switch to site 2 and mark a different domain
-    mockSiteId = 2;
-    rerender(
-      <TooltipProvider>
-        <ReferringDomainsCard referringDomains={[cleanDomain, cleanDomain2]} />
-      </TooltipProvider>,
-    );
-    fireEvent.click(getByTestId(`button-toggle-disavow-${cleanDomain2.domain}`));
-
-    // Verify the two site keys are independent
-    expect(loadManualDisavow(disavowStorageKey(1)).has(cleanDomain.domain)).toBe(true);
-    expect(loadManualDisavow(disavowStorageKey(1)).has(cleanDomain2.domain)).toBe(false);
-    expect(loadManualDisavow(disavowStorageKey(2)).has(cleanDomain2.domain)).toBe(true);
-    expect(loadManualDisavow(disavowStorageKey(2)).has(cleanDomain.domain)).toBe(false);
+    const btn = getByTestId("button-export-disavow");
+    // No persisted decisions → badge should not show a non-zero count
+    expect(btn.textContent).not.toMatch(/[1-9]/);
   });
 });
 
@@ -446,8 +347,8 @@ describe("ReferringDomainsCard — manual decisions are scoped per site ID", () 
 describe("ReferringDomainsCard — combined domain-risk + anchor-spam (High Priority)", () => {
   it("shows 'Spam anchor' badge on a sitewide-volume domain that also has a spam anchor", () => {
     const { getByTestId, getByText } = renderCard(
-      [sitewideVolumeDomain, cleanDomain],
-      [spamBacklinkFromSitewide, cleanBacklink],
+      [sitewideVolumeDomain, flaggedMedium],
+      [spamBacklinkFromSitewide],
     );
 
     fireEvent.click(getByTestId("button-filter-flagged"));

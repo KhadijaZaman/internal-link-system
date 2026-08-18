@@ -540,6 +540,48 @@ export const GetBacklinkHistoryResponse = zod.object({
 
 
 /**
+ * @summary Get persisted disavow decisions for the active site
+ */
+export const GetBacklinkDisavowResponse = zod.object({
+  "decisions": zod.array(zod.object({
+  "domain": zod.string(),
+  "decision": zod.enum(['disavow', 'keep']),
+  "updatedAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Set or update the disavow decision for a domain
+ */
+export const SetDisavowDecisionParams = zod.object({
+  "domain": zod.coerce.string()
+})
+
+export const SetDisavowDecisionBody = zod.object({
+  "decision": zod.enum(['disavow', 'keep'])
+})
+
+export const SetDisavowDecisionResponse = zod.object({
+  "domain": zod.string(),
+  "decision": zod.enum(['disavow', 'keep']),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Clear (un-pin) the disavow decision for a domain
+ */
+export const ClearDisavowDecisionParams = zod.object({
+  "domain": zod.coerce.string()
+})
+
+export const ClearDisavowDecisionResponse = zod.object({
+  "ok": zod.boolean()
+})
+
+
+/**
  * @summary Update outreach status or notes for a prospect
  */
 export const UpdateBacklinkProspectParams = zod.object({

@@ -39,4 +39,5 @@ export * from "./researchRuns";
 export * from "./linkMapRuns";
 export * from "./backlinkAudits";
 export * from "./backlinkHistory";
+export * from "./backlinkDisavow";
 export * from "./backlinkProspects";

@@ -9,6 +9,7 @@
   "references": [
     { "path": "../../lib/db" },
     { "path": "../../lib/api-zod" },
-    { "path": "../../lib/integrations-anthropic-ai" }
+    { "path": "../../lib/integrations-anthropic-ai" },
+    { "path": "../../lib/spam-tlds" }
   ]
 }

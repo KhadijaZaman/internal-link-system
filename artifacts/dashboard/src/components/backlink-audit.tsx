@@ -1,12 +1,21 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetBacklinkAudit,
   useRunBacklinkAudit,
-  useGetBacklinkHistory,
   getGetBacklinkAuditQueryKey,
+  useGetBacklinkDisavow,
+  useSetDisavowDecision,
+  useClearDisavowDecision,
+  getGetBacklinkDisavowQueryKey,
+  useGetBacklinkHistory,
 } from "@workspace/api-client-react";
-import type { BacklinkHistoryPoint, BacklinkSummary, TopBacklink, AuditReferringDomain } from "@workspace/api-client-react";
+import type {
+  BacklinkHistoryPoint,
+  BacklinkSummary,
+  TopBacklink,
+  AuditReferringDomain,
+} from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,12 +38,10 @@ import {
 import { InfoTip } from "@/components/info-tip";
 import { CopyButton } from "@/components/copy-button";
 import { rowsToTsv } from "@/lib/clipboard";
-import { useSiteContext } from "@/lib/site-context";
 import {
   scoreDomain,
   scoreAnchor,
   buildDisavowTxt,
-  mergeDisavowDomains,
   type DomainRisk,
   type AnchorRisk,
 } from "@/lib/backlink-toxicity";
@@ -53,18 +60,12 @@ import {
   TriangleAlert,
   Download,
   Filter,
+  Ban,
+  CheckCircle2,
+  X,
   TrendingUp,
-  Flag,
 } from "lucide-react";
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip as RechartsTooltip,
-} from "recharts";
-
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip } from "recharts";
 function num(n: number | null | undefined): string {
   return typeof n === "number" ? n.toLocaleString() : "—";
 }
@@ -251,35 +252,146 @@ interface ReferringDomainsCardProps {
   /** Top backlinks used to derive per-domain anchor-text patterns. */
   topBacklinks?: TopBacklink[];
 }
-export function ReferringDomainsCard({ referringDomains, topBacklinks = [] }: ReferringDomainsCardProps) {
-  const { activeSite } = useSiteContext();
-  const siteId = activeSite?.id ?? null;
-  const storageKey = siteId != null ? disavowStorageKey(siteId) : null;
 
+function DecisionButtons({
+  domain,
+  decision,
+  onSet,
+  onClear,
+  isPending,
+}: {
+  domain: string;
+  decision: "disavow" | "keep" | undefined;
+  onSet: (domain: string, d: "disavow" | "keep") => void;
+  onClear: (domain: string) => void;
+  isPending: boolean;
+}) {
+  if (decision === "disavow") {
+    return (
+      <div className="flex items-center gap-1.5 flex-nowrap">
+        <Badge
+          variant="outline"
+          className="text-xs text-red-700 dark:text-red-400 border-red-500/30 bg-red-500/10 gap-1"
+        >
+          <Ban className="h-3 w-3" /> Disavow
+        </Badge>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 p-0 text-muted-foreground"
+          onClick={() => onClear(domain)}
+          disabled={isPending}
+          title="Clear decision"
+          data-testid={`button-clear-${domain}`}
+        >
+          <X className="h-3 w-3" />
+        </Button>
+      </div>
+    );
+  }
+  if (decision === "keep") {
+    return (
+      <div className="flex items-center gap-1.5 flex-nowrap">
+        <Badge
+          variant="outline"
+          className="text-xs text-emerald-700 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/10 gap-1"
+        >
+          <CheckCircle2 className="h-3 w-3" /> Keep
+        </Badge>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 p-0 text-muted-foreground"
+          onClick={() => onClear(domain)}
+          disabled={isPending}
+          title="Clear decision"
+          data-testid={`button-clear-${domain}`}
+        >
+          <X className="h-3 w-3" />
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1" data-testid={`decision-buttons-${domain}`}>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-6 text-xs gap-1 text-red-700 dark:text-red-400 border-red-500/30 hover:bg-red-500/10"
+        onClick={() => onSet(domain, "disavow")}
+        disabled={isPending}
+        data-testid={`button-disavow-${domain}`}
+      >
+        <Ban className="h-3 w-3" /> Disavow
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-6 text-xs gap-1 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+        onClick={() => onSet(domain, "keep")}
+        disabled={isPending}
+        data-testid={`button-keep-${domain}`}
+      >
+        <CheckCircle2 className="h-3 w-3" /> Keep
+      </Button>
+    </div>
+  );
+}
+export function ReferringDomainsCard({ referringDomains, topBacklinks = [] }: ReferringDomainsCardProps) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [showFlagged, setShowFlagged] = useState(false);
-  const [manualDisavow, setManualDisavow] = useState<Set<string>>(() =>
-    storageKey ? loadManualDisavow(storageKey) : new Set(),
+  const [pendingDomain, setPendingDomain] = useState<string | null>(null);
+
+  const { data: disavowData } = useGetBacklinkDisavow();
+  const decisionsMap = useMemo(() => {
+    const m = new Map<string, "disavow" | "keep">();
+    for (const d of disavowData?.decisions ?? []) {
+      m.set(d.domain, d.decision as "disavow" | "keep");
+    }
+    return m;
+  }, [disavowData]);
+
+  const setDecision = useSetDisavowDecision({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getGetBacklinkDisavowQueryKey() });
+        setPendingDomain(null);
+      },
+      onError: () => {
+        toast({ title: "Failed to save decision", variant: "destructive" });
+        setPendingDomain(null);
+      },
+    },
+  });
+
+  const clearDecision = useClearDisavowDecision({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getGetBacklinkDisavowQueryKey() });
+        setPendingDomain(null);
+      },
+      onError: () => {
+        toast({ title: "Failed to clear decision", variant: "destructive" });
+        setPendingDomain(null);
+      },
+    },
+  });
+
+  const handleSet = useCallback(
+    (domain: string, decision: "disavow" | "keep") => {
+      setPendingDomain(domain);
+      setDecision.mutate({ domain, data: { decision } });
+    },
+    [setDecision],
   );
 
-  // Reload persisted decisions whenever the active site changes.
-  useEffect(() => {
-    setManualDisavow(storageKey ? loadManualDisavow(storageKey) : new Set());
-  }, [storageKey]);
-
-  const toggleManualDisavow = useCallback(
+  const handleClear = useCallback(
     (domain: string) => {
-      setManualDisavow((prev) => {
-        const next = new Set(prev);
-        if (next.has(domain)) {
-          next.delete(domain);
-        } else {
-          next.add(domain);
-        }
-        if (storageKey) persistManualDisavow(storageKey, next);
-        return next;
-      });
+      setPendingDomain(domain);
+      clearDecision.mutate({ domain });
     },
-    [storageKey],
+    [clearDecision],
   );
 
   // Score all candidates: the referring-domains list (high-backlink-volume
@@ -323,14 +435,17 @@ export function ReferringDomainsCard({ referringDomains, topBacklinks = [] }: Re
 
   const visible = showFlagged ? visibleFlagged : scored;
 
-  /** Auto-flagged + manually marked domains merged for the disavow export. */
-  const totalForExport = useMemo(
-    () => mergeDisavowDomains(flagged.map((s) => s.domain.domain), manualDisavow),
-    [flagged, manualDisavow],
+  // Persisted disavow list for export — only domains pinned as "disavow".
+  const persistedDisavowDomains = useMemo(
+    () => [...decisionsMap.entries()].filter(([, d]) => d === "disavow").map(([domain]) => domain),
+    [decisionsMap],
   );
 
   const handleExportDisavow = () => {
-    const txt = buildDisavowTxt(totalForExport);
+    // Export only persisted "disavow" decisions — never falls back to the
+    // algorithmic flagged list so that a user who marks everything "keep"
+    // doesn't accidentally export domains they chose to preserve.
+    const txt = buildDisavowTxt(persistedDisavowDomains);
     downloadFile("disavow.txt", txt);
   };
 
@@ -345,7 +460,7 @@ export function ReferringDomainsCard({ referringDomains, topBacklinks = [] }: Re
       ]),
     );
 
-  const showExportButton = totalForExport.length > 0 && (showFlagged || manualDisavow.size > 0);
+  const exportCount = persistedDisavowDomains.length;
 
   return (
     <Card>
@@ -374,7 +489,7 @@ export function ReferringDomainsCard({ referringDomains, topBacklinks = [] }: Re
                 </Badge>
               </Button>
             )}
-            {showExportButton && (
+            {(persistedDisavowDomains.length > 0 || (showFlagged && flagged.length > 0)) && (
               <Button
                 variant="outline"
                 size="sm"
@@ -384,19 +499,29 @@ export function ReferringDomainsCard({ referringDomains, topBacklinks = [] }: Re
               >
                 <Download className="h-3.5 w-3.5" />
                 Export disavow.txt
-                {totalForExport.length > 0 && (
-                  <Badge variant="outline" className="ml-0.5 text-xs px-1.5 py-0">
-                    {totalForExport.length}
+                {exportCount > 0 && (
+                  <Badge variant="outline" className="ml-0.5 text-xs px-1.5 py-0 border-red-500/30">
+                    {exportCount}
                   </Badge>
                 )}
               </Button>
             )}
-            {showExportButton && (
+            {(persistedDisavowDomains.length > 0 || (showFlagged && flagged.length > 0)) && (
               <InfoTip>A disavow file is a list you upload to Google telling it to ignore certain links to your site — used for spammy links you can't get removed. Only disavow links you're confident are harmful.</InfoTip>
             )}
             <CopyButton getText={handleCopy} disabled={visible.length === 0} />
           </div>
         </div>
+
+        {persistedDisavowDomains.length > 0 && (
+          <div className="flex items-center gap-2 rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs text-red-800 dark:text-red-300">
+            <Ban className="h-3.5 w-3.5 shrink-0" />
+            <span>
+              {persistedDisavowDomains.length} domain{persistedDisavowDomains.length !== 1 ? "s" : ""}{" "}
+              saved for disavowal — these accumulate across audit runs and will always appear in your export.
+            </span>
+          </div>
+        )}
 
         {showFlagged && flagged.length > 0 && (
           <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
@@ -405,10 +530,9 @@ export function ReferringDomainsCard({ referringDomains, topBacklinks = [] }: Re
               {flagged.length} domain{flagged.length !== 1 ? "s" : ""} flagged by risk signals.
               {combinedRiskCount > 0 && (
                 <> <strong>{combinedRiskCount} also carr{combinedRiskCount === 1 ? "ies" : "y"} spam anchor text</strong> — those are shown first and should be your top disavowal candidates.</>
-              )}
-              {manualDisavow.size > 0 && ` ${manualDisavow.size} additional domain${manualDisavow.size !== 1 ? "s" : ""} manually marked.`}{" "}
-              Review carefully before disavowing — legitimate domains can trigger these signals too.
-              Export the list and submit it in Google Search Console's Disavow Links tool.
+              )}{" "}
+              Mark domains as <strong>Disavow</strong> or <strong>Keep</strong> to save your decision
+              across audit refreshes. The export always reflects your saved disavow list.
             </span>
           </div>
         )}
@@ -438,29 +562,19 @@ export function ReferringDomainsCard({ referringDomains, topBacklinks = [] }: Re
                     </span>
                   </TableHead>
                 )}
-                <TableHead className="w-8">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Flag className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent side="left" className="text-xs max-w-[200px]">
-                      Flag a domain to include it in the disavow export, even if it isn't auto-flagged by risk signals.
-                    </TooltipContent>
-                  </Tooltip>
-                </TableHead>
+                {showFlagged && <TableHead>Decision</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {visible.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={showFlagged ? 5 : 4} className="text-center text-sm text-muted-foreground py-6">
+                  <TableCell colSpan={showFlagged ? 5 : 3} className="text-center text-sm text-muted-foreground py-6">
                     {showFlagged ? "No flagged domains found." : "No referring domains."}
                   </TableCell>
                 </TableRow>
               ) : (
                 visible.map((s) => {
                   const isCombinedRisk = showFlagged && spamAnchorDomains.has(s.domain.domain);
-                  const isManual = manualDisavow.has(s.domain.domain);
                   return (
                     <TableRow
                       key={s.domain.domain}
@@ -468,7 +582,7 @@ export function ReferringDomainsCard({ referringDomains, topBacklinks = [] }: Re
                     >
                       <TableCell className="text-sm">
                         <div className="flex items-center gap-2 flex-wrap">
-                          {s.domain.domain}
+                          <span>{s.domain.domain}</span>
                           <RiskBadge risk={s.risk} />
                           {isCombinedRisk && (
                             <span className="inline-flex items-center gap-1">
@@ -490,18 +604,17 @@ export function ReferringDomainsCard({ referringDomains, topBacklinks = [] }: Re
                           {s.risk.flags.join(" · ")}
                         </TableCell>
                       )}
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className={`h-6 w-6 p-0 ${isManual ? "text-red-500 hover:text-red-600" : "text-muted-foreground hover:text-foreground"}`}
-                          onClick={() => toggleManualDisavow(s.domain.domain)}
-                          title={isManual ? "Remove from disavow list" : "Mark for disavowal"}
-                          data-testid={`button-toggle-disavow-${s.domain.domain}`}
-                        >
-                          <Flag className="h-3.5 w-3.5" fill={isManual ? "currentColor" : "none"} />
-                        </Button>
-                      </TableCell>
+                      {showFlagged && (
+                        <TableCell>
+                          <DecisionButtons
+                            domain={s.domain.domain}
+                            decision={decisionsMap.get(s.domain.domain)}
+                            onSet={handleSet}
+                            onClear={handleClear}
+                            isPending={pendingDomain === s.domain.domain}
+                          />
+                        </TableCell>
+                      )}
                     </TableRow>
                   );
                 })
@@ -986,23 +1099,3 @@ const METRIC_LABELS: Record<HistoryMetric, string> = {
   referringDomains: "Ref. domains",
   dofollow: "Dofollow",
 };
-
-export function disavowStorageKey(siteId: number): string {
-  return `linkweave:disavow:manual:${siteId}`;
-}
-export function loadManualDisavow(key: string): Set<string> {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? new Set<string>(JSON.parse(raw) as string[]) : new Set();
-  } catch {
-    return new Set();
-  }
-}
-
-export function persistManualDisavow(key: string, set: Set<string>): void {
-  try {
-    localStorage.setItem(key, JSON.stringify([...set]));
-  } catch {
-    /* storage unavailable — silently skip */
-  }
-}

@@ -477,6 +477,72 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BacklinkHistoryResponse"
+  /backlinks/disavow:
+    get:
+      operationId: getBacklinkDisavow
+      tags: [backlinks]
+      summary: Get persisted disavow decisions for the active site
+      responses:
+        "200":
+          description: Current disavow list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BacklinkDisavowList"
+  /backlinks/disavow/export:
+    get:
+      operationId: exportDisavowTxt
+      tags: [backlinks]
+      summary: Download disavow.txt — Google-format file of all domains marked disavow
+      responses:
+        "200":
+          description: Google-format disavow file (text/plain)
+          content:
+            text/plain:
+              schema: { type: string }
+  /backlinks/disavow/{domain}:
+    put:
+      operationId: setDisavowDecision
+      tags: [backlinks]
+      summary: Set or update the disavow decision for a domain
+      parameters:
+        - name: domain
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetDisavowDecisionInput"
+      responses:
+        "200":
+          description: Updated decision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BacklinkDisavowDecision"
+        "400":
+          description: Invalid domain or decision
+    delete:
+      operationId: clearDisavowDecision
+      tags: [backlinks]
+      summary: Clear (un-pin) the disavow decision for a domain
+      parameters:
+        - name: domain
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Decision cleared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "404":
+          description: Decision not found
   /backlinks/prospects/{prospectId}:
     patch:
       operationId: updateBacklinkProspect
@@ -2610,6 +2676,26 @@ components:
         dofollow: { type: integer }
         nofollow: { type: integer }
         firstSeen: { type: ["string", "null"] }
+    BacklinkDisavowDecision:
+      type: object
+      required: [domain, decision, updatedAt]
+      properties:
+        domain: { type: string }
+        decision: { type: string, enum: [disavow, keep] }
+        updatedAt: { type: string, format: date-time }
+    BacklinkDisavowList:
+      type: object
+      required: [decisions]
+      properties:
+        decisions:
+          type: array
+          items:
+            $ref: "#/components/schemas/BacklinkDisavowDecision"
+    SetDisavowDecisionInput:
+      type: object
+      required: [decision]
+      properties:
+        decision: { type: string, enum: [disavow, keep] }
     BacklinkAnchor:
       type: object
       required: [anchor, backlinks, referringDomains, dofollow, nofollow]

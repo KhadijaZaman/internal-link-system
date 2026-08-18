@@ -31,6 +31,8 @@ import type {
   AuthSession,
   AuthoritySnapshot,
   BacklinkAuditResponse,
+  BacklinkDisavowDecision,
+  BacklinkDisavowList,
   BacklinkHistoryResponse,
   BacklinkProspect,
   BacklinkProspectList,
@@ -141,6 +143,7 @@ import type {
   RunBacklinkAuditInput,
   SeoInsightsResponse,
   SeoReportResponse,
+  SetDisavowDecisionInput,
   SetGscPropertyInput,
   SimilarityRun,
   Site,
@@ -1876,6 +1879,302 @@ export function useGetBacklinkHistory<TData = Awaited<ReturnType<typeof getBackl
 
 
 
+
+export const getGetBacklinkDisavowUrl = () => {
+
+
+
+
+  return `/api/backlinks/disavow`
+}
+
+/**
+ * @summary Get persisted disavow decisions for the active site
+ */
+export const getBacklinkDisavow = async ( options?: RequestInit): Promise<BacklinkDisavowList> => {
+
+  return customFetch<BacklinkDisavowList>(getGetBacklinkDisavowUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBacklinkDisavowQueryKey = () => {
+    return [
+    `/api/backlinks/disavow`
+    ] as const;
+    }
+
+
+export const getGetBacklinkDisavowQueryOptions = <TData = Awaited<ReturnType<typeof getBacklinkDisavow>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBacklinkDisavow>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBacklinkDisavowQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBacklinkDisavow>>> = ({ signal }) => getBacklinkDisavow({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBacklinkDisavow>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBacklinkDisavowQueryResult = NonNullable<Awaited<ReturnType<typeof getBacklinkDisavow>>>
+export type GetBacklinkDisavowQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get persisted disavow decisions for the active site
+ */
+
+export function useGetBacklinkDisavow<TData = Awaited<ReturnType<typeof getBacklinkDisavow>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBacklinkDisavow>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBacklinkDisavowQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getExportDisavowTxtUrl = () => {
+
+
+
+
+  return `/api/backlinks/disavow/export`
+}
+
+/**
+ * @summary Download disavow.txt — Google-format file of all domains marked disavow
+ */
+export const exportDisavowTxt = async ( options?: RequestInit): Promise<string> => {
+
+  return customFetch<string>(getExportDisavowTxtUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportDisavowTxtQueryKey = () => {
+    return [
+    `/api/backlinks/disavow/export`
+    ] as const;
+    }
+
+
+export const getExportDisavowTxtQueryOptions = <TData = Awaited<ReturnType<typeof exportDisavowTxt>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportDisavowTxt>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportDisavowTxtQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportDisavowTxt>>> = ({ signal }) => exportDisavowTxt({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportDisavowTxt>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportDisavowTxtQueryResult = NonNullable<Awaited<ReturnType<typeof exportDisavowTxt>>>
+export type ExportDisavowTxtQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Download disavow.txt — Google-format file of all domains marked disavow
+ */
+
+export function useExportDisavowTxt<TData = Awaited<ReturnType<typeof exportDisavowTxt>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportDisavowTxt>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportDisavowTxtQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSetDisavowDecisionUrl = (domain: string,) => {
+
+
+
+
+  return `/api/backlinks/disavow/${domain}`
+}
+
+/**
+ * @summary Set or update the disavow decision for a domain
+ */
+export const setDisavowDecision = async (domain: string,
+    setDisavowDecisionInput: SetDisavowDecisionInput, options?: RequestInit): Promise<BacklinkDisavowDecision> => {
+
+  return customFetch<BacklinkDisavowDecision>(getSetDisavowDecisionUrl(domain),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      setDisavowDecisionInput,)
+  }
+);}
+
+
+
+
+export const getSetDisavowDecisionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setDisavowDecision>>, TError,{domain: string;data: BodyType<SetDisavowDecisionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setDisavowDecision>>, TError,{domain: string;data: BodyType<SetDisavowDecisionInput>}, TContext> => {
+
+const mutationKey = ['setDisavowDecision'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setDisavowDecision>>, {domain: string;data: BodyType<SetDisavowDecisionInput>}> = (props) => {
+          const {domain,data} = props ?? {};
+
+          return  setDisavowDecision(domain,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetDisavowDecisionMutationResult = NonNullable<Awaited<ReturnType<typeof setDisavowDecision>>>
+    export type SetDisavowDecisionMutationBody = BodyType<SetDisavowDecisionInput>
+    export type SetDisavowDecisionMutationError = ErrorType<void>
+
+    /**
+ * @summary Set or update the disavow decision for a domain
+ */
+export const useSetDisavowDecision = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setDisavowDecision>>, TError,{domain: string;data: BodyType<SetDisavowDecisionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setDisavowDecision>>,
+        TError,
+        {domain: string;data: BodyType<SetDisavowDecisionInput>},
+        TContext
+      > => {
+      return useMutation(getSetDisavowDecisionMutationOptions(options));
+    }
+
+export const getClearDisavowDecisionUrl = (domain: string,) => {
+
+
+
+
+  return `/api/backlinks/disavow/${domain}`
+}
+
+/**
+ * @summary Clear (un-pin) the disavow decision for a domain
+ */
+export const clearDisavowDecision = async (domain: string, options?: RequestInit): Promise<OkResponse> => {
+
+  return customFetch<OkResponse>(getClearDisavowDecisionUrl(domain),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getClearDisavowDecisionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearDisavowDecision>>, TError,{domain: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof clearDisavowDecision>>, TError,{domain: string}, TContext> => {
+
+const mutationKey = ['clearDisavowDecision'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof clearDisavowDecision>>, {domain: string}> = (props) => {
+          const {domain} = props ?? {};
+
+          return  clearDisavowDecision(domain,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClearDisavowDecisionMutationResult = NonNullable<Awaited<ReturnType<typeof clearDisavowDecision>>>
+
+    export type ClearDisavowDecisionMutationError = ErrorType<void>
+
+    /**
+ * @summary Clear (un-pin) the disavow decision for a domain
+ */
+export const useClearDisavowDecision = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearDisavowDecision>>, TError,{domain: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof clearDisavowDecision>>,
+        TError,
+        {domain: string},
+        TContext
+      > => {
+      return useMutation(getClearDisavowDecisionMutationOptions(options));
+    }
 
 export const getUpdateBacklinkProspectUrl = (prospectId: number,) => {
 

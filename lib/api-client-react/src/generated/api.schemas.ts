@@ -291,6 +291,36 @@ export interface BacklinkSummary {
   firstSeen?: string | null;
 }
 
+export type BacklinkDisavowDecisionDecision = typeof BacklinkDisavowDecisionDecision[keyof typeof BacklinkDisavowDecisionDecision];
+
+
+export const BacklinkDisavowDecisionDecision = {
+  disavow: 'disavow',
+  keep: 'keep',
+} as const;
+
+export interface BacklinkDisavowDecision {
+  domain: string;
+  decision: BacklinkDisavowDecisionDecision;
+  updatedAt: string;
+}
+
+export interface BacklinkDisavowList {
+  decisions: BacklinkDisavowDecision[];
+}
+
+export type SetDisavowDecisionInputDecision = typeof SetDisavowDecisionInputDecision[keyof typeof SetDisavowDecisionInputDecision];
+
+
+export const SetDisavowDecisionInputDecision = {
+  disavow: 'disavow',
+  keep: 'keep',
+} as const;
+
+export interface SetDisavowDecisionInput {
+  decision: SetDisavowDecisionInputDecision;
+}
+
 export interface BacklinkAnchor {
   anchor: string;
   backlinks: number;
