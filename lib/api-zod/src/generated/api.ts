@@ -2423,6 +2423,8 @@ export const GetPagesReportResponse = zod.object({
 export const GetSeoInsightsResponse = zod.object({
   "freshness": zod.object({
   "gscSyncedAt": zod.coerce.date().nullable(),
+  "gscWindowStart": zod.coerce.date().nullable(),
+  "gscWindowEnd": zod.coerce.date().nullable(),
   "ga4SyncedAt": zod.coerce.date().nullable(),
   "bingSyncedAt": zod.coerce.date().nullable(),
   "aiCitationsAt": zod.coerce.date().nullable()

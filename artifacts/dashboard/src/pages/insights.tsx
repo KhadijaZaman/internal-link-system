@@ -36,6 +36,16 @@ function fmtDate(iso: string | null): string {
   return Number.isNaN(d.getTime()) ? "never" : d.toLocaleDateString();
 }
 
+/** "Aug 6 – Aug 12, 2026" for the 7-day GSC window, or a fallback label. */
+function gscWindowLabel(start: string | null, end: string | null): string {
+  if (!start || !end) return "latest Google window";
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  const s = new Date(`${start}T00:00:00Z`);
+  const e = new Date(`${end}T00:00:00Z`);
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return "latest Google window";
+  return `Google, ${s.toLocaleDateString(undefined, { ...opts, timeZone: "UTC" })} – ${e.toLocaleDateString(undefined, { ...opts, year: "numeric", timeZone: "UTC" })}`;
+}
+
 function KpiCard({ label, value, hint, info }: { label: string; value: string; hint: string; info?: React.ReactNode }) {
   return (
     <div className="border rounded-lg p-4 bg-card">
@@ -205,7 +215,8 @@ export default function InsightsPage() {
   const paragraphs: React.ReactNode[] = [
     <>
       Across every channel we track, <Num>{fmt(kpis.pages)} pages</Num> of your site have visibility
-      somewhere: they earned <Num>{fmt(kpis.gscClicks)} Google clicks</Num> (latest Google window),{" "}
+      somewhere: they earned <Num>{fmt(kpis.gscClicks)} Google clicks</Num>{" "}
+      ({gscWindowLabel(freshness.gscWindowStart, freshness.gscWindowEnd)}),{" "}
       <Num>{fmt(kpis.bingClicks)} Bing clicks</Num> (about 6 months), were quoted{" "}
       <Num>{fmt(kpis.aiCitations)} times</Num> by AI answers, and AI assistants sent{" "}
       <Num>{fmt(kpis.aiSessions)} visits</Num> in the last 28 days.
@@ -303,7 +314,7 @@ export default function InsightsPage() {
         <KpiCard
           label="Google clicks"
           value={fmt(kpis.gscClicks)}
-          hint={`latest sync · ${fmt(kpis.gscImpressions)} impressions`}
+          hint={`${gscWindowLabel(freshness.gscWindowStart, freshness.gscWindowEnd).replace("Google, ", "")} · ${fmt(kpis.gscImpressions)} impressions`}
           info="Clicks are the number of times someone clicked through to your site from Google's results. Impressions are how many times your site appeared in those results at all."
         />
         <KpiCard

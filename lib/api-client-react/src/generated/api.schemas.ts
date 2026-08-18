@@ -1926,6 +1926,10 @@ export interface SeoInsightsFreshness {
   /** @nullable */
   gscSyncedAt: string | null;
   /** @nullable */
+  gscWindowStart: string | null;
+  /** @nullable */
+  gscWindowEnd: string | null;
+  /** @nullable */
   ga4SyncedAt: string | null;
   /** @nullable */
   bingSyncedAt: string | null;

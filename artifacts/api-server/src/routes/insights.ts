@@ -16,6 +16,13 @@ const router: IRouter = Router();
 
 const TOP_PAGES_PER_INSIGHT = 8;
 
+/** YYYY-MM-DD for `days` days before the given moment (UTC). */
+function isoDateOffsetFrom(from: Date, days: number): string {
+  const d = new Date(from);
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
 interface RollupRow {
   path: string;
   title: string | null;
@@ -345,6 +352,14 @@ router.get("/insights/overview", requireAuth, requireSite, async (req, res) => {
       return {
         freshness: {
           gscSyncedAt: gscJob?.lastRunAt?.toISOString() ?? null,
+          // The stored GSC rollups cover a 7-day window pulled at sync time:
+          // days -9..-3 relative to the sync run (GSC data lags ~3 days).
+          gscWindowStart: gscJob?.lastRunAt
+            ? isoDateOffsetFrom(gscJob.lastRunAt, 9)
+            : null,
+          gscWindowEnd: gscJob?.lastRunAt
+            ? isoDateOffsetFrom(gscJob.lastRunAt, 3)
+            : null,
           ga4SyncedAt: ga4SyncedAt?.toISOString() ?? null,
           bingSyncedAt: bingSyncedAt?.toISOString() ?? null,
           aiCitationsAt: aiCitationsAt?.toISOString() ?? null,

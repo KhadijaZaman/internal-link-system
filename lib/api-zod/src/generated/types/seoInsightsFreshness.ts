@@ -10,6 +10,10 @@ export interface SeoInsightsFreshness {
   /** @nullable */
   gscSyncedAt: Date | null;
   /** @nullable */
+  gscWindowStart: Date | null;
+  /** @nullable */
+  gscWindowEnd: Date | null;
+  /** @nullable */
   ga4SyncedAt: Date | null;
   /** @nullable */
   bingSyncedAt: Date | null;

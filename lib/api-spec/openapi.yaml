@@ -4323,9 +4323,13 @@ components:
           items: { $ref: "#/components/schemas/SeoInsightPage" }
     SeoInsightsFreshness:
       type: object
-      required: [gscSyncedAt, ga4SyncedAt, bingSyncedAt, aiCitationsAt]
+      required: [gscSyncedAt, ga4SyncedAt, bingSyncedAt, aiCitationsAt, gscWindowStart, gscWindowEnd]
       properties:
         gscSyncedAt: { type: ["string", "null"], format: date-time }
+        # The 7-day GSC window the stored click/impression rollups cover
+        # (sync pulls days -9..-3 relative to the sync run, YYYY-MM-DD).
+        gscWindowStart: { type: ["string", "null"], format: date }
+        gscWindowEnd: { type: ["string", "null"], format: date }
         ga4SyncedAt: { type: ["string", "null"], format: date-time }
         bingSyncedAt: { type: ["string", "null"], format: date-time }
         aiCitationsAt: { type: ["string", "null"], format: date-time }
