@@ -165,7 +165,7 @@ export async function fetchBacklinkAnchors(target: string, limit = 30): Promise<
     }>;
   }>("anchors", { target, limit, order_by: ["backlinks,desc"] });
   return (r?.items ?? [])
-    .filter((i) => typeof i.anchor === "string")
+    .filter((i) => i.anchor !== undefined) // keep null anchors (no-anchor-text links); only skip absent items
     .map((i) => {
       const nofollow = i.referring_links_attributes?.["nofollow"] ?? 0;
       const total = i.backlinks ?? 0;
