@@ -33,6 +33,8 @@ export * from './authSession';
 export * from './backlinkAnchor';
 export * from './backlinkAudit';
 export * from './backlinkAuditResponse';
+export * from './backlinkHistoryPoint';
+export * from './backlinkHistoryResponse';
 export * from './backlinkProspect';
 export * from './backlinkProspectList';
 export * from './backlinkProspectStatus';

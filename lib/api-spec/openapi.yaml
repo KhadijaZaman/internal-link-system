@@ -465,6 +465,18 @@ paths:
                 $ref: "#/components/schemas/BacklinkAuditResponse"
         "402":
           description: DataForSEO out of funds
+  /backlinks/history:
+    get:
+      operationId: getBacklinkHistory
+      tags: [backlinks]
+      summary: Return the per-day history of domain rank, backlinks, referring domains, and dofollow count
+      responses:
+        "200":
+          description: Ordered oldest-first history rows for the site
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BacklinkHistoryResponse"
   /backlinks/prospects/{prospectId}:
     patch:
       operationId: updateBacklinkProspect
@@ -2664,6 +2676,23 @@ components:
           oneOf:
             - $ref: "#/components/schemas/BacklinkAudit"
             - type: "null"
+    BacklinkHistoryPoint:
+      type: object
+      required: [date]
+      properties:
+        date: { type: string, description: "YYYY-MM-DD" }
+        rank: { type: integer, nullable: true }
+        backlinks: { type: integer, nullable: true }
+        referringDomains: { type: integer, nullable: true }
+        dofollow: { type: integer, nullable: true }
+    BacklinkHistoryResponse:
+      type: object
+      required: [history]
+      properties:
+        history:
+          type: array
+          items:
+            $ref: "#/components/schemas/BacklinkHistoryPoint"
     ProspectUpdateInput:
       type: object
       properties:

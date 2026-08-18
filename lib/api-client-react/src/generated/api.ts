@@ -31,6 +31,7 @@ import type {
   AuthSession,
   AuthoritySnapshot,
   BacklinkAuditResponse,
+  BacklinkHistoryResponse,
   BacklinkProspect,
   BacklinkProspectList,
   BingPagesReport,
@@ -1798,6 +1799,83 @@ export const useRunBacklinkAudit = <TError = ErrorType<void>,
       > => {
       return useMutation(getRunBacklinkAuditMutationOptions(options));
     }
+
+export const getGetBacklinkHistoryUrl = () => {
+
+
+
+
+  return `/api/backlinks/history`
+}
+
+/**
+ * @summary Return the per-day history of domain rank, backlinks, referring domains, and dofollow count
+ */
+export const getBacklinkHistory = async ( options?: RequestInit): Promise<BacklinkHistoryResponse> => {
+
+  return customFetch<BacklinkHistoryResponse>(getGetBacklinkHistoryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBacklinkHistoryQueryKey = () => {
+    return [
+    `/api/backlinks/history`
+    ] as const;
+    }
+
+
+export const getGetBacklinkHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getBacklinkHistory>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBacklinkHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBacklinkHistoryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBacklinkHistory>>> = ({ signal }) => getBacklinkHistory({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBacklinkHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBacklinkHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getBacklinkHistory>>>
+export type GetBacklinkHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Return the per-day history of domain rank, backlinks, referring domains, and dofollow count
+ */
+
+export function useGetBacklinkHistory<TData = Awaited<ReturnType<typeof getBacklinkHistory>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBacklinkHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBacklinkHistoryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getUpdateBacklinkProspectUrl = (prospectId: number,) => {
 

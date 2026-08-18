@@ -526,6 +526,20 @@ export const RunBacklinkAuditResponse = zod.object({
 
 
 /**
+ * @summary Return the per-day history of domain rank, backlinks, referring domains, and dofollow count
+ */
+export const GetBacklinkHistoryResponse = zod.object({
+  "history": zod.array(zod.object({
+  "date": zod.string().describe('YYYY-MM-DD'),
+  "rank": zod.number().nullish(),
+  "backlinks": zod.number().nullish(),
+  "referringDomains": zod.number().nullish(),
+  "dofollow": zod.number().nullish()
+}))
+})
+
+
+/**
  * @summary Update outreach status or notes for a prospect
  */
 export const UpdateBacklinkProspectParams = zod.object({

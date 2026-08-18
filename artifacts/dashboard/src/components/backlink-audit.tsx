@@ -45,11 +45,14 @@ import {
   Download,
   Filter,
 } from "lucide-react";
+import type { BacklinkHistoryPoint, BacklinkSummary, TopBacklink } from "@workspace/api-client-react";
+import { ShieldCheck, RefreshCw, ExternalLink, Anchor, Globe2, TrendingUp } from "lucide-react";
 
 function num(n: number | null | undefined): string {
   return typeof n === "number" ? n.toLocaleString() : "—";
 }
 
+type HistoryMetric = "rank" | "backlinks" | "referringDomains" | "dofollow";
 function FollowBadge({ dofollow }: { dofollow: boolean }) {
   return (
     <Badge
@@ -296,6 +299,8 @@ export function BacklinkAuditSection() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data, isLoading } = useGetBacklinkAudit();
+  const { data: historyData } = useGetBacklinkHistory();
+  const history = historyData?.history ?? [];
   const [competitorsInput, setCompetitorsInput] = useState("");
 
   const run = useRunBacklinkAudit({
@@ -434,6 +439,8 @@ export function BacklinkAuditSection() {
               </CardContent>
             </Card>
           )}
+
+          <BacklinkGrowthChart history={history} />
 
           {summary && audit.competitors.length > 0 && (
             <Card>
@@ -579,3 +586,87 @@ export function BacklinkAuditSection() {
     </div>
   );
 }
+
+function MiniSparkline({
+  data,
+  metric,
+}: {
+  data: BacklinkHistoryPoint[];
+  metric: HistoryMetric;
+}) {
+  const hasData = data.some((d) => d[metric] != null);
+  if (!hasData) {
+    return (
+      <div className="flex items-center justify-center h-16 text-xs text-muted-foreground">
+        No data yet
+      </div>
+    );
+  }
+  return (
+    <ResponsiveContainer width="100%" height={64}>
+      <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
+        <XAxis dataKey="date" hide />
+        <YAxis domain={["auto", "auto"]} hide />
+        <Tooltip
+          contentStyle={{ fontSize: "11px", padding: "4px 8px" }}
+          labelFormatter={(v) => String(v)}
+          formatter={(v: number) => [v.toLocaleString(), METRIC_LABELS[metric]]}
+        />
+        <Line
+          type="monotone"
+          dataKey={metric}
+          stroke={METRIC_COLORS[metric]}
+          strokeWidth={1.5}
+          dot={data.length <= 14}
+          connectNulls
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
+const METRIC_COLORS: Record<HistoryMetric, string> = {
+  rank: "hsl(var(--primary))",
+  backlinks: "#10b981",
+  referringDomains: "#6366f1",
+  dofollow: "#f59e0b",
+};
+
+function BacklinkGrowthChart({ history }: { history: BacklinkHistoryPoint[] }) {
+  if (history.length < 2) return null;
+
+  const metrics: HistoryMetric[] = ["rank", "backlinks", "referringDomains", "dofollow"];
+
+  return (
+    <Card>
+      <CardContent className="pt-5 space-y-3">
+        <h3 className="text-sm font-medium flex items-center gap-1.5">
+          <TrendingUp className="h-4 w-4" /> Authority growth
+          <InfoTip>
+            Day-by-day trend of key backlink metrics captured each time you run
+            the audit. Needs at least 2 data points to display.
+          </InfoTip>
+        </h3>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {metrics.map((m) => (
+            <div key={m} className="space-y-1">
+              <div className="text-xs text-muted-foreground">{METRIC_LABELS[m]}</div>
+              <MiniSparkline data={history} metric={m} />
+            </div>
+          ))}
+        </div>
+        <div className="text-xs text-muted-foreground">
+          {history.length} snapshot{history.length !== 1 ? "s" : ""} recorded
+          · first {history[0]!.date} · latest {history[history.length - 1]!.date}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+const METRIC_LABELS: Record<HistoryMetric, string> = {
+  rank: "Domain rank",
+  backlinks: "Backlinks",
+  referringDomains: "Ref. domains",
+  dofollow: "Dofollow",
+};

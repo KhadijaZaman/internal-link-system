@@ -343,6 +343,19 @@ export interface BacklinkAuditResponse {
   audit: BacklinkAudit | null;
 }
 
+export interface BacklinkHistoryPoint {
+  /** YYYY-MM-DD */
+  date: string;
+  rank?: number | null;
+  backlinks?: number | null;
+  referringDomains?: number | null;
+  dofollow?: number | null;
+}
+
+export interface BacklinkHistoryResponse {
+  history: BacklinkHistoryPoint[];
+}
+
 export type ProspectUpdateInputStatus = typeof ProspectUpdateInputStatus[keyof typeof ProspectUpdateInputStatus];
 
 

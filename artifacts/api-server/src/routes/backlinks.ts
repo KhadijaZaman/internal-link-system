@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, backlinkProspectsTable, backlinkAuditsTable } from "@workspace/db";
-import { and, eq, desc, sql, inArray } from "drizzle-orm";
+import { db, backlinkProspectsTable, backlinkAuditsTable, backlinkHistoryTable } from "@workspace/db";
+import { and, eq, desc, asc, sql, inArray } from "drizzle-orm";
 import {
   DiscoverBacklinkProspectsBody,
   RunBacklinkAuditBody,
@@ -303,6 +303,39 @@ router.post("/backlinks/audit", requireAuth, requireSite, async (req, res, next)
             set: { payload: s, fetchedAt: now },
           });
       }
+      // Append a history snapshot for today (UTC). One upsert per calendar day.
+      if (needOwn) {
+        const ownProfileRow = await db
+          .select({ payload: backlinkAuditsTable.payload })
+          .from(backlinkAuditsTable)
+          .where(and(eq(backlinkAuditsTable.siteId, site.id), eq(backlinkAuditsTable.kind, "own_profile")))
+          .limit(1);
+        if (ownProfileRow.length > 0) {
+          const p = ownProfileRow[0]!.payload as { summary?: BacklinkSummary | null };
+          const s = p.summary;
+          const todayUtc = new Date().toISOString().slice(0, 10);
+          await db
+            .insert(backlinkHistoryTable)
+            .values({
+              siteId: site.id,
+              date: todayUtc,
+              rank: s?.rank ?? null,
+              backlinks: s?.backlinks ?? null,
+              referringDomains: s?.referringDomains ?? null,
+              dofollow: s?.dofollow ?? null,
+            })
+            .onConflictDoUpdate({
+              target: [backlinkHistoryTable.siteId, backlinkHistoryTable.date],
+              set: {
+                rank: s?.rank ?? null,
+                backlinks: s?.backlinks ?? null,
+                referringDomains: s?.referringDomains ?? null,
+                dofollow: s?.dofollow ?? null,
+                recordedAt: now,
+              },
+            });
+        }
+      }
       req.log.info(
         { siteId: site.id, ownRefreshed: needOwn, competitorsFetched: compTargets, removed: obsolete },
         "Backlink audit complete",
@@ -318,6 +351,26 @@ router.post("/backlinks/audit", requireAuth, requireSite, async (req, res, next)
       throw err;
     }
     res.json({ audit: await loadAudit(site.id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/backlinks/history", requireAuth, requireSite, async (req, res, next) => {
+  try {
+    const site = getSite(req);
+    const rows = await db
+      .select({
+        date: backlinkHistoryTable.date,
+        rank: backlinkHistoryTable.rank,
+        backlinks: backlinkHistoryTable.backlinks,
+        referringDomains: backlinkHistoryTable.referringDomains,
+        dofollow: backlinkHistoryTable.dofollow,
+      })
+      .from(backlinkHistoryTable)
+      .where(eq(backlinkHistoryTable.siteId, site.id))
+      .orderBy(asc(backlinkHistoryTable.date));
+    res.json({ history: rows });
   } catch (err) {
     next(err);
   }
