@@ -780,6 +780,8 @@ export const GetLinkGraphFocusResponse = zod.object({
  */
 export const GetKnowledgeGraphResponse = zod.object({
   "generatedAt": zod.coerce.date(),
+  "gscWindowStart": zod.coerce.date().nullable(),
+  "gscWindowEnd": zod.coerce.date().nullable(),
   "nodes": zod.array(zod.object({
   "id": zod.string(),
   "title": zod.string().nullish(),

@@ -242,6 +242,19 @@ export default function KnowledgeGraphPage() {
       .slice(0, 10);
   }, [debouncedSearch, view]);
 
+  // "Aug 9 – Aug 15" label for the 7-day GSC window the impression/click
+  // rollups cover; empty until the graph payload arrives.
+  const gscWindow = useMemo(() => {
+    const start = data?.gscWindowStart;
+    const end = data?.gscWindowEnd;
+    if (!start || !end) return null;
+    const s = new Date(`${start}T00:00:00Z`);
+    const e = new Date(`${end}T00:00:00Z`);
+    if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return null;
+    const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", timeZone: "UTC" };
+    return `${s.toLocaleDateString(undefined, opts)} – ${e.toLocaleDateString(undefined, opts)}`;
+  }, [data]);
+
   const selected = useMemo(
     () => data?.nodes.find((n) => n.id === selectedId) ?? null,
     [data, selectedId],
@@ -862,8 +875,8 @@ export default function KnowledgeGraphPage() {
                   {selected.impressions != null && (
                     <>
                       <div className="text-muted-foreground flex items-center gap-1">
-                        Impressions
-                        <InfoTip>How many times this page appeared in Google search results. It shows how often people could have seen your page.</InfoTip>
+                        Impressions{gscWindow ? ` (${gscWindow})` : ""}
+                        <InfoTip>How many times this page appeared in Google search results during the shown 7-day window (Google's data lags about 3 days). It shows how often people could have seen your page.</InfoTip>
                       </div>
                       <div className="text-right font-medium">
                         {selected.impressions.toLocaleString()}
@@ -873,8 +886,8 @@ export default function KnowledgeGraphPage() {
                   {selected.clicks != null && (
                     <>
                       <div className="text-muted-foreground flex items-center gap-1">
-                        Clicks
-                        <InfoTip>How many times someone clicked through to this page from Google search results.</InfoTip>
+                        Clicks{gscWindow ? ` (${gscWindow})` : ""}
+                        <InfoTip>How many times someone clicked through to this page from Google search results in the same 7-day window.</InfoTip>
                       </div>
                       <div className="text-right font-medium">
                         {selected.clicks.toLocaleString()}
@@ -884,11 +897,11 @@ export default function KnowledgeGraphPage() {
                   {selected.topQuery && (
                     <>
                       <div className="text-muted-foreground flex items-center gap-1">
-                        Top query
-                        <InfoTip>The search term that brings this page the most clicks. It tells you what people are finding this page for.</InfoTip>
+                        Top query{gscWindow ? ` (${gscWindow})` : ""}
+                        <InfoTip>The search term that brings this page the most visibility in the same 7-day window. It tells you what people are finding this page for.</InfoTip>
                       </div>
-                      <div className="text-right font-medium truncate" title={selected.topQuery}>
-                        {selected.topQuery}
+                      <div className="col-span-2 font-medium break-words rounded bg-muted/50 px-2 py-1">
+                        “{selected.topQuery}”
                       </div>
                     </>
                   )}

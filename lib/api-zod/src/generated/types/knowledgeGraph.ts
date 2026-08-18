@@ -11,6 +11,10 @@ import type { KnowledgeGraphNode } from './knowledgeGraphNode';
 
 export interface KnowledgeGraph {
   generatedAt: Date;
+  /** @nullable */
+  gscWindowStart: Date | null;
+  /** @nullable */
+  gscWindowEnd: Date | null;
   nodes: KnowledgeGraphNode[];
   edges: KnowledgeGraphEdge[];
   clusters: KnowledgeGraphCluster[];

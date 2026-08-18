@@ -3307,9 +3307,13 @@ components:
         size: { type: integer }
     KnowledgeGraph:
       type: object
-      required: [generatedAt, nodes, edges, clusters, embeddedPages, totalPosts, totalPages, pageFilterLabel]
+      required: [generatedAt, nodes, edges, clusters, embeddedPages, totalPosts, totalPages, pageFilterLabel, gscWindowStart, gscWindowEnd]
       properties:
         generatedAt: { type: string, format: date-time }
+        # The 7-day GSC window node impressions/clicks/topQuery cover
+        # (sync pulls days -9..-3 relative to the sync run, YYYY-MM-DD).
+        gscWindowStart: { type: ["string", "null"], format: date }
+        gscWindowEnd: { type: ["string", "null"], format: date }
         nodes:
           type: array
           items: { $ref: "#/components/schemas/KnowledgeGraphNode" }

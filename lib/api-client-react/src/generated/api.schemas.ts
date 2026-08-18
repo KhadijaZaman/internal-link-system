@@ -962,6 +962,10 @@ export interface KnowledgeGraphCluster {
 
 export interface KnowledgeGraph {
   generatedAt: string;
+  /** @nullable */
+  gscWindowStart: string | null;
+  /** @nullable */
+  gscWindowEnd: string | null;
   nodes: KnowledgeGraphNode[];
   edges: KnowledgeGraphEdge[];
   clusters: KnowledgeGraphCluster[];

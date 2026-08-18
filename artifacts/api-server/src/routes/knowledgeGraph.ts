@@ -8,6 +8,7 @@ import {
   wpPostsTable,
   queryLosersTable,
   actionItemsTable,
+  jobRunsTable,
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
 import { requireSite, getSite } from "../lib/site";
@@ -114,7 +115,7 @@ function clusterLabel(
 
 router.get("/knowledge-graph", requireAuth, requireSite, async (req, res) => {
   const site = getSite(req);
-  const [stats, inv, contentLinks, semRes, embStats, canonicalPageCount, loserRows, actionRows] = await Promise.all([
+  const [stats, inv, contentLinks, semRes, embStats, canonicalPageCount, loserRows, actionRows, [gscJob]] = await Promise.all([
     db.select().from(linkStatsTable).where(eq(linkStatsTable.siteId, site.id)),
     db.select().from(inventoryTable).where(eq(inventoryTable.siteId, site.id)),
     db
@@ -176,6 +177,16 @@ router.get("/knowledge-graph", requireAuth, requireSite, async (req, res) => {
         and(eq(actionItemsTable.siteId, site.id), eq(actionItemsTable.status, "open")),
       )
       .groupBy(actionItemsTable.targetUrl),
+    db
+      .select({ lastRunAt: jobRunsTable.lastRunAt })
+      .from(jobRunsTable)
+      .where(
+        and(
+          eq(jobRunsTable.name, "gsc_inventory_and_losers"),
+          eq(jobRunsTable.siteId, site.id),
+        ),
+      )
+      .limit(1),
   ]);
 
   const invMap = new Map(inv.map((i) => [i.url, i]));
@@ -357,8 +368,18 @@ router.get("/knowledge-graph", requireAuth, requireSite, async (req, res) => {
     clusters.push({ id: miscId, label: "Miscellaneous", size: miscMembers.length });
   }
 
+  // The stored GSC rollups (impressions/clicks/topQuery) cover a 7-day
+  // window pulled at sync time: days -9..-3 relative to the sync run.
+  const isoDateOffsetFrom = (from: Date, days: number): string => {
+    const d = new Date(from);
+    d.setUTCDate(d.getUTCDate() - days);
+    return d.toISOString().slice(0, 10);
+  };
+
   res.json({
     generatedAt: new Date().toISOString(),
+    gscWindowStart: gscJob?.lastRunAt ? isoDateOffsetFrom(gscJob.lastRunAt, 9) : null,
+    gscWindowEnd: gscJob?.lastRunAt ? isoDateOffsetFrom(gscJob.lastRunAt, 3) : null,
     nodes,
     edges,
     clusters,
