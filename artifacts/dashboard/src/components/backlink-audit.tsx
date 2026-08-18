@@ -39,9 +39,11 @@ import { CopyButton } from "@/components/copy-button";
 import { rowsToTsv } from "@/lib/clipboard";
 import {
   scoreDomain,
+  scoreAnchor,
   isDomainFlagged,
   buildDisavowTxt,
   type DomainRisk,
+  type AnchorRisk,
 } from "@/lib/backlink-toxicity";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -103,6 +105,25 @@ function RiskBadge({ risk }: { risk: DomainRisk }) {
   );
 }
 
+function AnchorRiskBadge({ risk }: { risk: AnchorRisk }) {
+  if (risk.level === "low") return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge
+          variant="outline"
+          className="text-xs text-amber-700 dark:text-amber-400 border-amber-500/30 bg-amber-500/10 cursor-help"
+        >
+          <TriangleAlert className="h-3 w-3 mr-1" />
+          Anchor spam
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent side="right" className="max-w-[260px] text-xs">
+        Matched spam phrase: <span className="font-medium">&ldquo;{risk.matchedPhrase}&rdquo;</span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 function SummaryStat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="rounded-lg border p-3">
@@ -499,16 +520,24 @@ export function BacklinkAuditSection() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {audit.anchors.map((a) => (
-                        <TableRow key={a.anchor || "(empty)"}>
-                          <TableCell className="text-sm max-w-[280px] truncate" title={a.anchor}>
-                            {a.anchor || <span className="text-muted-foreground">(empty)</span>}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums text-sm">{num(a.backlinks)}</TableCell>
-                          <TableCell className="text-right tabular-nums text-sm">{num(a.referringDomains)}</TableCell>
-                          <TableCell className="text-right tabular-nums text-sm">{num(a.dofollow)}</TableCell>
-                        </TableRow>
-                      ))}
+                      {audit.anchors.map((a) => {
+                        const anchorRisk = scoreAnchor(a.anchor ?? "");
+                        return (
+                          <TableRow key={a.anchor || "(empty)"}>
+                            <TableCell className="text-sm max-w-[280px]">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="truncate" title={a.anchor}>
+                                  {a.anchor || <span className="text-muted-foreground">(empty)</span>}
+                                </span>
+                                <AnchorRiskBadge risk={anchorRisk} />
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums text-sm">{num(a.backlinks)}</TableCell>
+                            <TableCell className="text-right tabular-nums text-sm">{num(a.referringDomains)}</TableCell>
+                            <TableCell className="text-right tabular-nums text-sm">{num(a.dofollow)}</TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
@@ -556,34 +585,42 @@ export function BacklinkAuditSection() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {audit.topBacklinks.map((b) => (
-                      <TableRow key={b.urlFrom}>
-                        <TableCell className="max-w-[340px]">
-                          <a
-                            href={b.urlFrom}
-                            target="_blank"
-                            rel="noopener noreferrer nofollow"
-                            className="text-sm hover:underline truncate block"
-                            title={b.pageFromTitle ?? b.urlFrom}
-                          >
-                            {b.pageFromTitle || b.domainFrom}
-                          </a>
-                          <div className="text-xs text-muted-foreground truncate">{b.domainFrom}</div>
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums text-sm">
-                          {b.domainFromRank ?? "—"}
-                        </TableCell>
-                        <TableCell className="text-sm max-w-[220px] truncate" title={b.anchor ?? undefined}>
-                          {b.anchor || <span className="text-muted-foreground">(no anchor)</span>}
-                        </TableCell>
-                        <TableCell>
-                          <FollowBadge dofollow={b.dofollow} />
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground max-w-[220px] truncate" title={b.urlTo}>
-                          {b.urlTo}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {audit.topBacklinks.map((b) => {
+                      const anchorRisk = scoreAnchor(b.anchor ?? "");
+                      return (
+                        <TableRow key={b.urlFrom}>
+                          <TableCell className="max-w-[340px]">
+                            <a
+                              href={b.urlFrom}
+                              target="_blank"
+                              rel="noopener noreferrer nofollow"
+                              className="text-sm hover:underline truncate block"
+                              title={b.pageFromTitle ?? b.urlFrom}
+                            >
+                              {b.pageFromTitle || b.domainFrom}
+                            </a>
+                            <div className="text-xs text-muted-foreground truncate">{b.domainFrom}</div>
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums text-sm">
+                            {b.domainFromRank ?? "—"}
+                          </TableCell>
+                          <TableCell className="text-sm max-w-[220px]">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="truncate" title={b.anchor ?? undefined}>
+                                {b.anchor || <span className="text-muted-foreground">(no anchor)</span>}
+                              </span>
+                              <AnchorRiskBadge risk={anchorRisk} />
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <FollowBadge dofollow={b.dofollow} />
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground max-w-[220px] truncate" title={b.urlTo}>
+                            {b.urlTo}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
