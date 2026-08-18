@@ -19,11 +19,12 @@ export interface DomainRisk {
   flags: string[];
   level: RiskLevel;
 }
-
 export function scoreDomain(
   domain: string,
   rank: number | null | undefined,
   backlinks: number,
+  /** Anchor texts used by this referring domain (from topBacklinks or site anchors). */
+  topAnchors?: string[],
 ): DomainRisk {
   const flags: string[] = [];
 
@@ -49,12 +50,27 @@ export function scoreDomain(
     flags.push("Many links from low-authority domain");
   }
 
+  // 4. Anchor spam: phrases from SPAM_ANCHORS on a low-authority domain.
+  //    Uses scoreAnchor so this signal and the standalone anchor scorer share
+  //    the same authoritative phrase list (spam-anchors.ts).
+  if (topAnchors && topAnchors.length > 0) {
+    const isLowAuth = rank === null || rank === undefined || rank < 30;
+    if (isLowAuth) {
+      const spamAnchors = topAnchors.filter((a) => scoreAnchor(a).level !== "low");
+      if (spamAnchors.length > 0) {
+        const examples = spamAnchors.slice(0, 2).map((a) => `"${a}"`).join(", ");
+        flags.push(`Anchor spam — commercial keyword anchor${spamAnchors.length > 1 ? "s" : ""}: ${examples}`);
+      }
+    }
+  }
+
   // Determine overall level
   const highCount = flags.filter(
     (f) =>
       f.includes("Very low") ||
       f.includes("Suspicious TLD") ||
-      f.includes("sitewide"),
+      f.includes("sitewide") ||
+      f.includes("Anchor spam"),
   ).length;
 
   let level: RiskLevel = "low";
@@ -138,4 +154,14 @@ export function buildDisavowTxt(domains: string[]): string {
     "",
   ].join("\n");
   return header + domains.map((d) => `domain:${d}`).join("\n") + "\n";
+}
+
+/**
+ * Returns true when the anchor text matches a phrase in SPAM_ANCHORS.
+ * Thin wrapper around `scoreAnchor` so callers share the same authoritative
+ * phrase list without duplicating matching logic.
+ */
+export function isCommercialAnchor(text: string): boolean {
+  if (!text) return false;
+  return scoreAnchor(text).level !== "low";
 }

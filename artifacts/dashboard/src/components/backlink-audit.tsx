@@ -3,10 +3,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetBacklinkAudit,
   useRunBacklinkAudit,
-  getGetBacklinkAuditQueryKey,
   useGetBacklinkHistory,
+  getGetBacklinkAuditQueryKey,
 } from "@workspace/api-client-react";
-import type { BacklinkSummary, TopBacklink, AuditReferringDomain, BacklinkHistoryPoint } from "@workspace/api-client-react";
+import type { BacklinkHistoryPoint, BacklinkSummary, TopBacklink, AuditReferringDomain } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,14 +31,17 @@ import { CopyButton } from "@/components/copy-button";
 import { rowsToTsv } from "@/lib/clipboard";
 import { useSiteContext } from "@/lib/site-context";
 import {
-  scoreDomain,
   scoreAnchor,
-  isDomainFlagged,
   buildDisavowTxt,
   mergeDisavowDomains,
   type DomainRisk,
   type AnchorRisk,
 } from "@/lib/backlink-toxicity";
+import {
+  buildScoredCandidates,
+  isDomainFlagged,
+  type ScoredDomain,
+} from "@/lib/backlink-audit-scoring";
 import { useToast } from "@/hooks/use-toast";
 import {
   ShieldCheck,
@@ -55,10 +58,10 @@ import {
 import {
   ResponsiveContainer,
   LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip as RechartsTooltip,
-  Line,
 } from "recharts";
 
 function num(n: number | null | undefined): string {
@@ -192,12 +195,12 @@ function downloadFile(filename: string, content: string) {
   a.click();
   URL.revokeObjectURL(url);
 }
-interface ScoredDomain {
-  domain: AuditReferringDomain;
-  risk: DomainRisk;
+interface ReferringDomainsCardProps {
+  referringDomains: AuditReferringDomain[];
+  /** Top backlinks used to derive per-domain anchor-text patterns. */
+  topBacklinks?: TopBacklink[];
 }
-
-export function ReferringDomainsCard({ referringDomains }: { referringDomains: AuditReferringDomain[] }) {
+export function ReferringDomainsCard({ referringDomains, topBacklinks = [] }: ReferringDomainsCardProps) {
   const { activeSite } = useSiteContext();
   const siteId = activeSite?.id ?? null;
   const storageKey = siteId != null ? disavowStorageKey(siteId) : null;
@@ -225,13 +228,13 @@ export function ReferringDomainsCard({ referringDomains }: { referringDomains: A
     });
   }, [storageKey]);
 
+  // Score all candidates: the referring-domains list (high-backlink-volume
+  // bias) extended with any low-authority domains from topBacklinks that
+  // aren't already present.  Low-rank domains from the second batch carry
+  // anchor data that feeds the anchor-spam toxicity signal.
   const scored = useMemo<ScoredDomain[]>(
-    () =>
-      referringDomains.map((d) => ({
-        domain: d,
-        risk: scoreDomain(d.domain, d.rank, d.backlinks),
-      })),
-    [referringDomains],
+    () => buildScoredCandidates(referringDomains, topBacklinks),
+    [referringDomains, topBacklinks],
   );
 
   const flagged = useMemo(() => scored.filter((s) => isDomainFlagged(s.risk)), [scored]);
@@ -609,7 +612,10 @@ export function BacklinkAuditSection() {
               </CardContent>
             </Card>
 
-            <ReferringDomainsCard referringDomains={audit.referringDomains} />
+            <ReferringDomainsCard
+              referringDomains={audit.referringDomains}
+              topBacklinks={audit.topBacklinks}
+            />
           </div>
 
           <Card>
@@ -719,7 +725,7 @@ function MiniSparkline({
         <YAxis domain={["auto", "auto"]} hide />
         <RechartsTooltip
           contentStyle={{ fontSize: "11px", padding: "4px 8px" }}
-          labelFormatter={(v) => String(v)}
+          labelFormatter={(v: unknown) => String(v)}
           formatter={(v: number) => [v.toLocaleString(), METRIC_LABELS[metric]]}
         />
         <Line

@@ -14,6 +14,8 @@ import {
   fetchBacklinkSummary,
   fetchBacklinkAnchors,
   fetchTopBacklinks,
+  fetchLowRankBacklinks,
+  mergeBacklinkBatches,
   isDataForSeoOutOfFunds,
   type ReferringDomain,
   type BacklinkSummary,
@@ -265,6 +267,7 @@ router.post("/backlinks/audit", requireAuth, requireSite, async (req, res, next)
           fetchBacklinkSummary(ownHost),
           fetchBacklinkAnchors(ownHost, 30),
           fetchTopBacklinks(ownHost, 50),
+          fetchLowRankBacklinks(ownHost, 50),
           fetchTopReferringDomains(ownHost, 100),
         ]);
         const failed = settled.filter((s) => s.status === "rejected");
@@ -272,8 +275,16 @@ router.post("/backlinks/audit", requireAuth, requireSite, async (req, res, next)
           const outOfFunds = failed.find((f) => isDataForSeoOutOfFunds(f.reason));
           throw outOfFunds ? outOfFunds.reason : (failed[0] as PromiseRejectedResult).reason;
         }
-        const [summary, anchors, topBacklinks, referringDomains] = settled.map(
+        const [summary, anchors, highRankBacklinks, lowRankBacklinks, referringDomains] = settled.map(
           (s) => (s as PromiseFulfilledResult<unknown>).value,
+        );
+        // Merge high-rank and low-rank batches so anchor-spam scoring has data
+        // for both ends of the authority spectrum.  Low-rank entries are placed
+        // first so they survive deduplication — they carry the anchor data the
+        // spam scorer targets.
+        const topBacklinks = mergeBacklinkBatches(
+          highRankBacklinks as Awaited<ReturnType<typeof fetchTopBacklinks>>,
+          lowRankBacklinks as Awaited<ReturnType<typeof fetchLowRankBacklinks>>,
         );
         await db
           .insert(backlinkAuditsTable)

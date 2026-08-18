@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildDisavowTxt,
   isDomainFlagged,
+  isCommercialAnchor,
   mergeDisavowDomains,
   scoreAnchor,
   scoreDomain,
@@ -140,6 +141,143 @@ describe("scoreDomain", () => {
     expect(result.flags.length).toBeGreaterThanOrEqual(2);
     // Both should be flagged → medium or high
     expect(result.level).not.toBe("low");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isCommercialAnchor — thin wrapper around scoreAnchor / SPAM_ANCHORS
+// ---------------------------------------------------------------------------
+describe("isCommercialAnchor", () => {
+  // Positive cases — all phrases must exist in SPAM_ANCHORS so the wrapper
+  // and the authoritative list stay in sync.
+  it.each([
+    "cheap seo services",       // contains "cheap seo"
+    "buy backlinks now",        // contains "buy backlinks"
+    "cheap pills delivered",    // contains "cheap pills"
+    "online pharmacy discount", // contains "online pharmacy"
+    "sports betting tips",      // contains "sports betting"
+    "bet online today",         // contains "bet online"
+    "guest post service",       // contains "guest post"
+    "seo services cheap",       // contains "seo services"
+    "link building services",   // exact phrase
+    "buy essay online",         // contains "buy essay"
+    "write my essay fast",      // contains "write my essay"
+    "dating site signup",       // contains "dating site"
+    "online casino bonus",      // contains "online casino"
+    "slots online free",        // contains "slots online"
+    "poker online tips",        // contains "poker online"
+    "online gambling site",     // contains "online gambling"
+    "viagra online cheap",      // contains "viagra online"
+    "cialis online order",      // contains "cialis online"
+    "payday loans fast",        // contains "payday loans"
+    "hookup site review",       // contains "hookup site"
+    "meet singles near you",    // contains "meet singles"
+  ])("flags commercial anchor %j", (anchor) => {
+    expect(isCommercialAnchor(anchor)).toBe(true);
+  });
+
+  it.each([
+    "click here",
+    "read more",
+    "example.com",
+    "brand name",
+    "our website",
+    "learn more",
+    "contact us",
+    "homepage",
+    "review",     // "review" alone is not in SPAM_ANCHORS
+    "top tips",   // "top" alone is not in SPAM_ANCHORS
+    "",
+  ])("does not flag clean anchor %j", (anchor) => {
+    expect(isCommercialAnchor(anchor)).toBe(false);
+  });
+
+  it("returns false for an empty string", () => {
+    expect(isCommercialAnchor("")).toBe(false);
+  });
+
+  it("every SPAM_ANCHORS phrase is caught by isCommercialAnchor", () => {
+    for (const phrase of SPAM_ANCHORS) {
+      expect(
+        isCommercialAnchor(phrase),
+        `SPAM_ANCHORS phrase "${phrase}" must be detected`,
+      ).toBe(true);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// scoreDomain — anchor spam signal
+// ---------------------------------------------------------------------------
+describe("scoreDomain — anchor spam", () => {
+  it("adds Anchor spam flag when anchor is commercial and domain rank < 30", () => {
+    const result = scoreDomain("lowrank.com", 15, 3, ["cheap seo services"]);
+    expect(result.flags.some((f) => f.includes("Anchor spam"))).toBe(true);
+  });
+
+  it("adds Anchor spam flag when domain is unranked and anchor is commercial", () => {
+    const result = scoreDomain("norank.com", null, 3, ["buy backlinks now"]);
+    expect(result.flags.some((f) => f.includes("Anchor spam"))).toBe(true);
+  });
+
+  it("does NOT add Anchor spam flag when domain rank >= 30 even with commercial anchor", () => {
+    const result = scoreDomain("authority.com", 500, 3, ["cheap seo services"]);
+    expect(result.flags.some((f) => f.includes("Anchor spam"))).toBe(false);
+  });
+
+  it("does NOT add Anchor spam flag when anchor is clean even at low rank", () => {
+    const result = scoreDomain("lowrank.com", 15, 3, ["click here"]);
+    expect(result.flags.some((f) => f.includes("Anchor spam"))).toBe(false);
+  });
+
+  it("does NOT add Anchor spam flag when no anchors are supplied", () => {
+    const result = scoreDomain("lowrank.com", 5, 3);
+    expect(result.flags.some((f) => f.includes("Anchor spam"))).toBe(false);
+  });
+
+  it("does NOT add Anchor spam flag when anchor list is empty (domain not in topBacklinks)", () => {
+    const result = scoreDomain("lowrank.com", 5, 3, []);
+    expect(result.flags.some((f) => f.includes("Anchor spam"))).toBe(false);
+  });
+
+  it("includes the matched anchor text in the flag message", () => {
+    const result = scoreDomain("lowrank.com", 15, 3, ["cheap seo services"]);
+    const flag = result.flags.find((f) => f.includes("Anchor spam")) ?? "";
+    expect(flag).toContain("cheap seo services");
+  });
+
+  it("anchor spam alone on a low-rank domain raises risk to at least medium", () => {
+    // rank 20 → Low authority (high-weight) + Anchor spam (high-weight) → high
+    const result = scoreDomain("lowrank.com", 20, 1, ["online casino"]);
+    expect(result.level).not.toBe("low");
+  });
+
+  it("a high-rank domain with commercial anchors stays at low risk", () => {
+    const result = scoreDomain("highauth.com", 800, 3, ["online casino"]);
+    expect(result.level).toBe("low");
+    expect(result.flags).toHaveLength(0);
+  });
+
+  it("a domain absent from topBacklinks (empty anchors) is never flagged for anchor spam", () => {
+    // Simulates the common case where a referring domain has no topBacklinks entry
+    const domainAnchors = new Map<string, string[]>([
+      ["spam-source.com", ["cheap pills"]],
+    ]);
+    const domainUnderTest = "unrelated-low-rank.com";
+    const anchors = domainAnchors.get(domainUnderTest) ?? [];
+    const result = scoreDomain(domainUnderTest, 10, 5, anchors);
+    expect(result.flags.some((f) => f.includes("Anchor spam"))).toBe(false);
+  });
+
+  it("every SPAM_ANCHORS phrase triggers the Anchor spam flag on a low-rank domain", () => {
+    // End-to-end: configured phrases must reach the domain scorer, not just scoreAnchor
+    for (const phrase of SPAM_ANCHORS) {
+      const result = scoreDomain("lowrank.com", 15, 1, [phrase]);
+      expect(
+        result.flags.some((f) => f.includes("Anchor spam")),
+        `SPAM_ANCHORS phrase "${phrase}" must produce Anchor spam flag on a rank-15 domain`,
+      ).toBe(true);
+    }
   });
 });
 

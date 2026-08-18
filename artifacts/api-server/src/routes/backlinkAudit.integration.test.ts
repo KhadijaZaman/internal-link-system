@@ -79,6 +79,27 @@ vi.mock("../integrations/dataforseo", () => {
         },
       ]),
     ),
+    // Low-rank batch: a domain absent from the high-rank sample, carrying a
+    // spam anchor so the anchor-spam scorer can flag it.
+    fetchLowRankBacklinks: vi.fn(() =>
+      Promise.resolve([
+        {
+          urlFrom: "https://cheap-pills-review.xyz/wellows",
+          urlTo: "https://wellows.com/",
+          domainFrom: "cheap-pills-review.xyz",
+          pageFromTitle: "Best cheap pills",
+          anchor: "online casino",
+          dofollow: true,
+          rank: 2,
+          domainFromRank: 3,
+          firstSeen: "2023-01-01",
+          lastSeen: "2024-01-01",
+        },
+      ]),
+    ),
+    mergeBacklinkBatches: vi.fn(
+      (highRank: unknown[], lowRank: unknown[]) => [...lowRank, ...highRank],
+    ),
     fetchTopReferringDomains: vi.fn(() =>
       Promise.resolve([
         { domain: "allaboutai.com", backlinks: 14000, rank: 405, firstSeen: "2022-01-01", lastSeen: null },
@@ -192,13 +213,25 @@ describe("POST /api/backlinks/audit — first run", () => {
     const emptyAnchor = audit.anchors.find((a: { anchor: string }) => a.anchor === "");
     expect(emptyAnchor).toBeDefined();
 
-    // Top backlinks.
+    // Top backlinks — merged from high-rank and low-rank batches.
     expect(Array.isArray(audit.topBacklinks)).toBe(true);
     expect(audit.topBacklinks.length).toBeGreaterThan(0);
     expect(audit.topBacklinks[0]).toMatchObject({
       urlFrom: expect.any(String),
       domainFrom: expect.any(String),
       dofollow: expect.any(Boolean),
+    });
+
+    // The low-rank domain must be present in the merged topBacklinks so the
+    // anchor-spam scorer can evaluate it (it would be absent from a high-rank-
+    // only sample).
+    const lowRankEntry = audit.topBacklinks.find(
+      (bl: { domainFrom: string }) => bl.domainFrom === "cheap-pills-review.xyz",
+    );
+    expect(lowRankEntry).toBeDefined();
+    expect(lowRankEntry).toMatchObject({
+      anchor: "online casino",
+      domainFromRank: 3,
     });
 
     // Referring domains.

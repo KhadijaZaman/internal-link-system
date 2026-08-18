@@ -229,6 +229,70 @@ export async function fetchTopBacklinks(target: string, limit = 50): Promise<Top
     }));
 }
 
+/**
+ * Fetches backlinks from low-authority referring domains (sorted ascending by
+ * domain_from_rank) so the anchor-spam toxicity signal has anchor data for
+ * the domains most likely to trigger it.  Results are merged with
+ * fetchTopBacklinks output in the audit route, deduplicated by domain.
+ */
+export async function fetchLowRankBacklinks(target: string, limit = 50): Promise<TopBacklink[]> {
+  const r = await backlinksApi<{
+    items?: Array<{
+      url_from?: string;
+      url_to?: string;
+      domain_from?: string;
+      page_from_title?: string;
+      anchor?: string;
+      dofollow?: boolean;
+      rank?: number;
+      domain_from_rank?: number;
+      first_seen?: string;
+      last_visited?: string;
+    }>;
+  }>("backlinks", {
+    target,
+    limit,
+    mode: "one_per_domain",
+    order_by: ["domain_from_rank,asc"],
+    exclude_internal_backlinks: true,
+  });
+  return (r?.items ?? [])
+    .filter((i) => !!i.url_from)
+    .map((i) => ({
+      urlFrom: i.url_from ?? "",
+      urlTo: i.url_to ?? "",
+      domainFrom: i.domain_from ?? "",
+      pageFromTitle: i.page_from_title ?? null,
+      anchor: i.anchor ?? null,
+      dofollow: i.dofollow ?? false,
+      rank: i.rank ?? null,
+      domainFromRank: i.domain_from_rank ?? null,
+      firstSeen: i.first_seen ?? null,
+      lastSeen: i.last_visited ?? null,
+    }));
+}
+
+/**
+ * Merge two TopBacklink arrays (high-rank + low-rank batches), keeping one
+ * entry per domainFrom.  Low-rank entries are placed first so they survive
+ * deduplication — they carry the anchor data needed by the spam scorer.
+ */
+export function mergeBacklinkBatches(
+  highRank: TopBacklink[],
+  lowRank: TopBacklink[],
+): TopBacklink[] {
+  const seen = new Set<string>();
+  const result: TopBacklink[] = [];
+  for (const bl of [...lowRank, ...highRank]) {
+    const key = bl.domainFrom.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(bl);
+    }
+  }
+  return result;
+}
+
 export interface DfsPageContent {
   url: string;
   title: string;
