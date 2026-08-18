@@ -1,0 +1,36 @@
+What each source actually answers
+
+GSC is your only real demand and SERP data. The five analyses worth building:
+
+Query-to-page integrity. Find queries where more than one URL picks up impressions, and queries where the wrong URL ranks. Cannibalization and mismapping are the cheapest fixes you have.
+CTR against the expected curve for that position, not raw CTR. Pages sitting below the curve have a title/snippet/SERP-feature problem, not a ranking problem. Pages above it are being under-served by rank.
+Striking distance weighted by impressions, not by position. Position 11 on 400 impressions beats position 6 on 12.
+Query discovery over time per URL. Count of distinct queries a page earns after an edit. This is how you measure whether coverage actually expanded, separate from whether rank moved.
+Crawl stats and page indexing trend, segmented by template. Indexing decay by template is usually a structural problem, not a content one.
+
+GA4 answers what the click was worth. Segment everything to organic first, then:
+
+Engagement rate and conversion rate by landing page, compared against the page's GSC query intent. Informational pages converting at BOFU rates means your intent mapping is off.
+Organic as assist versus organic as entry. Path exploration, not last-click. Otherwise you will kill pages that feed the funnel.
+Internal site search terms. Demand you have failed to cover, straight from users.
+Scroll and engagement time by template, before and after a redesign. This is the only honest read on whether a layout change helped.
+Device split on the pages where GSC shows mobile position gaps.
+
+Bing Webmaster Tools is cheap and mostly ignored. Worth the hour:
+
+Query mix differs from Google, and often skews to a different buyer profile. Compare the two query sets for terms Google never surfaces to you.
+Its crawl and index reporting is more explicit about why a URL was dropped than Google's is (recalled, confirm against your own property).
+Free backlink data and referring-domain view.
+IndexNow submission and its effect on time-to-index (recalled, and testable: submit a batch, log discovery dates).
+Bing's index feeds Copilot and, reportedly, parts of other assistants' grounding. If AI visibility matters to you, Bing indexation is a prerequisite worth verifying rather than assuming (inferred, verify with a current source before you put it in a deck).
+Five traps that break the analysis
+GSC anonymizes low-volume queries, so query totals never sum to page totals. Never report a "share of queries" figure from that data.
+Average position is an average across a skewed distribution. Use impression-weighted buckets instead.
+GSC clicks and GA4 sessions do not reconcile. Different definitions, plus consent and blocker loss. Pick one as the source of truth per metric and say so.
+Domain property versus URL-prefix property changes your numbers. Confirm which you're pulling before comparing periods.
+Rankings flat but clicks down usually means a SERP feature took the click, not that you lost anything. Check the SERP before you touch the page.
+The three joins that actually produce decisions
+
+Query cluster → landing page → conversion value tells you where to invest.
+High impressions plus low CTR plus decent conversion when clicked tells you to rewrite titles, not content.
+High clicks plus low engagement plus zero conversion tells you the page matched a query it shouldn't rank for.

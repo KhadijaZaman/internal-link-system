@@ -14,6 +14,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ArrowRight } from "lucide-react";
+import { InfoTip } from "@/components/info-tip";
+
+function HeadTip({ label, tip, right }: { label: string; tip: string; right?: boolean }) {
+  return (
+    <span className={`inline-flex items-center gap-1 ${right ? "justify-end" : ""}`}>
+      {label}
+      <InfoTip>{tip}</InfoTip>
+    </span>
+  );
+}
 
 function fmt(n: number): string {
   return n.toLocaleString();
@@ -92,11 +102,11 @@ function NearMissSection({ data }: { data: SeoReportResponse["nearMiss"] }) {
             <TableHeader>
               <TableRow>
                 <TableHead>Query</TableHead>
-                <TableHead className="text-right">Position</TableHead>
-                <TableHead className="text-right">Impressions</TableHead>
-                <TableHead className="text-right">Clicks</TableHead>
-                <TableHead className="text-right">Score</TableHead>
-                <TableHead />
+                <TableHead className="text-right"><HeadTip right label="Position" tip="Your average ranking spot in Google for this search (1 = top result, lower is better). Positions 5–15 mean you're close to the top but not there yet." /></TableHead>
+                <TableHead className="text-right"><HeadTip right label="Impressions" tip="How many times your site appeared in Google results for this search. High impressions = lots of people searching for it." /></TableHead>
+                <TableHead className="text-right"><HeadTip right label="Clicks" tip="How many people actually clicked through to your site from this search." /></TableHead>
+                <TableHead className="text-right"><HeadTip right label="Score" tip="Upside score: search volume weighted by how close you are to the top (position × impressions). Higher = bigger traffic win if you improve this ranking. Use it to decide what to work on first." /></TableHead>
+                <TableHead><HeadTip label="" tip="'page 2 → 1' marks queries ranking just past position 10 — on page 2 of Google. A small push moves them onto page 1, where nearly all clicks happen." /></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -143,11 +153,11 @@ function ClustersSection({ data }: { data: SeoReportResponse["clusters"] }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Cluster</TableHead>
-                <TableHead>Intent</TableHead>
-                <TableHead className="text-right">Keywords</TableHead>
-                <TableHead className="text-right">Impressions</TableHead>
-                <TableHead className="text-right">Avg pos</TableHead>
+                <TableHead><HeadTip label="Cluster" tip="A group of related searches that one page (or one hub of pages) can target together, instead of writing a separate article per keyword." /></TableHead>
+                <TableHead><HeadTip label="Intent" tip="What the searcher wants. Commercial = ready to compare or buy (good for service/product pages). Informational = looking to learn (good for guides and blog posts)." /></TableHead>
+                <TableHead className="text-right"><HeadTip right label="Keywords" tip="How many different searches fall into this cluster." /></TableHead>
+                <TableHead className="text-right"><HeadTip right label="Impressions" tip="Combined number of times your site appeared in Google results across every search in this cluster." /></TableHead>
+                <TableHead className="text-right"><HeadTip right label="Avg pos" tip="Average Google ranking across the cluster's searches (1 = top, lower is better)." /></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -187,9 +197,9 @@ function ContentGapsSection({ data }: { data: SeoReportResponse["contentGaps"] }
           <TableHeader>
             <TableRow>
               <TableHead>Query</TableHead>
-              <TableHead className="text-right">Impressions</TableHead>
-              <TableHead className="text-right">Position</TableHead>
-              <TableHead>Current best page</TableHead>
+              <TableHead className="text-right"><HeadTip right label="Impressions" tip="How many times your site appeared in Google for this search. People are searching this — you just don't have a strong page for it yet." /></TableHead>
+              <TableHead className="text-right"><HeadTip right label="Position" tip="Where your closest existing page currently ranks (1 = top). A weak position here means no page on your site really answers this search." /></TableHead>
+              <TableHead><HeadTip label="Current best page" tip="The page Google currently shows for this search. If it's only loosely related, a dedicated new page would likely rank better." /></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -235,8 +245,8 @@ function TechDebtSection({ data }: { data: SeoReportResponse["techDebt"] }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Page</TableHead>
-                  <TableHead>Issue</TableHead>
-                  <TableHead className="text-right">Clicks at stake</TableHead>
+                  <TableHead><HeadTip label="Issue" tip="The technical problem holding this page back (e.g. not indexed, slow, or blocked). Fixing it removes a handbrake on rankings you've already earned." /></TableHead>
+                  <TableHead className="text-right"><HeadTip right label="Clicks at stake" tip="An estimate of the Google clicks this page could gain (or is losing) while the issue remains. Bigger number = fix this one first." /></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -278,9 +288,9 @@ function LinkGapsSection({ data }: { data: SeoReportResponse["linkGaps"] }) {
             <TableHeader>
               <TableRow>
                 <TableHead>Page</TableHead>
-                <TableHead>Problem</TableHead>
-                <TableHead className="text-right">In / out links</TableHead>
-                <TableHead className="text-right">Clicks at stake</TableHead>
+                <TableHead><HeadTip label="Problem" tip="Orphan = no other page on your site links to it, so visitors and Google struggle to find it. Dead-end = it links out to nothing, trapping visitors and ranking value." /></TableHead>
+                <TableHead className="text-right"><HeadTip right label="In / out links" tip="In-body internal links pointing to this page / from this page. Navigation and footer links don't count." /></TableHead>
+                <TableHead className="text-right"><HeadTip right label="Clicks at stake" tip="Estimated Google clicks this page could gain once it's properly connected to the rest of the site." /></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -323,10 +333,10 @@ function BacklinksSection({ data }: { data: SeoReportResponse["backlinks"] }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Domain</TableHead>
-              <TableHead className="text-right">Domain rank</TableHead>
-              <TableHead className="text-right">Backlinks</TableHead>
-              <TableHead>Last seen</TableHead>
+              <TableHead><HeadTip label="Domain" tip="A website that links to yours. Links from trusted sites act like votes of confidence for your rankings." /></TableHead>
+              <TableHead className="text-right"><HeadTip right label="Domain rank" tip="How authoritative the linking website is, on a 0–1000 scale. Links from higher-ranked domains help your rankings more." /></TableHead>
+              <TableHead className="text-right"><HeadTip right label="Backlinks" tip="How many individual links this website points at your site." /></TableHead>
+              <TableHead><HeadTip label="Last seen" tip="The most recent date this link was still found live on the other site." /></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
