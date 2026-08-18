@@ -821,13 +821,37 @@ export default function KnowledgeGraphPage() {
                   )}
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                  <div className="text-muted-foreground">PageRank</div>
+                  <div className="text-muted-foreground flex items-center gap-1">
+                    PageRank
+                    <InfoTip>
+                      Relative importance of this page within your site, computed from
+                      in-content links only (navigation, header, footer, and sidebar links
+                      are excluded). Pages that receive more body links from other
+                      important pages score higher. Node size in the graph reflects this
+                      score.
+                    </InfoTip>
+                  </div>
                   <div className="text-right font-medium">
                     {selected.pagerank.toFixed(4)}
                   </div>
-                  <div className="text-muted-foreground">Inbound links</div>
+                  <div className="text-muted-foreground flex items-center gap-1">
+                    Inbound links
+                    <InfoTip>
+                      In-content links pointing to this page from other pages on your
+                      site, counted from the last crawl. Only links found inside the
+                      article body count — navigation, header, footer, and sidebar links
+                      are always excluded.
+                    </InfoTip>
+                  </div>
                   <div className="text-right font-medium">{selected.inboundCount}</div>
-                  <div className="text-muted-foreground">Outbound links</div>
+                  <div className="text-muted-foreground flex items-center gap-1">
+                    Outbound links
+                    <InfoTip>
+                      In-content links this page sends to other pages on your site, from
+                      within its own body text. Chrome links (navigation, header, footer,
+                      sidebar) are always excluded.
+                    </InfoTip>
+                  </div>
                   <div className="text-right font-medium">{selected.outboundCount}</div>
                   {selected.impressions != null && (
                     <>

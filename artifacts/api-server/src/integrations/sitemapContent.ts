@@ -128,8 +128,31 @@ async function fetchSitemapEntries(
     // night; the crawl "reconciled" against the 74 surviving URLs).
     const nested = await Promise.all(
       children.map(async (c) => {
+        // The origin intermittently serves an EMPTY (but 200 OK) child
+        // sitemap body under load — observed live on post-sitemap.xml where
+        // consecutive requests alternate between 346 URLs and 0. Retry an
+        // empty result a few times before accepting it, so a transient blank
+        // response doesn't shrink discovery (the crawl-shrink guard would
+        // then abort the whole run). A genuinely empty sitemap (e.g. an
+        // author sitemap with no entries) still passes after the retries.
         try {
-          return await fetchSitemapEntries(c, domain);
+          let entries: SitemapUrlEntry[] = [];
+          for (let attempt = 0; attempt < 3; attempt++) {
+            if (attempt > 0) await new Promise((r) => setTimeout(r, 2000 * attempt));
+            // Retries add a cache-busting query param: the empty variant is a
+            // stale CDN cache hit (x-cache: Hit from cloudfront), so plain
+            // retries keep getting the same cached blank body. A unique query
+            // string forces an origin fetch, which returns the real sitemap.
+            const url =
+              attempt === 0 ? c : `${c}${c.includes("?") ? "&" : "?"}_cb=${Date.now()}`;
+            entries = await fetchSitemapEntries(url, domain);
+            if (entries.length > 0) break;
+            logger.warn(
+              { child: c, attempt: attempt + 1 },
+              "Sitemap content: child sitemap returned 0 URLs — retrying with cache-buster",
+            );
+          }
+          return entries;
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           throw new Error(`Child sitemap ${c} failed: ${msg}`);

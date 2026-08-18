@@ -11,4 +11,6 @@ description: Destructive reconciles in crawl jobs must be guarded against partia
 
 **How to apply:** When debugging a sudden site-health drop, first check `health_snapshots.components` (raw counts per component per day) to find which component spiked, then check whether `wp_posts` / `link_graph` row counts and `crawled_at` dates collapsed on the same day — that pattern means a bad crawl, not a real site problem. Recovery = one successful full crawl (posts re-upsert, graph rebuilds, embeddings regenerate; `page_classifications` survive deletion so classification costs are not re-incurred).
 
+**CDN empty-variant gotcha:** a CDN in front of the origin can cache and repeatedly serve an *empty but 200 OK* child sitemap body — plain retries keep hitting the same stale cache. An empty successful sitemap response needs bounded retries with a cache-busting query string (forcing an origin fetch) before accepting an empty inventory; genuinely empty sitemaps still pass after retries, and the shrink guard remains the backstop.
+
 **Diagnostic bonus:** ranking-drop penalty (weight 25) saturates at 20 loser pages, so with thousands of critical/high losers it contributes a constant max deduction — it explains a low score but never explains a *change*.
