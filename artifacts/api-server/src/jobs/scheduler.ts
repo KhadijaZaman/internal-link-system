@@ -22,6 +22,7 @@ import { runSyncLinkMapSheet } from "./syncLinkMapSheet";
 import { runGenerateTopicalMap } from "./generateTopicalMap";
 import { runAuditLinkQuality } from "./auditLinkQuality";
 import { runAnalyzeTopicalMapCompetitors } from "./analyzeTopicalMapCompetitors";
+import { runCheckSpamTldFreshness } from "./checkSpamTldFreshness";
 import { listSchedulableSites, type SiteContext } from "../lib/site";
 import { logger } from "../lib/logger";
 
@@ -346,6 +347,12 @@ export function startScheduler(): void {
   // once on startup (index.ts). Cheap when nothing is overdue (one SELECT
   // per catch-up job per site).
   cron.schedule("17 * * * *", () => void runDailyCatchUp(), { timezone: "UTC" });
+  // Wednesday 08:00 UTC — spam-TLD freshness check. Cross-references the
+  // authoritative spam-tlds.ts list against the Spamhaus TLD statistics page
+  // and a community SURBL list, logging WARN entries for any TLD found in
+  // reference data but not yet in our list. Never auto-adds; operator reviews
+  // each candidate. See checkSpamTldFreshness.ts for full documentation.
+  cron.schedule("0 8 * * 3", () => void runCheckSpamTldFreshness(), { timezone: "UTC" });
   logger.info(
     "Cron schedules registered (UTC: Sun02 WP crawl, Mon03 GSC, Tue06 semantic_linking, " +
       "Thu07/08/09 audits (orphans/over_linked/broken_links), Sat02 sitemap, monthly-01 reembed). " +

@@ -69,6 +69,7 @@ const EXPECTED_SCHEDULE: Record<string, string | null> = {
   "0 4 * * *": "sync_bing_pages", // Daily 04:00 UTC
   "0 5 * * *": "sync_link_map_sheet", // Daily 05:00 UTC
   "17 * * * *": null, // hourly catch-up sweep
+  "0 8 * * 3": null, // Wednesday 08:00 UTC — spam-TLD freshness check (no site jobs)
 };
 
 /** Let the fire-and-forget `void runJobForAllSites(...)` chain settle. */

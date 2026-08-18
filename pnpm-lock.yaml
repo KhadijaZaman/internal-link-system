@@ -202,6 +202,9 @@ importers:
       '@workspace/integrations-anthropic-ai':
         specifier: workspace:*
         version: link:../../lib/integrations-anthropic-ai
+      '@workspace/spam-tlds':
+        specifier: workspace:*
+        version: link:../../lib/spam-tlds
       cheerio:
         specifier: ^1.1.2
         version: 1.2.0
@@ -492,6 +495,9 @@ importers:
       '@clerk/themes':
         specifier: ^2.4.57
         version: 2.4.57(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@workspace/spam-tlds':
+        specifier: workspace:*
+        version: link:../../lib/spam-tlds
       d3:
         specifier: ^7.9.0
         version: 7.9.0
@@ -1098,6 +1104,8 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 25.6.2
+
+  lib/spam-tlds: {}
 
   scripts:
     devDependencies:
