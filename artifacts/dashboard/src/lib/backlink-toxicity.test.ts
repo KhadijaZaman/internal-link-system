@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildDisavowTxt,
   isDomainFlagged,
+  scoreAnchor,
   scoreDomain,
 } from "./backlink-toxicity";
+import { SPAM_ANCHORS } from "./spam-anchors";
 import { SPAM_TLDS } from "./spam-tlds";
 
 // ---------------------------------------------------------------------------
@@ -245,6 +247,7 @@ describe("isDomainFlagged", () => {
   });
 
   it("disavow export only contains domains the filter approved", () => {
+
     const allDomains = [
       { domain: "clean.com", rank: 900, backlinks: 3 },
       { domain: "spam.xyz", rank: 5, backlinks: 60 },
@@ -269,5 +272,146 @@ describe("isDomainFlagged", () => {
     for (const line of nonCommentLines) {
       expect(line.startsWith("domain:")).toBe(true);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// scoreAnchor — anchor-text spam detection
+// ---------------------------------------------------------------------------
+describe("scoreAnchor", () => {
+  // --- Config-driven coverage: every SPAM_ANCHORS entry must fire -----------
+  it("every phrase in SPAM_ANCHORS scores at least 'medium' when used as the exact anchor", () => {
+    for (const phrase of SPAM_ANCHORS) {
+      const result = scoreAnchor(phrase);
+      expect(
+        result.matchedPhrase,
+        `"${phrase}" should match a spam anchor phrase`,
+      ).not.toBeNull();
+      expect(
+        result.level,
+        `"${phrase}" should be at least "medium" risk`,
+      ).not.toBe("low");
+    }
+  });
+
+  it("every phrase in SPAM_ANCHORS scores at least 'medium' when embedded in surrounding text", () => {
+    // Simulates real anchor text that wraps the spam phrase in extra words, e.g.
+    // "Get the best online casino deals here!" should still match "online casino".
+    for (const phrase of SPAM_ANCHORS) {
+      const anchor = `get the best ${phrase} deals here`;
+      const result = scoreAnchor(anchor);
+      expect(
+        result.matchedPhrase,
+        `"${phrase}" embedded in longer anchor should still match`,
+      ).not.toBeNull();
+      expect(result.level).not.toBe("low");
+    }
+  });
+
+  it("matching is case-insensitive", () => {
+    const result = scoreAnchor("Buy Viagra Online");
+    expect(result.matchedPhrase).not.toBeNull();
+    expect(result.level).toBe("medium");
+  });
+
+  it("matching trims leading and trailing whitespace", () => {
+    const result = scoreAnchor("  cheap viagra  ");
+    expect(result.matchedPhrase).not.toBeNull();
+    expect(result.level).toBe("medium");
+  });
+
+  it("reports which phrase was matched", () => {
+    const result = scoreAnchor("buy backlinks for cheap");
+    expect(result.matchedPhrase).toBe("buy backlinks");
+  });
+
+  // --- Clean / neutral anchors must not false-positive ----------------------
+  it("does not flag 'click here'", () => {
+    const result = scoreAnchor("click here");
+    expect(result.matchedPhrase).toBeNull();
+    expect(result.level).toBe("low");
+  });
+
+  it("does not flag 'read more'", () => {
+    const result = scoreAnchor("read more");
+    expect(result.matchedPhrase).toBeNull();
+    expect(result.level).toBe("low");
+  });
+
+  it("does not flag 'learn more'", () => {
+    const result = scoreAnchor("learn more");
+    expect(result.matchedPhrase).toBeNull();
+    expect(result.level).toBe("low");
+  });
+
+  it("does not flag 'visit us'", () => {
+    const result = scoreAnchor("visit us");
+    expect(result.matchedPhrase).toBeNull();
+    expect(result.level).toBe("low");
+  });
+
+  it("does not flag a generic brand name anchor", () => {
+    const brandAnchors = [
+      "Linkweave",
+      "Wellows",
+      "Acme Corporation",
+      "TechCo",
+      "FooBar Inc",
+    ];
+    for (const anchor of brandAnchors) {
+      const result = scoreAnchor(anchor);
+      expect(
+        result.matchedPhrase,
+        `Brand anchor "${anchor}" should not be flagged`,
+      ).toBeNull();
+      expect(result.level).toBe("low");
+    }
+  });
+
+  it("does not flag navigational anchors like page titles", () => {
+    const navAnchors = [
+      "Home",
+      "About us",
+      "Contact",
+      "Privacy Policy",
+      "Terms of Service",
+      "Blog",
+      "Pricing",
+      "Sign up",
+      "Log in",
+    ];
+    for (const anchor of navAnchors) {
+      const result = scoreAnchor(anchor);
+      expect(
+        result.matchedPhrase,
+        `Navigational anchor "${anchor}" should not be flagged`,
+      ).toBeNull();
+      expect(result.level).toBe("low");
+    }
+  });
+
+  it("does not flag bare URL-style anchors", () => {
+    const urlAnchors = ["example.com", "www.example.com", "https://example.com"];
+    for (const anchor of urlAnchors) {
+      const result = scoreAnchor(anchor);
+      expect(
+        result.matchedPhrase,
+        `URL anchor "${anchor}" should not be flagged`,
+      ).toBeNull();
+      expect(result.level).toBe("low");
+    }
+  });
+
+  it("does not false-positive on a word that merely contains a spam substring (no word boundary)", () => {
+    // "casinobonuses" should NOT match "casino" because there is no word boundary
+    const result = scoreAnchor("casinobonuses");
+    expect(result.matchedPhrase).toBeNull();
+    expect(result.level).toBe("low");
+  });
+
+  it("returns level 'low' and null matchedPhrase for an empty anchor", () => {
+    const result = scoreAnchor("");
+    expect(result.matchedPhrase).toBeNull();
+    expect(result.level).toBe("low");
   });
 });

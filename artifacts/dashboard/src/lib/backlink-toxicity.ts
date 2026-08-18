@@ -10,6 +10,7 @@
  * To add or remove suspicious TLDs, edit `spam-tlds.ts` — not this file.
  */
 
+import { SPAM_ANCHORS } from "./spam-anchors";
 import { SPAM_TLDS } from "./spam-tlds";
 
 export type RiskLevel = "low" | "medium" | "high";
@@ -65,6 +66,44 @@ export function scoreDomain(
 
 export function isDomainFlagged(risk: DomainRisk): boolean {
   return risk.level === "medium" || risk.level === "high";
+}
+
+// ---------------------------------------------------------------------------
+// Anchor-text spam scoring
+// ---------------------------------------------------------------------------
+
+export interface AnchorRisk {
+  /** The matched spam phrase, or null if the anchor is clean. */
+  matchedPhrase: string | null;
+  level: RiskLevel;
+}
+
+/**
+ * Score a single anchor-text string for spam signals.
+ *
+ * Matching is case-insensitive and phrase-boundary-aware: a phrase matches
+ * only when it appears as a whole-word sequence inside the anchor, not as part
+ * of a compound word (e.g. "casino" matches "online casino" but not
+ * "casinobonuses").
+ *
+ * Returns "medium" when a phrase matches (single strong signal), or "low" when
+ * the anchor is clean.  Callers may combine this with domain-level signals to
+ * escalate to "high".
+ */
+export function scoreAnchor(anchor: string): AnchorRisk {
+  const normalised = anchor.trim().toLowerCase();
+
+  for (const phrase of SPAM_ANCHORS) {
+    // Build a regex that requires word boundaries on both sides of the phrase.
+    // We escape the phrase so special regex characters are treated literally.
+    const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`(?<![\\w])${escaped}(?![\\w])`, "i");
+    if (pattern.test(normalised)) {
+      return { matchedPhrase: phrase, level: "medium" };
+    }
+  }
+
+  return { matchedPhrase: null, level: "low" };
 }
 
 /** Generate a Google-format disavow file from a list of domains. */
