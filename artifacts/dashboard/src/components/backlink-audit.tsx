@@ -130,6 +130,29 @@ function AnchorRiskBadge({ risk }: { risk: AnchorRisk }) {
     </Tooltip>
   );
 }
+
+function HighPriorityBadge({ anchorPhrase }: { anchorPhrase: string | null }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge
+          variant="outline"
+          className="text-xs text-red-700 dark:text-red-400 border-red-500/30 bg-red-500/10 cursor-help font-semibold"
+        >
+          <TriangleAlert className="h-3 w-3 mr-1" />
+          High priority
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent side="right" className="max-w-[280px] text-xs space-y-1">
+        <div className="font-medium">Domain risk + anchor spam</div>
+        <div>This domain is already flagged as risky and its anchor text matched a spam phrase
+          {anchorPhrase ? <span>: &ldquo;{anchorPhrase}&rdquo;</span> : null}.
+          Prioritise disavowal review for this link.
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 function SummaryStat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="rounded-lg border p-3">
@@ -207,7 +230,7 @@ export function ReferringDomainsCard({ referringDomains, topBacklinks = [] }: Re
 
   const [showFlagged, setShowFlagged] = useState(false);
   const [manualDisavow, setManualDisavow] = useState<Set<string>>(() =>
-    storageKey ? loadManualDisavow(storageKey) : new Set()
+    storageKey ? loadManualDisavow(storageKey) : new Set(),
   );
 
   // Reload persisted decisions whenever the active site changes.
@@ -215,18 +238,21 @@ export function ReferringDomainsCard({ referringDomains, topBacklinks = [] }: Re
     setManualDisavow(storageKey ? loadManualDisavow(storageKey) : new Set());
   }, [storageKey]);
 
-  const toggleManualDisavow = useCallback((domain: string) => {
-    setManualDisavow((prev) => {
-      const next = new Set(prev);
-      if (next.has(domain)) {
-        next.delete(domain);
-      } else {
-        next.add(domain);
-      }
-      if (storageKey) persistManualDisavow(storageKey, next);
-      return next;
-    });
-  }, [storageKey]);
+  const toggleManualDisavow = useCallback(
+    (domain: string) => {
+      setManualDisavow((prev) => {
+        const next = new Set(prev);
+        if (next.has(domain)) {
+          next.delete(domain);
+        } else {
+          next.add(domain);
+        }
+        if (storageKey) persistManualDisavow(storageKey, next);
+        return next;
+      });
+    },
+    [storageKey],
+  );
 
   // Score all candidates: the referring-domains list (high-backlink-volume
   // bias) extended with any low-authority domains from topBacklinks that
@@ -238,8 +264,38 @@ export function ReferringDomainsCard({ referringDomains, topBacklinks = [] }: Re
   );
 
   const flagged = useMemo(() => scored.filter((s) => isDomainFlagged(s.risk)), [scored]);
-  const visible = showFlagged ? flagged : scored;
 
+  /** Domains that appear in topBacklinks with a spam anchor — used to surface combined-risk rows. */
+  const spamAnchorDomains = useMemo<Set<string>>(
+    () =>
+      new Set(
+        topBacklinks
+          .filter((b) => scoreAnchor(b.anchor ?? "").level !== "low")
+          .map((b) => b.domainFrom ?? "")
+          .filter(Boolean),
+      ),
+    [topBacklinks],
+  );
+
+  /** In the flagged view, combined-risk rows (domain flagged + spam anchor) float to the top. */
+  const visibleFlagged = useMemo(
+    () =>
+      [...flagged].sort((a, b) => {
+        const aCombo = spamAnchorDomains.has(a.domain.domain) ? 1 : 0;
+        const bCombo = spamAnchorDomains.has(b.domain.domain) ? 1 : 0;
+        return bCombo - aCombo;
+      }),
+    [flagged, spamAnchorDomains],
+  );
+
+  const combinedRiskCount = useMemo(
+    () => flagged.filter((s) => spamAnchorDomains.has(s.domain.domain)).length,
+    [flagged, spamAnchorDomains],
+  );
+
+  const visible = showFlagged ? visibleFlagged : scored;
+
+  /** Auto-flagged + manually marked domains merged for the disavow export. */
   const totalForExport = useMemo(
     () => mergeDisavowDomains(flagged.map((s) => s.domain.domain), manualDisavow),
     [flagged, manualDisavow],
@@ -316,6 +372,9 @@ export function ReferringDomainsCard({ referringDomains, topBacklinks = [] }: Re
             <TriangleAlert className="h-3.5 w-3.5 mt-0.5 shrink-0" />
             <span>
               {flagged.length} domain{flagged.length !== 1 ? "s" : ""} flagged by risk signals.
+              {combinedRiskCount > 0 && (
+                <> <strong>{combinedRiskCount} also carr{combinedRiskCount === 1 ? "ies" : "y"} spam anchor text</strong> — those are shown first and should be your top disavowal candidates.</>
+              )}
               {manualDisavow.size > 0 && ` ${manualDisavow.size} additional domain${manualDisavow.size !== 1 ? "s" : ""} manually marked.`}{" "}
               Review carefully before disavowing — legitimate domains can trigger these signals too.
               Export the list and submit it in Google Search Console's Disavow Links tool.
@@ -352,13 +411,25 @@ export function ReferringDomainsCard({ referringDomains, topBacklinks = [] }: Re
                 </TableRow>
               ) : (
                 visible.map((s) => {
+                  const isCombinedRisk = showFlagged && spamAnchorDomains.has(s.domain.domain);
                   const isManual = manualDisavow.has(s.domain.domain);
                   return (
-                    <TableRow key={s.domain.domain}>
+                    <TableRow
+                      key={s.domain.domain}
+                      className={isCombinedRisk ? "bg-red-500/5 dark:bg-red-500/10" : undefined}
+                    >
                       <TableCell className="text-sm">
                         <div className="flex items-center gap-2 flex-wrap">
                           {s.domain.domain}
                           <RiskBadge risk={s.risk} />
+                          {isCombinedRisk && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs text-red-700 dark:text-red-400 border-red-500/30 bg-red-500/10 font-semibold"
+                            >
+                              Spam anchor
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="text-right tabular-nums text-sm">{s.domain.rank ?? "—"}</TableCell>
@@ -419,6 +490,23 @@ export function BacklinkAuditSection() {
     summary && summary.backlinks > 0
       ? Math.round((summary.dofollow / summary.backlinks) * 100)
       : 0;
+
+  /**
+   * Domain-risk map keyed by domain name, scored with the real per-domain
+   * backlink count from the referring-domains list.  Used in the top-backlinks
+   * table so that sitewide/high-volume signals (which depend on backlink count)
+   * are consistent with the referring-domains card.
+   */
+  const domainRiskMap = useMemo<Map<string, DomainRisk>>(
+    () =>
+      new Map(
+        (audit?.referringDomains ?? []).map((d) => [
+          d.domain,
+          scoreDomain(d.domain, d.rank, d.backlinks),
+        ]),
+      ),
+    [audit?.referringDomains],
+  );
 
   const runAudit = (refresh: boolean) => {
     const competitors = competitorsInput
@@ -612,10 +700,7 @@ export function BacklinkAuditSection() {
               </CardContent>
             </Card>
 
-            <ReferringDomainsCard
-              referringDomains={audit.referringDomains}
-              topBacklinks={audit.topBacklinks}
-            />
+            <ReferringDomainsCard referringDomains={audit.referringDomains} topBacklinks={audit.topBacklinks} />
           </div>
 
           <Card>
@@ -658,8 +743,18 @@ export function BacklinkAuditSection() {
                   <TableBody>
                     {audit.topBacklinks.map((b) => {
                       const anchorRisk = scoreAnchor(b.anchor ?? "");
+                      // Look up domain risk from the referringDomains map (real backlink counts).
+                      // Fall back to per-rank scoring for domains not in the list.
+                      const domainRisk =
+                        domainRiskMap.get(b.domainFrom ?? "") ??
+                        scoreDomain(b.domainFrom ?? "", b.domainFromRank, 0);
+                      const isCombinedRisk =
+                        isDomainFlagged(domainRisk) && anchorRisk.level !== "low";
                       return (
-                        <TableRow key={b.urlFrom}>
+                        <TableRow
+                          key={b.urlFrom}
+                          className={isCombinedRisk ? "bg-red-500/5 dark:bg-red-500/10" : undefined}
+                        >
                           <TableCell className="max-w-[340px]">
                             <a
                               href={b.urlFrom}
@@ -680,7 +775,11 @@ export function BacklinkAuditSection() {
                               <span className="truncate" title={b.anchor ?? undefined}>
                                 {b.anchor || <span className="text-muted-foreground">(no anchor)</span>}
                               </span>
-                              <AnchorRiskBadge risk={anchorRisk} />
+                              {isCombinedRisk ? (
+                                <HighPriorityBadge anchorPhrase={anchorRisk.matchedPhrase} />
+                              ) : (
+                                <AnchorRiskBadge risk={anchorRisk} />
+                              )}
                             </div>
                           </TableCell>
                           <TableCell>

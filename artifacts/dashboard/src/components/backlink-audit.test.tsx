@@ -10,14 +10,15 @@
  *   - The "Export disavow.txt" button is absent when zero flagged domains exist
  *   - Manually saved disavow decisions survive an audit re-run (new referringDomains prop)
  *   - Manual decisions are scoped per site ID and never bleed across sites
+ *   - Combined domain-risk + anchor-spam rows are highlighted and sorted first
  */
 
 import React from "react";
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
-import { render, fireEvent, cleanup } from "@testing-library/react";
+import { render, fireEvent, cleanup, within } from "@testing-library/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ReferringDomainsCard, disavowStorageKey, loadManualDisavow } from "./backlink-audit";
-import type { AuditReferringDomain } from "@workspace/api-client-react";
+import type { AuditReferringDomain, TopBacklink } from "@workspace/api-client-react";
 
 // ---------------------------------------------------------------------------
 // Mock useSiteContext so the component works without a full SiteProvider
@@ -97,11 +98,64 @@ const flaggedHigh: AuditReferringDomain = {
   backlinks: 60,
 };
 
+/**
+ * Sitewide-placement domain: high backlink volume (≥ 50) from a decent-rank
+ * domain.  scoreDomain fires "High link volume — possible sitewide placement"
+ * (a high-weight signal) → medium risk → isDomainFlagged = true.
+ * NOTE: scoring with backlinks=1 would produce zero flags and level "low".
+ */
+const sitewideVolumeDomain: AuditReferringDomain = {
+  domain: "sitewide-ads.net",
+  rank: 400,
+  backlinks: 55,
+};
+
+/**
+ * Low-authority + many-links domain: rank < 30 and backlinks ≥ 20.
+ * scoreDomain fires "Low authority (rank < 30)" + "Many links from
+ * low-authority domain" → flags.length = 2 → medium risk → isDomainFlagged.
+ */
+const lowAuthHighVolumeDomain: AuditReferringDomain = {
+  domain: "low-auth-linker.com",
+  rank: 18,
+  backlinks: 28,
+};
+
+/** Spam backlink from the sitewide-volume domain. */
+const spamBacklinkFromSitewide: TopBacklink = {
+  urlFrom: "https://sitewide-ads.net/network-page",
+  urlTo: "https://mysite.com/target",
+  domainFrom: "sitewide-ads.net",
+  domainFromRank: 400,
+  anchor: "online casino bonus",
+  dofollow: true,
+};
+
+/** Spam backlink from the low-auth/high-volume domain. */
+const spamBacklinkFromLowAuth: TopBacklink = {
+  urlFrom: "https://low-auth-linker.com/promo",
+  urlTo: "https://mysite.com/target",
+  domainFrom: "low-auth-linker.com",
+  domainFromRank: 18,
+  anchor: "payday loans fast approval",
+  dofollow: true,
+};
+
+/** Clean backlink from a reputable domain. */
+const cleanBacklink: TopBacklink = {
+  urlFrom: "https://reputable.com/article",
+  urlTo: "https://mysite.com/target",
+  domainFrom: "reputable.com",
+  domainFromRank: 900,
+  anchor: "read more",
+  dofollow: true,
+};
+
 /** Helper: render ReferringDomainsCard wrapped in the required providers. */
-function renderCard(referringDomains: AuditReferringDomain[]) {
+function renderCard(referringDomains: AuditReferringDomain[], topBacklinks: TopBacklink[] = []) {
   return render(
     <TooltipProvider>
-      <ReferringDomainsCard referringDomains={referringDomains} />
+      <ReferringDomainsCard referringDomains={referringDomains} topBacklinks={topBacklinks} />
     </TooltipProvider>,
   );
 }
@@ -124,7 +178,6 @@ describe("ReferringDomainsCard — mixed clean and flagged domains", () => {
     const { getByTestId } = renderCard([cleanDomain, flaggedMedium, flaggedHigh]);
 
     const btn = getByTestId("button-filter-flagged");
-    // The badge text inside the button should match the number of flagged domains (2)
     expect(btn.textContent).toContain("2");
   });
 
@@ -144,7 +197,6 @@ describe("ReferringDomainsCard — mixed clean and flagged domains", () => {
 
     fireEvent.click(getByTestId("button-filter-flagged"));
 
-    // Flagged domains must be visible
     expect(queryByText("sketchy.loan")).toBeTruthy();
     expect(queryByText("spam.xyz")).toBeTruthy();
   });
@@ -159,7 +211,6 @@ describe("ReferringDomainsCard — mixed clean and flagged domains", () => {
 
     fireEvent.click(getByTestId("button-filter-flagged"));
 
-    // Clean domains must NOT appear in the table
     expect(queryByText("reputable.com")).toBeNull();
     expect(queryByText("trusted.org")).toBeNull();
   });
@@ -172,12 +223,10 @@ describe("ReferringDomainsCard — mixed clean and flagged domains", () => {
     ]);
 
     const btn = getByTestId("button-filter-flagged");
-    // Extract count from badge text (the button textContent is "Flagged 2")
     const badgeCount = parseInt(btn.textContent?.replace(/\D/g, "") ?? "0", 10);
 
     fireEvent.click(btn);
 
-    // Data rows (excluding header row)
     const rows = getAllByRole("row").slice(1);
     expect(rows).toHaveLength(badgeCount);
   });
@@ -193,12 +242,9 @@ describe("ReferringDomainsCard — mixed clean and flagged domains", () => {
   it("toggling the flagged filter off returns all domains to the view", () => {
     const { getByTestId, getByText } = renderCard([cleanDomain, flaggedMedium]);
 
-    // Enable flagged view
     fireEvent.click(getByTestId("button-filter-flagged"));
-    // Disable flagged view
     fireEvent.click(getByTestId("button-filter-flagged"));
 
-    // All domains should be back
     expect(getByText("reputable.com")).toBeTruthy();
     expect(getByText("sketchy.loan")).toBeTruthy();
   });
@@ -218,6 +264,7 @@ describe("ReferringDomainsCard — no flagged domains", () => {
   it("does not render the Export disavow.txt button when every domain is clean", () => {
     const { queryByTestId } = renderCard([cleanDomain, cleanDomain2]);
 
+    expect(queryByTestId("button-filter-flagged")).toBeNull();
     expect(queryByTestId("button-export-disavow")).toBeNull();
   });
 
@@ -239,7 +286,7 @@ describe("ReferringDomainsCard — all domains flagged", () => {
 
     fireEvent.click(getByTestId("button-filter-flagged"));
 
-    const rows = getAllByRole("row").slice(1); // skip header
+    const rows = getAllByRole("row").slice(1);
     expect(rows).toHaveLength(2);
   });
 
@@ -281,7 +328,7 @@ describe("ReferringDomainsCard — empty list", () => {
 
 describe("ReferringDomainsCard — manual disavow decisions survive audit re-run", () => {
   it("manual flag toggle shows the export button even for a clean domain", () => {
-    const { getByTestId } = renderCard([cleanDomain, cleanDomain2]);
+    const { getByTestId } = renderCard([cleanDomain]);
 
     // No flagged domains → export button hidden by default
     expect(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`)).toBeTruthy();
@@ -304,29 +351,13 @@ describe("ReferringDomainsCard — manual disavow decisions survive audit re-run
   });
 
   it("manual decision survives a re-render with new referringDomains (simulated audit re-run)", () => {
-    const { getByTestId, rerender } = renderCard([cleanDomain, flaggedMedium]);
-
-    // Manually mark the clean domain
-    fireEvent.click(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`));
-    expect(getByTestId("button-export-disavow")).toBeTruthy();
-
-    // Simulate audit re-run: new referringDomains prop with same domains
-    rerender(
-      <TooltipProvider>
-        <ReferringDomainsCard referringDomains={[cleanDomain, flaggedMedium]} />
-      </TooltipProvider>,
-    );
-
-    // Export button must still be visible — manual decision was not lost
-    expect(getByTestId("button-export-disavow")).toBeTruthy();
-  });
-
-  it("manual decision survives a re-render with entirely new referringDomains list", () => {
-    const { getByTestId, rerender } = renderCard([cleanDomain]);
-
+    const { getByTestId, rerender } = renderCard([cleanDomain, cleanDomain2]);
     fireEvent.click(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`));
 
-    // Audit re-run returns a different domain set
+    // Confirm it was saved under site 1's key
+    expect(loadManualDisavow(disavowStorageKey(1)).has(cleanDomain.domain)).toBe(true);
+
+    // Re-render with new referringDomains (simulating what React Query does on audit re-run)
     rerender(
       <TooltipProvider>
         <ReferringDomainsCard referringDomains={[cleanDomain, cleanDomain2]} />
@@ -359,7 +390,7 @@ describe("ReferringDomainsCard — manual decisions are scoped per site ID", () 
   it("decisions saved under site 1 are not loaded when siteId changes to 2", () => {
     // Render as site 1 and mark a clean domain
     mockSiteId = 1;
-    const { getByTestId, rerender } = renderCard([cleanDomain]);
+    const { getByTestId, rerender } = renderCard([cleanDomain, cleanDomain2]);
     fireEvent.click(getByTestId(`button-toggle-disavow-${cleanDomain.domain}`));
 
     // Confirm it was saved under site 1's key
@@ -399,5 +430,85 @@ describe("ReferringDomainsCard — manual decisions are scoped per site ID", () 
     expect(loadManualDisavow(disavowStorageKey(1)).has(cleanDomain2.domain)).toBe(false);
     expect(loadManualDisavow(disavowStorageKey(2)).has(cleanDomain2.domain)).toBe(true);
     expect(loadManualDisavow(disavowStorageKey(2)).has(cleanDomain.domain)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: combined domain-risk + anchor-spam (High Priority)
+//
+// These tests confirm that when a flagged domain ALSO has a spam anchor in
+// topBacklinks, it is surfaced first in the flagged view with a "Spam anchor"
+// indicator.  Critically, the fixtures use real backlink counts that trigger
+// signals (sitewide volume, many-links-from-low-auth) that would be missed if
+// the domain were re-scored with a fake count of 1.
+// ---------------------------------------------------------------------------
+
+describe("ReferringDomainsCard — combined domain-risk + anchor-spam (High Priority)", () => {
+  it("shows 'Spam anchor' badge on a sitewide-volume domain that also has a spam anchor", () => {
+    const { getByTestId, getByText } = renderCard(
+      [sitewideVolumeDomain, cleanDomain],
+      [spamBacklinkFromSitewide, cleanBacklink],
+    );
+
+    fireEvent.click(getByTestId("button-filter-flagged"));
+
+    expect(getByText("sitewide-ads.net")).toBeTruthy();
+    expect(getByText("Spam anchor")).toBeTruthy();
+  });
+
+  it("shows 'Spam anchor' badge on a low-auth/high-volume domain that also has a spam anchor", () => {
+    const { getByTestId, getByText } = renderCard(
+      [lowAuthHighVolumeDomain, cleanDomain],
+      [spamBacklinkFromLowAuth, cleanBacklink],
+    );
+
+    fireEvent.click(getByTestId("button-filter-flagged"));
+
+    expect(getByText("low-auth-linker.com")).toBeTruthy();
+    expect(getByText("Spam anchor")).toBeTruthy();
+  });
+
+  it("places combined-risk domains before domain-only-risk domains in the flagged view", () => {
+    const { getByTestId, getAllByRole } = renderCard(
+      [flaggedMedium, sitewideVolumeDomain],
+      [spamBacklinkFromSitewide],
+    );
+
+    fireEvent.click(getByTestId("button-filter-flagged"));
+
+    const rows = getAllByRole("row").slice(1);
+    expect(within(rows[0]!).getByText("sitewide-ads.net")).toBeTruthy();
+    expect(within(rows[1]!).getByText("sketchy.loan")).toBeTruthy();
+  });
+
+  it("does not show 'Spam anchor' badge on a flagged domain with only a clean anchor in topBacklinks", () => {
+    const { getByTestId, queryByText } = renderCard(
+      [flaggedHigh, cleanDomain],
+      [cleanBacklink],
+    );
+
+    fireEvent.click(getByTestId("button-filter-flagged"));
+
+    expect(queryByText("Spam anchor")).toBeNull();
+  });
+
+  it("does not show 'Spam anchor' badge in the default (non-flagged) view even when combined risk is present", () => {
+    const { queryByText } = renderCard(
+      [sitewideVolumeDomain, cleanDomain],
+      [spamBacklinkFromSitewide],
+    );
+
+    expect(queryByText("Spam anchor")).toBeNull();
+  });
+
+  it("shows warning text mentioning combined-risk count when combined-risk domains are present", () => {
+    const { getByTestId, getByText } = renderCard(
+      [sitewideVolumeDomain, flaggedMedium],
+      [spamBacklinkFromSitewide],
+    );
+
+    fireEvent.click(getByTestId("button-filter-flagged"));
+
+    expect(getByText(/spam anchor text/i)).toBeTruthy();
   });
 });
