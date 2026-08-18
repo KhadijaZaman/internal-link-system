@@ -48,6 +48,10 @@ vi.mock("../integrations/dataforseo", () => ({
   ),
   fetchBacklinkAnchors: vi.fn(() => Promise.resolve([])),
   fetchTopBacklinks: vi.fn(() => Promise.resolve([])),
+  fetchLowRankBacklinks: vi.fn(() => Promise.resolve([])),
+  mergeBacklinkBatches: vi.fn(
+    (high: unknown[], low: unknown[]) => [...(low ?? []), ...(high ?? [])],
+  ),
   fetchTopReferringDomains: vi.fn(() =>
     Promise.resolve([
       { domain: "evil-spam.xyz", backlinks: 500, rank: 2, firstSeen: null, lastSeen: null },
