@@ -816,7 +816,7 @@ export default function Dashboard() {
                   <div className="text-xs font-mono bg-background/50 p-2 rounded border border-border/50">
                     <div className="flex justify-between text-muted-foreground">
                       <span>Last run:</span>
-                      <span>{pipelineHistory.lastRunAt ? new Date(pipelineHistory.lastRunAt).toLocaleDateString() : "Never"}</span>
+                      <span>{pipelineHistory.lastRunAt ? new Date(pipelineHistory.lastRunAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : "Never"}</span>
                     </div>
                     <div className="flex justify-between font-medium mt-1">
                       <span className="inline-flex items-center gap-1">Status:<InfoTip>How the last run finished. "completed" means it worked; "failed" means something went wrong — check the error message and try running it again.</InfoTip></span>
