@@ -1581,7 +1581,8 @@ export const StartClusterRunBody = zod.object({
   "country": zod.string().regex(startClusterRunBodyCountryRegExp).nullish().describe('ISO 3166-1 alpha-3 GSC country filter; omit for worldwide'),
   "keywordLimit": zod.number().min(startClusterRunBodyKeywordLimitMin).max(startClusterRunBodyKeywordLimitMax).default(startClusterRunBodyKeywordLimitDefault),
   "locationCode": zod.number().default(startClusterRunBodyLocationCodeDefault).describe('DataForSEO SERP location_code (2840 = United States)'),
-  "excludeBrand": zod.boolean().default(startClusterRunBodyExcludeBrandDefault)
+  "excludeBrand": zod.boolean().default(startClusterRunBodyExcludeBrandDefault),
+  "paidRunConfirmed": zod.boolean().describe('Explicit owner approval of the paid SERP scrape shown in the confirmation step.')
 })
 
 

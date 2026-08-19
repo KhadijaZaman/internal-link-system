@@ -33,4 +33,6 @@ export interface StartClusterRunInput {
   /** DataForSEO SERP location_code (2840 = United States) */
   locationCode?: number;
   excludeBrand?: boolean;
+  /** Explicit owner approval of the paid SERP scrape shown in the confirmation step. */
+  paidRunConfirmed: true;
 }

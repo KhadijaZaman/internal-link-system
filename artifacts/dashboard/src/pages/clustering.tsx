@@ -37,6 +37,14 @@ import { HowThisWorks } from "@/components/how-this-works";
 import { JobSpendCapNotice } from "@/components/spend-cap-badge";
 import { InfoTip } from "@/components/info-tip";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   AlertCircle,
   Boxes,
   ChevronDown,
@@ -412,10 +420,13 @@ export default function Clustering() {
   const [keywordLimit, setKeywordLimit] = useState("250");
   const [locationCode, setLocationCode] = useState("2840");
   const [excludeBrand, setExcludeBrand] = useState(true);
+  const [confirmRunOpen, setConfirmRunOpen] = useState(false);
 
   const previewWindows = useMemo(() => getUtcWindows(weeks), [weeks]);
 
   const startMutation = useStartClusterRun();
+  const keywordCount = Math.max(10, Math.min(1000, Number(keywordLimit) || 250));
+  const estCost = (keywordCount * 0.0006).toFixed(2);
   const handleStart = () => {
     const limit = Math.max(10, Math.min(1000, Number(keywordLimit) || 250));
     startMutation.mutate(
@@ -426,10 +437,12 @@ export default function Clustering() {
           keywordLimit: limit,
           locationCode: Number(locationCode),
           excludeBrand,
+          paidRunConfirmed: true,
         },
       },
       {
         onSuccess: () => {
+          setConfirmRunOpen(false);
           toast({
             title: "Clustering run started",
             description:
@@ -515,8 +528,6 @@ export default function Clustering() {
     activeRun && activeRun.progressTotal > 0
       ? Math.min(100, Math.round((activeRun.progressDone / activeRun.progressTotal) * 100))
       : null;
-
-  const estCost = ((Math.max(10, Math.min(1000, Number(keywordLimit) || 250)) * 0.0006)).toFixed(2);
 
   const selectedRunParams = selectedRun?.params as {
     weeks?: number | null;
@@ -706,9 +717,10 @@ export default function Clustering() {
                 <InfoTip>Each keyword uses one paid Google-results lookup (a SERP credit). The dollar figure is the estimated cost for this run — bigger keyword counts cost more.</InfoTip>
               </span>
               <Button
-                onClick={handleStart}
+                onClick={() => setConfirmRunOpen(true)}
                 disabled={startMutation.isPending || !!activeRun}
                 className="font-medium shadow-sm"
+                data-testid="button-open-clustering-confirmation"
               >
                 {startMutation.isPending || activeRun ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -721,6 +733,67 @@ export default function Clustering() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog
+        open={confirmRunOpen}
+        onOpenChange={(open) => {
+          if (!startMutation.isPending) setConfirmRunOpen(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-md" data-testid="dialog-confirm-clustering-run">
+          <DialogHeader>
+            <DialogTitle>Confirm paid clustering run</DialogTitle>
+            <DialogDescription>
+              This run scrapes live Google results and uses paid SERP credits. Review the
+              estimate before starting.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-900/50 dark:bg-amber-950/30">
+            <div className="flex items-baseline justify-between gap-4">
+              <span className="font-medium text-foreground">Estimated SERP cost</span>
+              <span className="text-lg font-semibold tabular-nums text-foreground" data-testid="text-confirmed-serp-estimate">
+                ${estCost}
+              </span>
+            </div>
+            <dl className="mt-3 space-y-1.5 text-xs text-muted-foreground">
+              <div className="flex justify-between gap-4">
+                <dt>Keywords to scrape</dt>
+                <dd className="font-medium text-foreground">{fmtInt(keywordCount)}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt>Comparison period</dt>
+                <dd className="font-medium text-foreground">{weeks} weeks</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt>Current window</dt>
+                <dd className="font-medium text-foreground">{previewWindows.currentStart} – {previewWindows.currentEnd}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt>Prior window</dt>
+                <dd className="font-medium text-foreground">{previewWindows.priorStart} – {previewWindows.priorEnd}</dd>
+              </div>
+            </dl>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmRunOpen(false)}
+              disabled={startMutation.isPending}
+              data-testid="button-cancel-clustering-run"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleStart}
+              disabled={startMutation.isPending}
+              data-testid="button-confirm-clustering-run"
+            >
+              {startMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Approve and start run
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Active run status */}
       {activeRun && (

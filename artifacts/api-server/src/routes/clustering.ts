@@ -165,6 +165,12 @@ router.post("/clustering/runs", requireAuth, requireSite, async (req, res) => {
     return;
   }
   const body = parsed.data;
+  if (body.paidRunConfirmed !== true) {
+    res.status(400).json({
+      error: "Confirm the estimated SERP cost before starting a clustering run.",
+    });
+    return;
+  }
 
   await reconcileStaleRuns(site.id);
 

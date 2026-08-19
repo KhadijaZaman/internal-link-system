@@ -5520,6 +5520,7 @@ components:
         content: { type: string, minLength: 1, maxLength: 500000 }
     StartClusterRunInput:
       type: object
+      required: [paidRunConfirmed]
       properties:
         weeks:
           type: integer
@@ -5541,6 +5542,10 @@ components:
           default: 2840
           description: DataForSEO SERP location_code (2840 = United States)
         excludeBrand: { type: boolean, default: true }
+        paidRunConfirmed:
+          type: boolean
+          const: true
+          description: Explicit owner approval of the paid SERP scrape shown in the confirmation step.
     ClusterRunWindow:
       type: object
       required: [currentStart, currentEnd, priorStart, priorEnd]
