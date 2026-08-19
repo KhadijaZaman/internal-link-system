@@ -3,6 +3,7 @@ import request from "supertest";
 import { eq, inArray } from "drizzle-orm";
 import {
   db,
+  jobRunsTable,
   sitesTable,
   usersTable,
   trackedSubmissionsTable,
@@ -153,6 +154,9 @@ afterAll(async () => {
     .where(
       inArray(trackedSubmissionsTable.siteId, [siteId, otherSiteId].filter(Boolean)),
     );
+  await db
+    .delete(jobRunsTable)
+    .where(inArray(jobRunsTable.siteId, [siteId, otherSiteId].filter(Boolean)));
   await db
     .delete(sitesTable)
     .where(inArray(sitesTable.id, [siteId, otherSiteId].filter(Boolean)));

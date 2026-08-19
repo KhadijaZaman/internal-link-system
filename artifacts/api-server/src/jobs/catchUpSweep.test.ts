@@ -12,7 +12,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  * runner + site listing are stubbed so no DB or real job code is touched.
  */
 
-const runJobMock = vi.fn(async (_name: string, _site: { id: number }) => ({
+const runJobMock = vi.fn(async (
+  _name: string,
+  _site: { id: number },
+  _options?: { source?: string },
+) => ({
   started: true as const,
   completion: Promise.resolve(),
 }));
@@ -20,7 +24,11 @@ const lastRunAtMock = vi.fn(async (_name: string, _siteId: number): Promise<Date
 
 vi.mock("./runner", () => ({
   registerJob: vi.fn(),
-  runJob: (name: string, site: { id: number }) => runJobMock(name, site),
+  runJob: (
+    name: string,
+    site: { id: number },
+    options?: { source?: string },
+  ) => runJobMock(name, site, options),
   lastRunAt: (name: string, siteId: number) => lastRunAtMock(name, siteId),
   ALL_JOBS: [],
 }));
@@ -144,5 +152,6 @@ describe("runDailyCatchUp", () => {
     const calls = runJobMock.mock.calls.filter(([n]) => n === "sync_keyword_sheet");
     expect(calls.length).toBe(1);
     expect(calls[0]![1]).toBe(SITE);
+    expect(calls[0]![2]).toEqual({ source: "scheduler" });
   });
 });

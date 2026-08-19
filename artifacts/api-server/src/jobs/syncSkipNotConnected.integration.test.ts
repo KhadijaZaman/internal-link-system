@@ -56,7 +56,7 @@ const SYNC_JOBS: Array<{ name: JobName; fn: (site: SiteContext) => Promise<void>
 ];
 
 const suffix = `${Date.now()}-${process.pid}`;
-const USER = `user_test_skip_${suffix}`;
+const USER = `test-sync-skip-${suffix}`;
 const HOST = `skip-${suffix}.test`;
 
 let site: SiteContext;
@@ -128,7 +128,7 @@ describe("catch-up sweep after an ok-skip", () => {
       before.set(name, run.lastRunAt);
     }
 
-    await runDailyCatchUp();
+    await runDailyCatchUp({ includeIntegrationTestSites: true });
 
     // No job re-ran: lastRunAt is byte-identical to the pre-sweep value and
     // the status is still the ok recorded by the skip.
@@ -149,7 +149,7 @@ describe("catch-up sweep after an ok-skip", () => {
         and(eq(jobRunsTable.name, "sync_bing_pages"), eq(jobRunsTable.siteId, site.id)),
       );
 
-    await runDailyCatchUp();
+    await runDailyCatchUp({ includeIntegrationTestSites: true });
 
     const run = await jobRun("sync_bing_pages");
     if (!run?.lastRunAt) throw new Error("missing sync_bing_pages run");

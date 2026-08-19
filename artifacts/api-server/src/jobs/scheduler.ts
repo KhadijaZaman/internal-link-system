@@ -82,7 +82,10 @@ export function setupJobs(): void {
  * failure is recorded on its own job_runs row without blocking the next site
  * (runJob catches, records, and never rethrows).
  */
-export async function runJobForAllSites(name: JobName): Promise<void> {
+export async function runJobForAllSites(
+  name: JobName,
+  options: { includeIntegrationTestSites?: boolean } = {},
+): Promise<void> {
   let sites;
   try {
     sites = await listSchedulableSites();
@@ -96,7 +99,11 @@ export async function runJobForAllSites(name: JobName): Promise<void> {
   }
   for (const site of sites) {
     try {
-      const result = await runJob(name, site);
+      const result = await runJob(name, site, {
+        // Only scheduler integration tests opt into temporary test sites.
+        // Production cron callers always use the default protected source.
+        source: options.includeIntegrationTestSites ? "integration-test" : "scheduler",
+      });
       if (result.started) {
         await result.completion;
       } else {
@@ -230,7 +237,9 @@ export async function recoverStaleCompetitorScans(): Promise<void> {
         { siteId: site.id },
         "Startup recovery: triggering analyze_topical_map_competitors for stuck queued map",
       );
-      const result = await runJob("analyze_topical_map_competitors", site);
+      const result = await runJob("analyze_topical_map_competitors", site, {
+        source: "scheduler",
+      });
       if (!result.started) {
         logger.warn(
           { siteId: site.id, reason: result.reason },
@@ -253,7 +262,9 @@ export async function recoverStaleCompetitorScans(): Promise<void> {
  * mid-job) have an old last_run_at, so interrupted runs are retried too.
  * Jobs run sequentially in list order, preserving the GSC→GA4 dependency.
  */
-export async function runDailyCatchUp(): Promise<void> {
+export async function runDailyCatchUp(
+  options: { includeIntegrationTestSites?: boolean } = {},
+): Promise<void> {
   let sites;
   try {
     sites = await listSchedulableSites();
@@ -272,7 +283,9 @@ export async function runDailyCatchUp(): Promise<void> {
           { jobName: name, siteId: site.id, lastRunAt: last ?? null },
           "Catch-up: scheduled job is overdue; running now",
         );
-        const result = await runJob(name, site);
+        const result = await runJob(name, site, {
+          source: options.includeIntegrationTestSites ? "integration-test" : "scheduler",
+        });
         if (result.started) {
           await result.completion;
         } else {

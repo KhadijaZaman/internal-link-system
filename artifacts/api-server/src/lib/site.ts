@@ -30,6 +30,18 @@ export interface SiteScopedRequest extends AuthedRequest {
 }
 
 export const LEGACY_SITE_ID = 1;
+export const INTEGRATION_TEST_OWNER_PREFIX = "test-";
+
+/**
+ * Integration tests share the development database with the live dev server.
+ * Their fake Clerk ids use a reserved prefix so live schedulers can ignore
+ * temporary test sites while route tests still exercise normal ownership.
+ */
+export function isIntegrationTestSite(
+  site: Pick<SiteContext, "ownerUserId">,
+): boolean {
+  return site.ownerUserId?.startsWith(INTEGRATION_TEST_OWNER_PREFIX) ?? false;
+}
 
 const SITE_CACHE_TTL_MS = 30_000;
 const siteCache = new Map<number, { site: SiteContext; expiresAt: number }>();
@@ -181,5 +193,5 @@ export async function listSchedulableSites(): Promise<SiteContext[]> {
     .from(sitesTable)
     .where(isNotNull(sitesTable.ownerUserId))
     .orderBy(asc(sitesTable.id));
-  return rows;
+  return rows.filter((site) => !isIntegrationTestSite(site));
 }

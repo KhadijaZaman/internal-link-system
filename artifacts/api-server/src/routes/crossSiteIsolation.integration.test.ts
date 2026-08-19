@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import request from "supertest";
 import { eq, inArray } from "drizzle-orm";
-import { db, sitesTable, usersTable } from "@workspace/db";
+import { db, jobRunsTable, sitesTable, usersTable } from "@workspace/db";
+import { listSchedulableSites } from "../lib/site";
 
 /**
  * Cross-site isolation integration test (real Postgres via DATABASE_URL,
@@ -80,6 +81,7 @@ beforeAll(async () => {
 afterAll(async () => {
   const ids = [siteA, siteB].filter((v): v is number => typeof v === "number");
   if (ids.length > 0) {
+    await db.delete(jobRunsTable).where(inArray(jobRunsTable.siteId, ids));
     await db.delete(sitesTable).where(inArray(sitesTable.id, ids));
   }
   await db.delete(usersTable).where(inArray(usersTable.id, [USER_A, USER_B]));
@@ -105,6 +107,16 @@ describe("site listing isolation", () => {
     const idsB = (resB.body.sites as { id: number }[]).map((s) => s.id);
     expect(idsB).toContain(siteB);
     expect(idsB).not.toContain(siteA);
+  });
+});
+
+describe("background scheduler isolation", () => {
+  it("does not list temporary integration-test sites as schedulable", async () => {
+    const schedulable = await listSchedulableSites();
+    const schedulableIds = new Set(schedulable.map((site) => site.id));
+
+    expect(schedulableIds).not.toContain(siteA);
+    expect(schedulableIds).not.toContain(siteB);
   });
 });
 

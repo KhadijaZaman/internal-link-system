@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { eq, inArray, and } from "drizzle-orm";
 import {
   db,
@@ -13,6 +13,17 @@ import { registerJob, type JobName } from "./runner";
 import { runJobForAllSites } from "./scheduler";
 import { runAuditOrphans } from "./audits";
 import type { SiteContext } from "../lib/site";
+
+// Keep this scheduler integration test isolated from real sites and from
+// temporary sites owned by concurrently running route integration tests.
+let testSites: SiteContext[] = [];
+vi.mock("../lib/site", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/site")>();
+  return {
+    ...actual,
+    listSchedulableSites: async () => testSites,
+  };
+});
 
 /**
  * Integration test (real Postgres via DATABASE_URL): verifies the two
@@ -34,8 +45,8 @@ import type { SiteContext } from "../lib/site";
 const STUB_JOB: JobName = "migrate_url_hygiene";
 
 const suffix = `${Date.now()}-${process.pid}`;
-const USER_A = `user_test_iso_a_${suffix}`;
-const USER_B = `user_test_iso_b_${suffix}`;
+const USER_A = `test-scheduler-isolation-a-${suffix}`;
+const USER_B = `test-scheduler-isolation-b-${suffix}`;
 const HOST_A = `iso-a-${suffix}.test`;
 const HOST_B = `iso-b-${suffix}.test`;
 
@@ -77,9 +88,11 @@ beforeAll(async () => {
     .returning({ id: sitesTable.id });
   siteA = await fetchSiteRow(inserted[0]!.id);
   siteB = await fetchSiteRow(inserted[1]!.id);
+  testSites = [siteA, siteB];
 });
 
 afterAll(async () => {
+  testSites = [];
   const ids = [siteA.id, siteB.id].filter((n) => Number.isInteger(n));
   if (ids.length > 0) {
     await db.delete(auditReportsTable).where(inArray(auditReportsTable.siteId, ids));
@@ -107,7 +120,7 @@ describe("runJobForAllSites failure isolation", () => {
       }
     });
 
-    await runJobForAllSites(STUB_JOB);
+    await runJobForAllSites(STUB_JOB, { includeIntegrationTestSites: true });
 
     // Both test sites were invoked, in ascending id order, so site B ran
     // AFTER site A's job threw.

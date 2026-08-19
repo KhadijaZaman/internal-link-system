@@ -2,7 +2,7 @@ import { db, jobRunsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { withDbRetry } from "../lib/dbRetry";
-import type { SiteContext } from "../lib/site";
+import { isIntegrationTestSite, type SiteContext } from "../lib/site";
 import { runWithBudgetCapture } from "../lib/budgetContext";
 import { usageReport, type BudgetUsageReport } from "../lib/jobBudget";
 
@@ -182,9 +182,14 @@ export function hasRunningJobs(siteId: number): boolean {
   return false;
 }
 
+interface RunJobOptions {
+  source?: "manual" | "scheduler" | "integration-test";
+}
+
 export async function runJob(
   name: JobName,
   site: SiteContext,
+  options: RunJobOptions = {},
 ): Promise<
   { started: true; completion: Promise<void> } | { started: false; reason: string }
 > {
@@ -200,6 +205,12 @@ export async function runJob(
     ? registry[name]
     : undefined;
   if (!fn) return { started: false, reason: `Unknown job ${name}` };
+  // A test process and the live development server can share one database.
+  // Test sites are valid for direct job integration tests, but a live cron
+  // must never claim them or create job_runs rows that race test teardown.
+  if (options.source === "scheduler" && isIntegrationTestSite(site)) {
+    return { started: false, reason: "Integration-test site" };
+  }
   const key = runKey(name, site.id);
   if (running.has(key)) return { started: false, reason: "Already running" };
   running.set(key, { name, siteId: site.id });
