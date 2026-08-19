@@ -1561,7 +1561,9 @@ export const GetKeywordReportResponse = zod.object({
 /**
  * @summary Start a keyword clustering run (paid DataForSEO SERP scrape)
  */
-export const startClusterRunBodyDaysDefault = 90;
+export const startClusterRunBodyWeeksMin = 4;
+export const startClusterRunBodyWeeksMax = 52;
+
 export const startClusterRunBodyDaysMin = 7;
 export const startClusterRunBodyDaysMax = 180;
 
@@ -1574,7 +1576,8 @@ export const startClusterRunBodyLocationCodeDefault = 2840;
 export const startClusterRunBodyExcludeBrandDefault = true;
 
 export const StartClusterRunBody = zod.object({
-  "days": zod.number().min(startClusterRunBodyDaysMin).max(startClusterRunBodyDaysMax).default(startClusterRunBodyDaysDefault),
+  "weeks": zod.number().min(startClusterRunBodyWeeksMin).max(startClusterRunBodyWeeksMax).optional().describe('GSC lookback window in weeks (4–52); each period spans exactly weeks\*7 days. Wins over days when both supplied. Defaults to 12 when neither weeks nor days is provided.'),
+  "days": zod.number().min(startClusterRunBodyDaysMin).max(startClusterRunBodyDaysMax).optional().describe('Legacy: GSC lookback window in days. Converted to nearest weeks when weeks is absent. Ignored when weeks is explicitly supplied.'),
   "country": zod.string().regex(startClusterRunBodyCountryRegExp).nullish().describe('ISO 3166-1 alpha-3 GSC country filter; omit for worldwide'),
   "keywordLimit": zod.number().min(startClusterRunBodyKeywordLimitMin).max(startClusterRunBodyKeywordLimitMax).default(startClusterRunBodyKeywordLimitDefault),
   "locationCode": zod.number().default(startClusterRunBodyLocationCodeDefault).describe('DataForSEO SERP location_code (2840 = United States)'),
@@ -1590,12 +1593,19 @@ export const ListClusterRunsResponseItem = zod.object({
   "status": zod.enum(['queued', 'running', 'complete', 'failed', 'interrupted']),
   "phase": zod.string().nullable(),
   "params": zod.object({
-  "days": zod.number(),
+  "weeks": zod.number().optional().describe('GSC lookback window in weeks (4–52, default 12)'),
+  "days": zod.number().optional().describe('Legacy lookback in days (kept for backward compat; prefer weeks)'),
   "country": zod.string().nullable(),
   "keywordLimit": zod.number(),
   "locationCode": zod.number(),
   "excludeBrand": zod.boolean(),
-  "reprocess": zod.boolean().optional().describe('Set while a rebuild-from-stored-SERPs is queued\/running')
+  "reprocess": zod.boolean().optional().describe('Set while a rebuild-from-stored-SERPs is queued\/running'),
+  "window": zod.object({
+  "currentStart": zod.string().describe('Start of current period (YYYY-MM-DD)'),
+  "currentEnd": zod.string().describe('End of current period (YYYY-MM-DD, UTC today minus 3 days)'),
+  "priorStart": zod.string().describe('Start of prior period (YYYY-MM-DD)'),
+  "priorEnd": zod.string().describe('End of prior period (YYYY-MM-DD, day before currentStart)')
+}).optional().describe('Exact ISO date ranges used for current and prior GSC periods')
 }),
   "progressDone": zod.number(),
   "progressTotal": zod.number(),
@@ -1620,12 +1630,19 @@ export const GetClusterRunResponse = zod.object({
   "status": zod.enum(['queued', 'running', 'complete', 'failed', 'interrupted']),
   "phase": zod.string().nullable(),
   "params": zod.object({
-  "days": zod.number(),
+  "weeks": zod.number().optional().describe('GSC lookback window in weeks (4–52, default 12)'),
+  "days": zod.number().optional().describe('Legacy lookback in days (kept for backward compat; prefer weeks)'),
   "country": zod.string().nullable(),
   "keywordLimit": zod.number(),
   "locationCode": zod.number(),
   "excludeBrand": zod.boolean(),
-  "reprocess": zod.boolean().optional().describe('Set while a rebuild-from-stored-SERPs is queued\/running')
+  "reprocess": zod.boolean().optional().describe('Set while a rebuild-from-stored-SERPs is queued\/running'),
+  "window": zod.object({
+  "currentStart": zod.string().describe('Start of current period (YYYY-MM-DD)'),
+  "currentEnd": zod.string().describe('End of current period (YYYY-MM-DD, UTC today minus 3 days)'),
+  "priorStart": zod.string().describe('Start of prior period (YYYY-MM-DD)'),
+  "priorEnd": zod.string().describe('End of prior period (YYYY-MM-DD, day before currentStart)')
+}).optional().describe('Exact ISO date ranges used for current and prior GSC periods')
 }),
   "progressDone": zod.number(),
   "progressTotal": zod.number(),
@@ -1665,6 +1682,22 @@ export const ListClusterRunClustersResponseItem = zod.object({
   "avgPosition": zod.number().nullable(),
   "coreSimilarity": zod.number().nullable().describe('Cosine similarity between the cluster\'s impression-weighted keyword centroid and the site\'s core-topic centroid (null = not enough embedded keywords)'),
   "coreTag": zod.union([zod.literal('on_core'),zod.literal('off_core'),zod.literal(null)]).nullable().describe('Whether this cluster\'s search demand aligns with the site\'s core topic (threshold 0.42)'),
+  "priorTotalClicks": zod.number().nullish().describe('Prior-period total clicks for this cluster (null for old runs without prior data)'),
+  "priorTotalImpressions": zod.number().nullish().describe('Prior-period total impressions for this cluster'),
+  "priorBlendedCtr": zod.number().nullish().describe('Prior-period blended CTR as a percentage'),
+  "priorAvgPosition": zod.number().nullish().describe('Prior-period impression-weighted average position'),
+  "clickDeltaAbs": zod.number().nullish().describe('Absolute change in cluster clicks (current − prior)'),
+  "impressionDeltaAbs": zod.number().nullish().describe('Absolute change in cluster impressions (current − prior)'),
+  "clickDeltaRatio": zod.number().nullish().describe('(currentClicks − priorClicks) \/ priorClicks; null when prior=0 or no prior'),
+  "impressionDeltaRatio": zod.number().nullish().describe('(currentImpressions − priorImpressions) \/ priorImpressions; null when prior=0 or no prior'),
+  "stateCounts": zod.object({
+  "new": zod.number(),
+  "rising": zod.number(),
+  "displaced": zod.number(),
+  "zero_click": zod.number(),
+  "striking_distance": zod.number(),
+  "stable": zod.number()
+}).describe('Count of keywords in each state for a cluster').nullish().describe('Count of keywords per state; null for old runs without state data'),
   "keywords": zod.array(zod.object({
   "query": zod.string(),
   "clicks": zod.number(),
@@ -1674,7 +1707,16 @@ export const ListClusterRunClustersResponseItem = zod.object({
   "serpUrls": zod.array(zod.object({
   "url": zod.string(),
   "position": zod.number()
-}))
+})),
+  "priorClicks": zod.number().nullish().describe('Prior-period clicks'),
+  "priorImpressions": zod.number().nullish().describe('Prior-period impressions'),
+  "priorCtr": zod.number().nullish().describe('Prior-period CTR (0–1)'),
+  "priorPosition": zod.number().nullish().describe('Prior-period impression-weighted average position'),
+  "clickDelta": zod.number().nullish().describe('(current-prior)\/prior for clicks; null when prior impressions=0 or no prior data'),
+  "impressionDelta": zod.number().nullish().describe('(current-prior)\/prior for impressions; null when prior impressions=0 or no prior data'),
+  "clickDeltaAbs": zod.number().nullish().describe('Absolute change in clicks (current − prior)'),
+  "impressionDeltaAbs": zod.number().nullish().describe('Absolute change in impressions (current − prior)'),
+  "state": zod.enum(['new', 'rising', 'displaced', 'zero_click', 'striking_distance', 'stable']).describe('Performance state of a keyword comparing current vs prior period.\nnew: no prior impressions. rising: impressions up >30%.\ndisplaced: clicks down >30% while impressions stable (≤10% change).\nzero_click: enough impressions but CTR<0.005.\nstriking_distance: enough impressions and position 5–15.\nstable: none of the above apply.\n').nullish().describe('Keyword performance state classification')
 })),
   "ownUrls": zod.array(zod.object({
   "url": zod.string(),

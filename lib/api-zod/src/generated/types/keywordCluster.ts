@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ClusterKeyword } from './clusterKeyword';
+import type { ClusterStateCounts } from './clusterStateCounts';
 import type { ClusterUrl } from './clusterUrl';
 import type { KeywordClusterCoreTag } from './keywordClusterCoreTag';
 import type { KeywordClusterQuadrant } from './keywordClusterQuadrant';
@@ -35,6 +36,48 @@ export interface KeywordCluster {
      * @nullable
      */
   coreTag: KeywordClusterCoreTag;
+  /**
+     * Prior-period total clicks for this cluster (null for old runs without prior data)
+     * @nullable
+     */
+  priorTotalClicks?: number | null;
+  /**
+     * Prior-period total impressions for this cluster
+     * @nullable
+     */
+  priorTotalImpressions?: number | null;
+  /**
+     * Prior-period blended CTR as a percentage
+     * @nullable
+     */
+  priorBlendedCtr?: number | null;
+  /**
+     * Prior-period impression-weighted average position
+     * @nullable
+     */
+  priorAvgPosition?: number | null;
+  /**
+     * Absolute change in cluster clicks (current − prior)
+     * @nullable
+     */
+  clickDeltaAbs?: number | null;
+  /**
+     * Absolute change in cluster impressions (current − prior)
+     * @nullable
+     */
+  impressionDeltaAbs?: number | null;
+  /**
+     * (currentClicks − priorClicks) / priorClicks; null when prior=0 or no prior
+     * @nullable
+     */
+  clickDeltaRatio?: number | null;
+  /**
+     * (currentImpressions − priorImpressions) / priorImpressions; null when prior=0 or no prior
+     * @nullable
+     */
+  impressionDeltaRatio?: number | null;
+  /** Count of keywords per state; null for old runs without state data */
+  stateCounts?: ClusterStateCounts | null;
   keywords: ClusterKeyword[];
   ownUrls: ClusterUrl[];
   competitorUrls: ClusterUrl[];

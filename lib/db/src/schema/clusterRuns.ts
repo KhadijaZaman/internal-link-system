@@ -11,9 +11,28 @@ import {
 } from "drizzle-orm/pg-core";
 import { sitesTable } from "./sites";
 
+export interface ClusterRunWindow {
+  /** ISO-8601 date (YYYY-MM-DD) for the start of the current period. */
+  currentStart: string;
+  /** ISO-8601 date (YYYY-MM-DD) for the end of the current period. */
+  currentEnd: string;
+  /** ISO-8601 date (YYYY-MM-DD) for the start of the prior period. */
+  priorStart: string;
+  /** ISO-8601 date (YYYY-MM-DD) for the end of the prior period. */
+  priorEnd: string;
+}
+
 export interface ClusterRunParams {
-  /** GSC lookback window in days. */
-  days: number;
+  /**
+   * GSC lookback window in weeks (4–52, default 12).
+   * Preferred over `days`; both are stored for backward compatibility.
+   */
+  weeks?: number;
+  /**
+   * Legacy: GSC lookback window in days.
+   * Kept for backward compatibility with runs created before weeks was added.
+   */
+  days?: number;
   /** ISO 3166-1 alpha-3 country filter for GSC, or null for worldwide. */
   country: string | null;
   /** Max number of top queries (by impressions) to cluster. */
@@ -27,12 +46,23 @@ export interface ClusterRunParams {
    * data (re-cluster + re-label) instead of scraping again.
    */
   reprocess?: boolean;
+  /** Exact date windows used for this run (set once GSC is fetched). */
+  window?: ClusterRunWindow;
 }
 
 export interface ClusterSerpUrl {
   url: string;
   position: number;
 }
+
+/** State classification for a keyword entry's current vs prior period. */
+export type KeywordState =
+  | "new"
+  | "rising"
+  | "displaced"
+  | "zero_click"
+  | "striking_distance"
+  | "stable";
 
 export interface ClusterKeywordEntry {
   query: string;
@@ -42,6 +72,32 @@ export interface ClusterKeywordEntry {
   position: number;
   /** Top organic SERP URLs captured for this query (kept for debug/re-cluster). */
   serpUrls: ClusterSerpUrl[];
+
+  // ---- Prior-period comparison fields (nullable — absent on old runs) ----
+  /** Prior-period clicks, or null if no prior data was collected for this run. */
+  priorClicks?: number | null;
+  /** Prior-period impressions, or null if no prior data was collected. */
+  priorImpressions?: number | null;
+  /** Prior-period CTR (0–1), or null if no prior data. */
+  priorCtr?: number | null;
+  /** Prior-period impression-weighted average position, or null if no prior data. */
+  priorPosition?: number | null;
+  /**
+   * (current - prior) / prior for clicks; null when prior impressions = 0 or
+   * prior data absent.
+   */
+  clickDelta?: number | null;
+  /**
+   * (current - prior) / prior for impressions; null when prior impressions = 0
+   * or prior data absent.
+   */
+  impressionDelta?: number | null;
+  /** Absolute change in clicks (current − prior); null when no prior data. */
+  clickDeltaAbs?: number | null;
+  /** Absolute change in impressions (current − prior); null when no prior data. */
+  impressionDeltaAbs?: number | null;
+  /** Keyword state classification based on current-vs-prior deltas. */
+  state?: KeywordState | null;
 }
 
 export interface ClusterUrlEntry {

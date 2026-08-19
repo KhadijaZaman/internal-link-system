@@ -33,3 +33,4 @@
 - [User-supplied outbound URLs](user-supplied-outbound-urls.md) — server fetches to tenant-typed URLs must pass the SSRF guard (HTTPS, public-IP DNS recheck per request, no redirects).
 - [Slides template sizing vs QA floor](slides-template-sizing.md) — template-prescribed furniture sizes (chrome/eyebrows) may sit below the 1.5vw QA floor; reading copy still obeys it.
 - [OpenAI key vs proxy](openai-key-vs-proxy.md) — direct OPENAI_API_KEY is out of credits; prefer AI_INTEGRATIONS proxy baseURL, fallback to direct key.
+- [GSC comparison windows](gsc-comparison-windows.md) — compare equal weekly-chunked periods ending 3 days back; completion is run-level, not inferred from prior values.

@@ -5,9 +5,13 @@
  * Linkweave internal linking system API
  * OpenAPI spec version: 0.1.0
  */
+import type { ClusterRunWindow } from './clusterRunWindow';
 
 export interface ClusterRunParams {
-  days: number;
+  /** GSC lookback window in weeks (4–52, default 12) */
+  weeks?: number;
+  /** Legacy lookback in days (kept for backward compat; prefer weeks) */
+  days?: number;
   /** @nullable */
   country: string | null;
   keywordLimit: number;
@@ -15,4 +19,5 @@ export interface ClusterRunParams {
   excludeBrand: boolean;
   /** Set while a rebuild-from-stored-SERPs is queued/running */
   reprocess?: boolean;
+  window?: ClusterRunWindow;
 }

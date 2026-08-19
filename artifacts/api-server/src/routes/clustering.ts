@@ -17,6 +17,7 @@ import {
   DEFAULT_CORE_THRESHOLD,
 } from "../services/authoritySnapshot";
 import { cosineSim } from "../lib/semanticScorer";
+import { aggregateClusterPrior, resolveRunWeeks } from "../services/clustering";
 
 const router: IRouter = Router();
 
@@ -142,7 +143,23 @@ async function reconcileStaleRuns(siteId: number): Promise<void> {
 
 router.post("/clustering/runs", requireAuth, requireSite, async (req, res) => {
   const site = getSite(req);
-  const parsed = StartClusterRunBody.safeParse(req.body ?? {});
+
+  // Resolve weeks BEFORE Zod parsing so we see what was actually supplied.
+  // Zod defaults would silently apply weeks=12 and days=90 to every request,
+  // making it impossible to distinguish {days:28} from {} or detect fractional
+  // values after coercion. We read the raw body first, then let Zod validate
+  // the remaining fields.
+  const rawBody = req.body ?? {};
+  const weeks = resolveRunWeeks(rawBody);
+  if (weeks === null) {
+    res.status(400).json({
+      error:
+        "Invalid input: weeks must be an integer 4–52, days must be an integer 7–180.",
+    });
+    return;
+  }
+
+  const parsed = StartClusterRunBody.safeParse(rawBody);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
     return;
@@ -166,13 +183,19 @@ router.post("/clustering/runs", requireAuth, requireSite, async (req, res) => {
     return;
   }
 
+  // Store resolved weeks and the raw days (if supplied) for backward compat.
+  const daysRaw = rawBody.days;
+  const daysLegacy =
+    typeof daysRaw === "number" && Number.isInteger(daysRaw) ? daysRaw : undefined;
+
   const [run] = await db
     .insert(clusterRunsTable)
     .values({
       siteId: site.id,
       status: "queued",
       params: {
-        days: body.days ?? 90,
+        weeks,
+        ...(daysLegacy !== undefined ? { days: daysLegacy } : {}),
         country: body.country?.toLowerCase() ?? null,
         keywordLimit: body.keywordLimit ?? 250,
         locationCode: body.locationCode ?? 2840,
@@ -335,7 +358,11 @@ router.get("/clustering/runs/:runId/clusters", requireAuth, requireSite, async (
     return;
   }
   const [run] = await db
-    .select({ id: clusterRunsTable.id, finishedAt: clusterRunsTable.finishedAt })
+    .select({
+      id: clusterRunsTable.id,
+      finishedAt: clusterRunsTable.finishedAt,
+      params: clusterRunsTable.params,
+    })
     .from(clusterRunsTable)
     .where(and(eq(clusterRunsTable.siteId, site.id), eq(clusterRunsTable.id, runId)))
     .limit(1);
@@ -343,6 +370,17 @@ router.get("/clustering/runs/:runId/clusters", requireAuth, requireSite, async (
     res.status(404).json({ error: "Not found" });
     return;
   }
+
+  // A run is a "comparison run" iff it stored a params.window — set during
+  // GSC fetch in keywordClustering.ts. Legacy runs (no comparison data
+  // collected) never set this field, so all prior aggregate fields must be
+  // null for them regardless of keyword content.
+  //
+  // This is the definitive signal: an all-new cluster (every keyword
+  // state="new", priorImpressions=0) is indistinguishable from a legacy run
+  // at the keyword level, but not at the run level.
+  const isComparisonRun = !!(run.params?.window);
+
   const rows = await db
     .select()
     .from(clusterRunClustersTable)
@@ -366,23 +404,47 @@ router.get("/clustering/runs/:runId/clusters", requireAuth, requireSite, async (
   });
 
   res.json(
-    rows.map((r) => ({
-      id: r.id,
-      clusterKey: r.clusterKey,
-      topic: r.topic,
-      quadrant: r.quadrant,
-      isOutlier: r.isOutlier,
-      keywordCount: r.keywordCount,
-      totalClicks: r.totalClicks,
-      totalImpressions: r.totalImpressions,
-      blendedCtr: r.blendedCtr,
-      avgPosition: r.avgPosition,
-      coreSimilarity: coreTags.get(r.id)?.coreSimilarity ?? null,
-      coreTag: coreTags.get(r.id)?.coreTag ?? null,
-      keywords: r.keywords,
-      ownUrls: r.ownUrls,
-      competitorUrls: r.competitorUrls,
-    })),
+    rows.map((r) => {
+      // Compute cluster-level prior stats dynamically from stored keyword data.
+      // isComparisonRun is the authoritative gate: legacy runs always get null
+      // comparison fields; fresh comparison runs (even all-new clusters) get
+      // real aggregates.
+      const priorStats = aggregateClusterPrior(
+        r.keywords,
+        r.totalClicks,
+        r.totalImpressions,
+        isComparisonRun,
+      );
+
+      return {
+        id: r.id,
+        clusterKey: r.clusterKey,
+        topic: r.topic,
+        quadrant: r.quadrant,
+        isOutlier: r.isOutlier,
+        keywordCount: r.keywordCount,
+        totalClicks: r.totalClicks,
+        totalImpressions: r.totalImpressions,
+        blendedCtr: r.blendedCtr,
+        avgPosition: r.avgPosition,
+        coreSimilarity: coreTags.get(r.id)?.coreSimilarity ?? null,
+        coreTag: coreTags.get(r.id)?.coreTag ?? null,
+        // Prior-period cluster aggregates. aggregateClusterPrior returns nulls
+        // for all comparison fields when isComparisonRun=false (legacy run).
+        priorTotalClicks: priorStats.priorTotalClicks,
+        priorTotalImpressions: priorStats.priorTotalImpressions,
+        priorBlendedCtr: priorStats.priorBlendedCtr,
+        priorAvgPosition: priorStats.priorAvgPosition,
+        clickDeltaAbs: priorStats.clickDeltaAbs,
+        impressionDeltaAbs: priorStats.impressionDeltaAbs,
+        clickDeltaRatio: priorStats.clickDeltaRatio,
+        impressionDeltaRatio: priorStats.impressionDeltaRatio,
+        stateCounts: priorStats.stateCounts,
+        keywords: r.keywords,
+        ownUrls: r.ownUrls,
+        competitorUrls: r.competitorUrls,
+      };
+    }),
   );
 });
 

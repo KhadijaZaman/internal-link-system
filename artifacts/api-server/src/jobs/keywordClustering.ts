@@ -5,6 +5,7 @@ import {
   type ClusterRun,
   type ClusterKeywordEntry,
   type ClusterUrlEntry,
+  type ClusterRunParams,
 } from "@workspace/db";
 import { and, asc, eq, lt, isNull, or } from "drizzle-orm";
 import { queryGscDimension, type GscDimensionRow } from "../integrations/gsc";
@@ -14,6 +15,14 @@ import {
   pickTopic,
   assignQuadrants,
   isOperatorQuery,
+  computeRunWindow,
+  weeklyChunks,
+  aggregateGscChunks,
+  classifyKeyword,
+  aggregateClusterPrior,
+  DEFAULT_WEEKS,
+  type RawGscRow,
+  type GscPeriodMetrics,
 } from "../services/clustering";
 import { generateClusterLabels } from "../integrations/openaiClusterLabels";
 import { withDbRetry } from "../lib/dbRetry";
@@ -61,6 +70,17 @@ function normalizeSerpUrl(raw: string): string {
   }
 }
 
+/** Derive the effective weeks count from run params (backward compat). */
+function resolveWeeks(p: ClusterRunParams): number {
+  if (p.weeks !== undefined && p.weeks > 0) return p.weeks;
+  // Legacy: convert days to nearest multiple of 7 (min 4 weeks, max 52 weeks)
+  if (p.days !== undefined && p.days > 0) {
+    const w = Math.round(p.days / 7);
+    return Math.max(4, Math.min(52, w || DEFAULT_WEEKS));
+  }
+  return DEFAULT_WEEKS;
+}
+
 async function updateRun(
   runId: number,
   set: Partial<typeof clusterRunsTable.$inferInsert>,
@@ -99,6 +119,50 @@ async function reconcileStaleRuns(siteId: number): Promise<void> {
         ),
     { label: "cluster_runs_reconcile" },
   );
+}
+
+/**
+ * Fetch all weekly GSC chunks for a given date range and aggregate them.
+ *
+ * If ANY single chunk request fails the entire operation throws — this
+ * guarantees we never classify partial data.
+ *
+ * Note on dataState: queryGscDimension supports `dataState: "all"` which
+ * includes unfinalized rows for the most recent ~2 days. We do NOT pass
+ * dataState here so GSC uses its default "final" mode. The 3-day lag on our
+ * end window already ensures all data in both windows is finalized.
+ */
+async function fetchGscPeriodChunks(opts: {
+  siteId: number;
+  startDate: string;
+  endDate: string;
+  countryFilter?: string;
+  rowLimit: number;
+}): Promise<Map<string, GscPeriodMetrics>> {
+  const chunks = weeklyChunks(opts.startDate, opts.endDate);
+  const allChunkRows: RawGscRow[][] = [];
+
+  for (const chunk of chunks) {
+    let rows: GscDimensionRow[];
+    try {
+      rows = await queryGscDimension({
+        siteId: opts.siteId,
+        startDate: chunk.start,
+        endDate: chunk.end,
+        dimension: "query",
+        rowLimit: opts.rowLimit,
+        ...(opts.countryFilter ? { countryFilter: opts.countryFilter } : {}),
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `GSC comparison fetch failed for chunk ${chunk.start}–${chunk.end}: ${msg}`,
+      );
+    }
+    allChunkRows.push(rows);
+  }
+
+  return aggregateGscChunks(allChunkRows);
 }
 
 export async function runKeywordClustering(site: SiteContext): Promise<void> {
@@ -163,9 +227,24 @@ interface PendingCluster {
   avgPosition: number | null;
   ownUrls: ClusterUrlEntry[];
   competitorUrls: ClusterUrlEntry[];
+  // Prior-period cluster aggregates (always non-null in the job since
+  // aggregate() is only called from fresh comparison runs, but typed to match
+  // ClusterPriorStats which allows null for legacy-run compatibility)
+  priorTotalClicks: number | null;
+  priorTotalImpressions: number | null;
+  priorBlendedCtr: number | null;
+  priorAvgPosition: number | null;
+  clickDeltaAbs: number | null;
+  impressionDeltaAbs: number | null;
+  clickDeltaRatio: number | null;
+  impressionDeltaRatio: number | null;
+  stateCounts: Record<string, number> | null;
 }
 
-function aggregate(entriesIn: ClusterKeywordEntry[], site: string): PendingCluster {
+function aggregate(
+  entriesIn: ClusterKeywordEntry[],
+  site: string,
+): PendingCluster {
   const entries = [...entriesIn].sort((a, b) => b.impressions - a.impressions);
   const totalClicks = entries.reduce((s, e) => s + e.clicks, 0);
   const totalImpressions = entries.reduce((s, e) => s + e.impressions, 0);
@@ -210,6 +289,12 @@ function aggregate(entriesIn: ClusterKeywordEntry[], site: string): PendingClust
   own.sort(byCoverage);
   comp.sort(byCoverage);
 
+  // Prior-period cluster stats. This function is called from the job only for
+  // fresh comparison runs (prior GSC data was just fetched), so isComparisonRun
+  // is always true here. The route re-derives this from params.window when
+  // serving the stored data.
+  const priorStats = aggregateClusterPrior(entries, totalClicks, totalImpressions, true);
+
   return {
     topic: pickTopic(entries.map((e) => e.query)),
     keywords: entries,
@@ -219,6 +304,15 @@ function aggregate(entriesIn: ClusterKeywordEntry[], site: string): PendingClust
     avgPosition: posWeight > 0 ? Number((posSum / posWeight).toFixed(1)) : null,
     ownUrls: own,
     competitorUrls: comp.slice(0, MAX_COMPETITOR_URLS),
+    priorTotalClicks: priorStats.priorTotalClicks,
+    priorTotalImpressions: priorStats.priorTotalImpressions,
+    priorBlendedCtr: priorStats.priorBlendedCtr,
+    priorAvgPosition: priorStats.priorAvgPosition,
+    clickDeltaAbs: priorStats.clickDeltaAbs,
+    impressionDeltaAbs: priorStats.impressionDeltaAbs,
+    clickDeltaRatio: priorStats.clickDeltaRatio,
+    impressionDeltaRatio: priorStats.impressionDeltaRatio,
+    stateCounts: priorStats.stateCounts,
   };
 }
 
@@ -422,33 +516,71 @@ async function processRun(
     error: null,
   });
 
-  // ---- 1. Top GSC queries (search intent source) ----
-  const end = new Date();
-  end.setUTCDate(end.getUTCDate() - 2); // GSC data lag
-  const start = new Date(end);
-  start.setUTCDate(start.getUTCDate() - (p.days - 1));
+  // ---- 1. Compute date windows ----
+  const weeks = resolveWeeks(p);
+  const window = computeRunWindow(weeks);
 
-  const gscRows = await queryGscDimension({
-    siteId: run.siteId,
-    startDate: isoDay(start),
-    endDate: isoDay(end),
-    dimension: "query",
-    rowLimit: Math.min(5000, p.keywordLimit * 3),
-    ...(p.country ? { countryFilter: p.country } : {}),
+  // Store exact date windows in params so rebuilds and the UI can display them.
+  await updateRun(run.id, {
+    params: {
+      ...p,
+      weeks,
+      window,
+    },
   });
 
+  // ---- 2. Fetch current period as weekly GSC chunks ----
+  // queryGscDimension uses default dataState (finalized). Our 3-day lag on
+  // currentEnd ensures all data in both windows is finalized; no dataState
+  // parameter is needed.
+  const rowLimit = Math.min(5000, p.keywordLimit * 3);
+  let currentMetrics: Map<string, GscPeriodMetrics>;
+  try {
+    currentMetrics = await fetchGscPeriodChunks({
+      siteId: run.siteId,
+      startDate: window.currentStart,
+      endDate: window.currentEnd,
+      countryFilter: p.country ?? undefined,
+      rowLimit,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Distinguish GSC not connected vs chunk fetch failure
+    if (msg.toLowerCase().includes("not connected") || msg.toLowerCase().includes("no gsc")) {
+      throw new Error(`Google Search Console is not connected. Connect GSC in Integrations and try again.`);
+    }
+    throw new Error(`GSC data fetch failed for current period: ${msg}`);
+  }
+
+  // ---- 3. Fetch prior period as weekly GSC chunks ----
+  let priorMetrics: Map<string, GscPeriodMetrics>;
+  try {
+    priorMetrics = await fetchGscPeriodChunks({
+      siteId: run.siteId,
+      startDate: window.priorStart,
+      endDate: window.priorEnd,
+      countryFilter: p.country ?? undefined,
+      rowLimit,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`GSC comparison fetch failed for prior period: ${msg}`);
+  }
+
+  // ---- 4. Select top queries from current period ----
   const brandToken = p.excludeBrand ? site.host.split(".")[0] ?? "" : "";
-  const byImpressions = [...gscRows].sort((a, b) => b.impressions - a.impressions);
+  const byImpressions = [...currentMetrics.entries()]
+    .map(([q, m]) => ({ query: q, ...m }))
+    .sort((a, b) => b.impressions - a.impressions);
+
   const seen = new Set<string>();
-  const selected: GscDimensionRow[] = [];
+  const selected: Array<{ query: string } & GscPeriodMetrics> = [];
   let operatorFiltered = 0;
   for (const row of byImpressions) {
-    const q = row.key.trim().toLowerCase();
+    const q = row.query.trim().toLowerCase();
     if (!q || seen.has(q)) continue;
     seen.add(q);
     if (brandToken && q.includes(brandToken)) continue;
-    // Search-operator / boolean queries (AI-agent scrapes) are noise: skip
-    // them BEFORE spending paid SERP credits, freeing slots for real queries.
     if (isOperatorQuery(q)) {
       operatorFiltered++;
       continue;
@@ -461,9 +593,8 @@ async function processRun(
       `Only ${selected.length} usable queries found in Search Console for this range — nothing to cluster.`,
     );
   }
-  // Spend cap: one paid DataForSEO SERP task per query. Trim to the remaining
-  // serpQueries budget (paid scraping) before posting; a run needs ≥2 queries
-  // to cluster, so if the cap leaves fewer than that, fail with a clear error.
+
+  // Spend cap: one paid DataForSEO SERP task per query.
   let capApplied = false;
   if (!budget.take("serpQueries", selected.length)) {
     const allowed = budget.remaining("serpQueries");
@@ -481,10 +612,9 @@ async function processRun(
     capApplied = true;
   }
 
-  const queries = selected.map((r) => r.key.trim().toLowerCase());
-  const gscByQuery = new Map(selected.map((r) => [r.key.trim().toLowerCase(), r]));
+  const queries = selected.map((r) => r.query);
 
-  // ---- 2. Post SERP scrape tasks to DataForSEO ----
+  // ---- 5. Post SERP scrape tasks to DataForSEO ----
   await updateRun(run.id, {
     phase: "posting_serp_tasks",
     progressTotal: queries.length,
@@ -495,7 +625,7 @@ async function processRun(
     throw new Error("DataForSEO accepted none of the SERP tasks.");
   }
 
-  // ---- 3. Poll for SERP results ----
+  // ---- 6. Poll for SERP results ----
   await updateRun(run.id, { phase: "fetching_serps" });
   await sleep(SERP_INITIAL_WAIT_MS);
 
@@ -540,16 +670,38 @@ async function processRun(
 
   await updateRun(run.id, { progressDone: queries.length });
 
-  // ---- 4-6. Cluster, label, persist (shared with rebuild) ----
+  // ---- 7. Build ClusterKeywordEntry list with prior comparison ----
   const entries: ClusterKeywordEntry[] = queries.map((q) => {
-    const gsc = gscByQuery.get(q);
+    const cur = currentMetrics.get(q);
+    const prior = priorMetrics.get(q) ?? null;
+
+    const curMetrics: GscPeriodMetrics = cur ?? {
+      clicks: 0,
+      impressions: 0,
+      ctr: 0,
+      position: 0,
+    };
+
+    const classification = classifyKeyword(curMetrics, prior);
+
     return {
       query: q,
-      clicks: Math.round(gsc?.clicks ?? 0),
-      impressions: Math.round(gsc?.impressions ?? 0),
-      ctr: gsc?.ctr ?? 0,
-      position: gsc?.position ?? 0,
+      clicks: curMetrics.clicks,
+      impressions: curMetrics.impressions,
+      ctr: curMetrics.ctr,
+      position: curMetrics.position,
       serpUrls: serpByKeyword.get(q) ?? [],
+      // Prior fields
+      priorClicks: prior?.clicks ?? null,
+      priorImpressions: prior?.impressions ?? null,
+      priorCtr: prior?.ctr ?? null,
+      priorPosition: prior?.position ?? null,
+      // Deltas and state
+      clickDelta: classification.clickDelta,
+      impressionDelta: classification.impressionDelta,
+      clickDeltaAbs: classification.clickDeltaAbs,
+      impressionDeltaAbs: classification.impressionDeltaAbs,
+      state: classification.state,
     };
   });
 

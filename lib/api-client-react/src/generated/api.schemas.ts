@@ -3075,6 +3075,13 @@ export interface KbDocumentInput {
 
 export interface StartClusterRunInput {
   /**
+     * GSC lookback window in weeks (4–52); each period spans exactly weeks*7 days. Wins over days when both supplied. Defaults to 12 when neither weeks nor days is provided.
+     * @minimum 4
+     * @maximum 52
+     */
+  weeks?: number;
+  /**
+     * Legacy: GSC lookback window in days. Converted to nearest weeks when weeks is absent. Ignored when weeks is explicitly supplied.
      * @minimum 7
      * @maximum 180
      */
@@ -3095,8 +3102,25 @@ export interface StartClusterRunInput {
   excludeBrand?: boolean;
 }
 
+/**
+ * Exact ISO date ranges used for current and prior GSC periods
+ */
+export interface ClusterRunWindow {
+  /** Start of current period (YYYY-MM-DD) */
+  currentStart: string;
+  /** End of current period (YYYY-MM-DD, UTC today minus 3 days) */
+  currentEnd: string;
+  /** Start of prior period (YYYY-MM-DD) */
+  priorStart: string;
+  /** End of prior period (YYYY-MM-DD, day before currentStart) */
+  priorEnd: string;
+}
+
 export interface ClusterRunParams {
-  days: number;
+  /** GSC lookback window in weeks (4–52, default 12) */
+  weeks?: number;
+  /** Legacy lookback in days (kept for backward compat; prefer weeks) */
+  days?: number;
   /** @nullable */
   country: string | null;
   keywordLimit: number;
@@ -3104,6 +3128,7 @@ export interface ClusterRunParams {
   excludeBrand: boolean;
   /** Set while a rebuild-from-stored-SERPs is queued/running */
   reprocess?: boolean;
+  window?: ClusterRunWindow;
 }
 
 export type ClusterRunStatus = typeof ClusterRunStatus[keyof typeof ClusterRunStatus];
@@ -3142,6 +3167,27 @@ export interface ClusterSerpUrl {
   position: number;
 }
 
+/**
+ * Performance state of a keyword comparing current vs prior period.
+new: no prior impressions. rising: impressions up >30%.
+displaced: clicks down >30% while impressions stable (≤10% change).
+zero_click: enough impressions but CTR<0.005.
+striking_distance: enough impressions and position 5–15.
+stable: none of the above apply.
+
+ */
+export type KeywordState = typeof KeywordState[keyof typeof KeywordState];
+
+
+export const KeywordState = {
+  new: 'new',
+  rising: 'rising',
+  displaced: 'displaced',
+  zero_click: 'zero_click',
+  striking_distance: 'striking_distance',
+  stable: 'stable',
+} as const;
+
 export interface ClusterKeyword {
   query: string;
   clicks: number;
@@ -3149,6 +3195,48 @@ export interface ClusterKeyword {
   ctr: number;
   position: number;
   serpUrls: ClusterSerpUrl[];
+  /**
+     * Prior-period clicks
+     * @nullable
+     */
+  priorClicks?: number | null;
+  /**
+     * Prior-period impressions
+     * @nullable
+     */
+  priorImpressions?: number | null;
+  /**
+     * Prior-period CTR (0–1)
+     * @nullable
+     */
+  priorCtr?: number | null;
+  /**
+     * Prior-period impression-weighted average position
+     * @nullable
+     */
+  priorPosition?: number | null;
+  /**
+     * (current-prior)/prior for clicks; null when prior impressions=0 or no prior data
+     * @nullable
+     */
+  clickDelta?: number | null;
+  /**
+     * (current-prior)/prior for impressions; null when prior impressions=0 or no prior data
+     * @nullable
+     */
+  impressionDelta?: number | null;
+  /**
+     * Absolute change in clicks (current − prior)
+     * @nullable
+     */
+  clickDeltaAbs?: number | null;
+  /**
+     * Absolute change in impressions (current − prior)
+     * @nullable
+     */
+  impressionDeltaAbs?: number | null;
+  /** Keyword performance state classification */
+  state?: KeywordState | null;
 }
 
 export interface ClusterUrl {
@@ -3159,6 +3247,18 @@ export interface ClusterUrl {
   bestPosition: number | null;
   /** @nullable */
   avgPosition: number | null;
+}
+
+/**
+ * Count of keywords in each state for a cluster
+ */
+export interface ClusterStateCounts {
+  new: number;
+  rising: number;
+  displaced: number;
+  zero_click: number;
+  striking_distance: number;
+  stable: number;
 }
 
 /**
@@ -3211,6 +3311,48 @@ export interface KeywordCluster {
      * @nullable
      */
   coreTag: KeywordClusterCoreTag;
+  /**
+     * Prior-period total clicks for this cluster (null for old runs without prior data)
+     * @nullable
+     */
+  priorTotalClicks?: number | null;
+  /**
+     * Prior-period total impressions for this cluster
+     * @nullable
+     */
+  priorTotalImpressions?: number | null;
+  /**
+     * Prior-period blended CTR as a percentage
+     * @nullable
+     */
+  priorBlendedCtr?: number | null;
+  /**
+     * Prior-period impression-weighted average position
+     * @nullable
+     */
+  priorAvgPosition?: number | null;
+  /**
+     * Absolute change in cluster clicks (current − prior)
+     * @nullable
+     */
+  clickDeltaAbs?: number | null;
+  /**
+     * Absolute change in cluster impressions (current − prior)
+     * @nullable
+     */
+  impressionDeltaAbs?: number | null;
+  /**
+     * (currentClicks − priorClicks) / priorClicks; null when prior=0 or no prior
+     * @nullable
+     */
+  clickDeltaRatio?: number | null;
+  /**
+     * (currentImpressions − priorImpressions) / priorImpressions; null when prior=0 or no prior
+     * @nullable
+     */
+  impressionDeltaRatio?: number | null;
+  /** Count of keywords per state; null for old runs without state data */
+  stateCounts?: ClusterStateCounts | null;
   keywords: ClusterKeyword[];
   ownUrls: ClusterUrl[];
   competitorUrls: ClusterUrl[];

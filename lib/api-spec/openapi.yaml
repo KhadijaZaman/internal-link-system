@@ -5521,7 +5521,16 @@ components:
     StartClusterRunInput:
       type: object
       properties:
-        days: { type: integer, minimum: 7, maximum: 180, default: 90 }
+        weeks:
+          type: integer
+          minimum: 4
+          maximum: 52
+          description: GSC lookback window in weeks (4–52); each period spans exactly weeks*7 days. Wins over days when both supplied. Defaults to 12 when neither weeks nor days is provided.
+        days:
+          type: integer
+          minimum: 7
+          maximum: 180
+          description: "Legacy: GSC lookback window in days. Converted to nearest weeks when weeks is absent. Ignored when weeks is explicitly supplied."
         country:
           type: ["string", "null"]
           pattern: "^[A-Za-z]{3}$"
@@ -5532,11 +5541,25 @@ components:
           default: 2840
           description: DataForSEO SERP location_code (2840 = United States)
         excludeBrand: { type: boolean, default: true }
+    ClusterRunWindow:
+      type: object
+      required: [currentStart, currentEnd, priorStart, priorEnd]
+      description: Exact ISO date ranges used for current and prior GSC periods
+      properties:
+        currentStart: { type: string, description: "Start of current period (YYYY-MM-DD)" }
+        currentEnd: { type: string, description: "End of current period (YYYY-MM-DD, UTC today minus 3 days)" }
+        priorStart: { type: string, description: "Start of prior period (YYYY-MM-DD)" }
+        priorEnd: { type: string, description: "End of prior period (YYYY-MM-DD, day before currentStart)" }
     ClusterRunParams:
       type: object
-      required: [days, country, keywordLimit, locationCode, excludeBrand]
+      required: [country, keywordLimit, locationCode, excludeBrand]
       properties:
-        days: { type: integer }
+        weeks:
+          type: integer
+          description: GSC lookback window in weeks (4–52, default 12)
+        days:
+          type: integer
+          description: "Legacy lookback in days (kept for backward compat; prefer weeks)"
         country: { type: ["string", "null"] }
         keywordLimit: { type: integer }
         locationCode: { type: integer }
@@ -5544,6 +5567,8 @@ components:
         reprocess:
           type: boolean
           description: Set while a rebuild-from-stored-SERPs is queued/running
+        window:
+          $ref: "#/components/schemas/ClusterRunWindow"
     ClusterRun:
       type: object
       required: [id, status, phase, params, progressDone, progressTotal, stats, error, createdAt, startedAt, finishedAt]
@@ -5570,6 +5595,16 @@ components:
       properties:
         url: { type: string }
         position: { type: number }
+    KeywordState:
+      type: string
+      enum: [new, rising, displaced, zero_click, striking_distance, stable]
+      description: |
+        Performance state of a keyword comparing current vs prior period.
+        new: no prior impressions. rising: impressions up >30%.
+        displaced: clicks down >30% while impressions stable (≤10% change).
+        zero_click: enough impressions but CTR<0.005.
+        striking_distance: enough impressions and position 5–15.
+        stable: none of the above apply.
     ClusterKeyword:
       type: object
       required: [query, clicks, impressions, ctr, position, serpUrls]
@@ -5583,6 +5618,23 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ClusterSerpUrl"
+        priorClicks: { type: ["integer", "null"], description: Prior-period clicks }
+        priorImpressions: { type: ["integer", "null"], description: Prior-period impressions }
+        priorCtr: { type: ["number", "null"], description: Prior-period CTR (0–1) }
+        priorPosition: { type: ["number", "null"], description: Prior-period impression-weighted average position }
+        clickDelta:
+          type: ["number", "null"]
+          description: "(current-prior)/prior for clicks; null when prior impressions=0 or no prior data"
+        impressionDelta:
+          type: ["number", "null"]
+          description: "(current-prior)/prior for impressions; null when prior impressions=0 or no prior data"
+        clickDeltaAbs: { type: ["integer", "null"], description: Absolute change in clicks (current − prior) }
+        impressionDeltaAbs: { type: ["integer", "null"], description: Absolute change in impressions (current − prior) }
+        state:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/KeywordState"
+          description: Keyword performance state classification
     ClusterUrl:
       type: object
       required: [url, domain, keywordCount, bestPosition, avgPosition]
@@ -5592,6 +5644,17 @@ components:
         keywordCount: { type: integer }
         bestPosition: { type: ["number", "null"] }
         avgPosition: { type: ["number", "null"] }
+    ClusterStateCounts:
+      type: object
+      description: Count of keywords in each state for a cluster
+      required: [new, rising, displaced, zero_click, striking_distance, stable]
+      properties:
+        new: { type: integer }
+        rising: { type: integer }
+        displaced: { type: integer }
+        zero_click: { type: integer }
+        striking_distance: { type: integer }
+        stable: { type: integer }
     KeywordCluster:
       type: object
       required: [id, clusterKey, topic, quadrant, isOutlier, keywordCount, totalClicks, totalImpressions, blendedCtr, avgPosition, coreSimilarity, coreTag, keywords, ownUrls, competitorUrls]
@@ -5617,6 +5680,35 @@ components:
           type: ["string", "null"]
           enum: [on_core, off_core, null]
           description: Whether this cluster's search demand aligns with the site's core topic (threshold 0.42)
+        priorTotalClicks:
+          type: ["integer", "null"]
+          description: Prior-period total clicks for this cluster (null for old runs without prior data)
+        priorTotalImpressions:
+          type: ["integer", "null"]
+          description: Prior-period total impressions for this cluster
+        priorBlendedCtr:
+          type: ["number", "null"]
+          description: Prior-period blended CTR as a percentage
+        priorAvgPosition:
+          type: ["number", "null"]
+          description: Prior-period impression-weighted average position
+        clickDeltaAbs:
+          type: ["integer", "null"]
+          description: Absolute change in cluster clicks (current − prior)
+        impressionDeltaAbs:
+          type: ["integer", "null"]
+          description: Absolute change in cluster impressions (current − prior)
+        clickDeltaRatio:
+          type: ["number", "null"]
+          description: "(currentClicks − priorClicks) / priorClicks; null when prior=0 or no prior"
+        impressionDeltaRatio:
+          type: ["number", "null"]
+          description: "(currentImpressions − priorImpressions) / priorImpressions; null when prior=0 or no prior"
+        stateCounts:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/ClusterStateCounts"
+          description: Count of keywords per state; null for old runs without state data
         keywords:
           type: array
           items:

@@ -8,6 +8,13 @@
 
 export interface StartClusterRunInput {
   /**
+     * GSC lookback window in weeks (4–52); each period spans exactly weeks*7 days. Wins over days when both supplied. Defaults to 12 when neither weeks nor days is provided.
+     * @minimum 4
+     * @maximum 52
+     */
+  weeks?: number;
+  /**
+     * Legacy: GSC lookback window in days. Converted to nearest weeks when weeks is absent. Ignored when weeks is explicitly supplied.
      * @minimum 7
      * @maximum 180
      */

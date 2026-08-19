@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ClusterSerpUrl } from './clusterSerpUrl';
+import type { KeywordState } from './keywordState';
 
 export interface ClusterKeyword {
   query: string;
@@ -14,4 +15,46 @@ export interface ClusterKeyword {
   ctr: number;
   position: number;
   serpUrls: ClusterSerpUrl[];
+  /**
+     * Prior-period clicks
+     * @nullable
+     */
+  priorClicks?: number | null;
+  /**
+     * Prior-period impressions
+     * @nullable
+     */
+  priorImpressions?: number | null;
+  /**
+     * Prior-period CTR (0–1)
+     * @nullable
+     */
+  priorCtr?: number | null;
+  /**
+     * Prior-period impression-weighted average position
+     * @nullable
+     */
+  priorPosition?: number | null;
+  /**
+     * (current-prior)/prior for clicks; null when prior impressions=0 or no prior data
+     * @nullable
+     */
+  clickDelta?: number | null;
+  /**
+     * (current-prior)/prior for impressions; null when prior impressions=0 or no prior data
+     * @nullable
+     */
+  impressionDelta?: number | null;
+  /**
+     * Absolute change in clicks (current − prior)
+     * @nullable
+     */
+  clickDeltaAbs?: number | null;
+  /**
+     * Absolute change in impressions (current − prior)
+     * @nullable
+     */
+  impressionDeltaAbs?: number | null;
+  /** Keyword performance state classification */
+  state?: KeywordState | null;
 }

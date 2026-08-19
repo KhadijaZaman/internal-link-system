@@ -10,12 +10,489 @@
  *   similarity (sklearn-style idf), falling back to the shortest keyword
  * - quadrants from medians computed on a percentile-filtered set
  *   (drop bottom 20% / top 10% by impressions)
+ *
+ * Also exports pure helpers for GSC date-range computation, weekly chunk
+ * slicing, multi-chunk aggregation, and keyword-state classification that are
+ * used by keywordClustering.ts and unit-tested independently.
  */
 
 export const MIN_COMMON_URLS = 3;
 export const MIN_OVERLAP = 0.1;
 const LOWER_PERCENTILE = 0.2;
 const UPPER_PERCENTILE = 0.9;
+
+// ─── Classification thresholds ───────────────────────────────────────────────
+
+/** Minimum impressions in the current period for a query to get a non-stable
+ *  state classification (zero_click / striking_distance). */
+export const MIN_IMPRESSIONS = 10;
+/** Ratio threshold for "rising": impressionDelta > RISING_THRESHOLD. */
+export const RISING_THRESHOLD = 0.3;
+/** Ratio threshold for "displaced": clickDelta < DISPLACED_CLICK_THRESHOLD. */
+export const DISPLACED_CLICK_THRESHOLD = -0.3;
+/** Ratio threshold for "displaced": |impressionDelta| <= this value. */
+export const DISPLACED_IMP_ABS_THRESHOLD = 0.1;
+/** CTR below this is "zero_click" (requires MIN_IMPRESSIONS). */
+export const ZERO_CLICK_CTR = 0.005;
+/** Position range [STRIKING_DISTANCE_LOW..STRIKING_DISTANCE_HIGH] inclusive. */
+export const STRIKING_DISTANCE_LOW = 5;
+export const STRIKING_DISTANCE_HIGH = 15;
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+import type { KeywordState } from "@workspace/db";
+
+export interface GscPeriodMetrics {
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+
+/** A pair of current+prior aggregated metrics for a single normalized query. */
+export interface AggregatedQueryMetrics {
+  query: string;
+  current: GscPeriodMetrics;
+  /** null when the query had no impressions in the prior period. */
+  prior: GscPeriodMetrics | null;
+}
+
+// ─── Request discrimination / weeks resolution ────────────────────────────────
+
+/** Default weeks used when neither weeks nor days is supplied. */
+export const DEFAULT_WEEKS = 12;
+
+/**
+ * Resolve the effective number of weeks for a clustering run from the raw
+ * request body fields.
+ *
+ * Discrimination rules (explicit wins over derived):
+ *  1. `weeks` explicitly supplied and is a safe integer in [4..52] → use it.
+ *  2. `days` explicitly supplied and is a safe integer in [7..180] → convert
+ *     to nearest whole weeks, clamped to [4..52].
+ *  3. Neither supplied → DEFAULT_WEEKS (12).
+ *
+ * Fractional values for either field are rejected (returns null).
+ * Out-of-range values are rejected (returns null).
+ *
+ * @returns The resolved integer weeks, or null if validation fails.
+ */
+export function resolveRunWeeks(rawBody: {
+  weeks?: unknown;
+  days?: unknown;
+}): number | null {
+  const weeksRaw = rawBody.weeks;
+  const daysRaw = rawBody.days;
+
+  // weeks wins when explicitly supplied
+  if (weeksRaw !== undefined) {
+    if (
+      typeof weeksRaw !== "number" ||
+      !Number.isInteger(weeksRaw) ||
+      weeksRaw < 4 ||
+      weeksRaw > 52
+    ) {
+      return null; // reject fractional or out-of-range
+    }
+    return weeksRaw;
+  }
+
+  // days fallback when explicitly supplied
+  if (daysRaw !== undefined) {
+    if (
+      typeof daysRaw !== "number" ||
+      !Number.isInteger(daysRaw) ||
+      daysRaw < 7 ||
+      daysRaw > 180
+    ) {
+      return null; // reject fractional or out-of-range
+    }
+    const w = Math.round(daysRaw / 7);
+    return Math.max(4, Math.min(52, w));
+  }
+
+  // Neither supplied — use default
+  return DEFAULT_WEEKS;
+}
+
+// ─── Date / range helpers ─────────────────────────────────────────────────────
+
+/**
+ * Format a Date as ISO YYYY-MM-DD using UTC components.
+ * Exported for tests.
+ */
+export function isoDay(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Compute the current and prior date windows for a clustering run.
+ *
+ * Rules (all UTC):
+ *  - End date = today − 3 days  (finalized GSC data, 3-day lag)
+ *  - Current period = [end − weeks*7 + 1 … end]  (weeks*7 days inclusive)
+ *  - Prior period   = [end − weeks*14 … end − weeks*7]  (same length, adjacent)
+ *
+ * Example with weeks=2, today=2026-08-12:
+ *  end          = 2026-08-09
+ *  currentStart = 2026-07-27  (end - 13 days = end - 2*7 + 1)
+ *  currentEnd   = 2026-08-09
+ *  priorEnd     = 2026-07-26  (currentStart - 1)
+ *  priorStart   = 2026-07-12  (priorEnd - 13 days)
+ *
+ * @param weeks  Number of weeks in each period (4–52)
+ * @param now    Reference date (default: current UTC date); used by tests
+ */
+export function computeRunWindow(
+  weeks: number,
+  now: Date = new Date(),
+): { currentStart: string; currentEnd: string; priorStart: string; priorEnd: string } {
+  const days = weeks * 7;
+  // End = today − 3 days (UTC)
+  const endMs = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+  ) - 3 * 86_400_000;
+  const end = new Date(endMs);
+
+  const currentStartMs = endMs - (days - 1) * 86_400_000;
+  const currentStart = new Date(currentStartMs);
+
+  const priorEndMs = currentStartMs - 86_400_000;
+  const priorEnd = new Date(priorEndMs);
+
+  const priorStartMs = priorEndMs - (days - 1) * 86_400_000;
+  const priorStart = new Date(priorStartMs);
+
+  return {
+    currentStart: isoDay(currentStart),
+    currentEnd: isoDay(end),
+    priorStart: isoDay(priorStart),
+    priorEnd: isoDay(priorEnd),
+  };
+}
+
+/**
+ * Slice a date range into non-overlapping 7-day chunks, each represented as
+ * { start, end } ISO strings.
+ *
+ * The last chunk may be shorter than 7 days if the range is not a multiple
+ * of 7 (but for our use-case weeks * 7 is always exact).
+ *
+ * @param startIso  First day of the range (inclusive)
+ * @param endIso    Last day of the range (inclusive)
+ */
+export function weeklyChunks(
+  startIso: string,
+  endIso: string,
+): Array<{ start: string; end: string }> {
+  const chunks: Array<{ start: string; end: string }> = [];
+  const rangeEndMs = Date.parse(endIso);
+  let chunkStartMs = Date.parse(startIso);
+
+  while (chunkStartMs <= rangeEndMs) {
+    // end of this chunk = min(chunkStart + 6 days, rangeEnd)
+    const chunkEndMs = Math.min(chunkStartMs + 6 * 86_400_000, rangeEndMs);
+    chunks.push({
+      start: isoDay(new Date(chunkStartMs)),
+      end: isoDay(new Date(chunkEndMs)),
+    });
+    chunkStartMs = chunkEndMs + 86_400_000;
+  }
+  return chunks;
+}
+
+// ─── Raw GSC row type (mirrors GscDimensionRow without the import cycle) ─────
+
+export interface RawGscRow {
+  key: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+
+/**
+ * Aggregate multiple GSC chunks (each being an array of rows for one 7-day
+ * window) into a Map from normalized query → summed metrics.
+ *
+ * Aggregation rules:
+ *  - clicks and impressions are summed
+ *  - CTR is recomputed as clicks / impressions
+ *  - position is impression-weighted average
+ *
+ * Queries with 0 total impressions across all chunks are retained (they will
+ * be filtered by the caller as needed).
+ */
+export function aggregateGscChunks(
+  chunks: RawGscRow[][],
+): Map<string, GscPeriodMetrics> {
+  const acc = new Map<
+    string,
+    { clicks: number; impressions: number; posSum: number; posWeight: number }
+  >();
+
+  for (const rows of chunks) {
+    for (const r of rows) {
+      const q = r.key.trim().toLowerCase();
+      if (!q) continue;
+      const existing = acc.get(q);
+      if (existing) {
+        existing.clicks += r.clicks;
+        existing.impressions += r.impressions;
+        existing.posSum += r.position * Math.max(r.impressions, 0);
+        existing.posWeight += Math.max(r.impressions, 0);
+      } else {
+        acc.set(q, {
+          clicks: r.clicks,
+          impressions: r.impressions,
+          posSum: r.position * Math.max(r.impressions, 0),
+          posWeight: Math.max(r.impressions, 0),
+        });
+      }
+    }
+  }
+
+  const result = new Map<string, GscPeriodMetrics>();
+  for (const [q, v] of acc) {
+    result.set(q, {
+      clicks: Math.round(v.clicks),
+      impressions: Math.round(v.impressions),
+      ctr: v.impressions > 0 ? v.clicks / v.impressions : 0,
+      position: v.posWeight > 0 ? v.posSum / v.posWeight : 0,
+    });
+  }
+  return result;
+}
+
+// ─── Keyword state classification ─────────────────────────────────────────────
+
+/**
+ * Classify a keyword's performance state based on current vs prior metrics.
+ *
+ * Precedence (later assignments win, matching pandas semantics):
+ *   stable → rising → displaced → zero_click → striking_distance → new
+ *
+ * Rules:
+ *  - "new"               when priorImpressions === 0 (no prior exposure)
+ *  - "rising"            impressionDelta > RISING_THRESHOLD (0.30)
+ *  - "displaced"         clickDelta < DISPLACED_CLICK_THRESHOLD (-0.30) AND
+ *                        |impressionDelta| <= DISPLACED_IMP_ABS_THRESHOLD (0.10)
+ *  - "zero_click"        current impressions >= MIN_IMPRESSIONS AND ctr < ZERO_CLICK_CTR
+ *  - "striking_distance" current impressions >= MIN_IMPRESSIONS AND
+ *                        position in [STRIKING_DISTANCE_LOW, STRIKING_DISTANCE_HIGH]
+ *  - "new"               prior impressions === 0 (repeated here so it overwrites anything)
+ *
+ * When priorImpressions === 0, ratio deltas are null (never Infinity).
+ * Low-volume queries (current impressions < MIN_IMPRESSIONS) cannot become
+ * zero_click or striking_distance.
+ */
+export function classifyKeyword(
+  current: GscPeriodMetrics,
+  prior: GscPeriodMetrics | null,
+): {
+  state: KeywordState;
+  clickDelta: number | null;
+  impressionDelta: number | null;
+  clickDeltaAbs: number | null;
+  impressionDeltaAbs: number | null;
+} {
+  const priorImpressions = prior?.impressions ?? 0;
+  const priorClicks = prior?.clicks ?? 0;
+
+  const clickDeltaAbs = prior !== null ? current.clicks - priorClicks : null;
+  const impressionDeltaAbs = prior !== null ? current.impressions - priorImpressions : null;
+
+  // Ratio deltas: null when prior impressions = 0 or no prior data
+  const clickDelta =
+    prior !== null && priorClicks > 0
+      ? (current.clicks - priorClicks) / priorClicks
+      : null;
+  const impressionDelta =
+    prior !== null && priorImpressions > 0
+      ? (current.impressions - priorImpressions) / priorImpressions
+      : null;
+
+  // Classify using pandas-style precedence (later overwrites earlier)
+  let state: KeywordState = "stable";
+
+  // rising
+  if (impressionDelta !== null && impressionDelta > RISING_THRESHOLD) {
+    state = "rising";
+  }
+
+  // displaced
+  if (
+    clickDelta !== null &&
+    impressionDelta !== null &&
+    clickDelta < DISPLACED_CLICK_THRESHOLD &&
+    Math.abs(impressionDelta) <= DISPLACED_IMP_ABS_THRESHOLD
+  ) {
+    state = "displaced";
+  }
+
+  // zero_click (requires enough volume)
+  if (current.impressions >= MIN_IMPRESSIONS && current.ctr < ZERO_CLICK_CTR) {
+    state = "zero_click";
+  }
+
+  // striking_distance (requires enough volume)
+  if (
+    current.impressions >= MIN_IMPRESSIONS &&
+    current.position >= STRIKING_DISTANCE_LOW &&
+    current.position <= STRIKING_DISTANCE_HIGH
+  ) {
+    state = "striking_distance";
+  }
+
+  // new (highest precedence — overwrites everything)
+  if (priorImpressions === 0) {
+    state = "new";
+  }
+
+  return { state, clickDelta, impressionDelta, clickDeltaAbs, impressionDeltaAbs };
+}
+
+// ─── Cluster-level prior aggregation ─────────────────────────────────────────
+
+export interface ClusterPriorStats {
+  /** null for legacy runs that never collected comparison data. */
+  priorTotalClicks: number | null;
+  /** null for legacy runs. */
+  priorTotalImpressions: number | null;
+  /** null for legacy runs. */
+  priorBlendedCtr: number | null;
+  /** null for legacy runs or when no keyword had a prior position. */
+  priorAvgPosition: number | null;
+  /** null for legacy runs or when priorTotal denominator is zero. */
+  clickDeltaAbs: number | null;
+  /** null for legacy runs or when priorTotal denominator is zero. */
+  impressionDeltaAbs: number | null;
+  /** (currentTotal - priorTotal) / priorTotal for clicks; null if prior = 0 or legacy */
+  clickDeltaRatio: number | null;
+  /** (currentTotal - priorTotal) / priorTotal for impressions; null if prior = 0 or legacy */
+  impressionDeltaRatio: number | null;
+  /** Count of keywords for each state in this cluster; null for legacy runs. */
+  stateCounts: Record<KeywordState, number> | null;
+}
+
+/**
+ * Aggregate cluster-level prior stats from an array of keyword entries that
+ * already have their prior_* and state fields populated.
+ *
+ * @param isComparisonRun  Pass `true` for runs that fetched prior GSC data
+ *   (identified by `params.window` being present on the run row). Pass `false`
+ *   for legacy runs that never collected comparison data — all aggregate
+ *   comparison fields will be null regardless of keyword content.
+ *
+ * Semantics when isComparisonRun = true:
+ *  - "new" keywords (state=new, priorImpressions=0) ARE part of the compared run
+ *    and contribute priorImpressions=0 / priorClicks=0 to the aggregate prior totals.
+ *  - Cluster absolute deltas are computed as `currentTotal − priorTotal` (not by
+ *    summing per-keyword deltas), so "new" keywords' full current metrics are
+ *    automatically included without any special-case logic.
+ *  - Ratio deltas remain null whenever the aggregate priorTotal denominator is zero
+ *    (e.g. a cluster that is entirely new queries has priorImpressions=0 in total,
+ *    making the ratio undefined, but abs deltas and stateCounts are still returned).
+ */
+export function aggregateClusterPrior(
+  keywords: Array<{
+    clicks: number;
+    impressions: number;
+    priorClicks?: number | null;
+    priorImpressions?: number | null;
+    priorPosition?: number | null;
+    state?: KeywordState | null;
+  }>,
+  currentTotalClicks: number,
+  currentTotalImpressions: number,
+  /** True iff this run collected prior GSC data (params.window is present). */
+  isComparisonRun = false,
+): ClusterPriorStats {
+  // Legacy runs: return null for all comparison fields immediately.
+  // We use the explicit run-level signal rather than inferring from keyword
+  // fields, because an all-new cluster (every keyword state="new",
+  // priorImpressions=0) would otherwise be indistinguishable from a legacy
+  // run where all prior fields are null.
+  const hasPrior = isComparisonRun;
+
+  let priorClicks = 0;
+  let priorImpressions = 0;
+  let priorPosSum = 0;
+  let priorPosWeight = 0;
+
+  if (hasPrior) {
+    for (const k of keywords) {
+      // Keywords with null prior (absent from comparison) contribute 0 to
+      // prior totals. This is correct: their full current metrics will already
+      // be reflected in currentTotal, making the abs delta correct.
+      priorClicks += k.priorClicks ?? 0;
+      priorImpressions += k.priorImpressions ?? 0;
+      const pi = k.priorImpressions ?? 0;
+      priorPosSum += (k.priorPosition ?? 0) * pi;
+      priorPosWeight += pi;
+    }
+  }
+
+  // Legacy run: return null for every comparison field immediately.
+  if (!hasPrior) {
+    return {
+      priorTotalClicks: null,
+      priorTotalImpressions: null,
+      priorBlendedCtr: null,
+      priorAvgPosition: null,
+      clickDeltaAbs: null,
+      impressionDeltaAbs: null,
+      clickDeltaRatio: null,
+      impressionDeltaRatio: null,
+      stateCounts: null,
+    };
+  }
+
+  const stateCounts: Record<KeywordState, number> = {
+    new: 0,
+    rising: 0,
+    displaced: 0,
+    zero_click: 0,
+    striking_distance: 0,
+    stable: 0,
+  };
+  for (const k of keywords) {
+    if (k.state) stateCounts[k.state] = (stateCounts[k.state] ?? 0) + 1;
+  }
+
+  // Absolute deltas: current cluster total minus prior cluster total.
+  // This naturally includes "new" keywords (priorImpressions=0) so their full
+  // current metrics count toward the cluster's growth. No per-keyword delta
+  // summing needed — cluster-level subtraction is always correct.
+  const clickDeltaAbs = Math.round(currentTotalClicks - priorClicks);
+  const impressionDeltaAbs = Math.round(currentTotalImpressions - priorImpressions);
+
+  return {
+    priorTotalClicks: Math.round(priorClicks),
+    priorTotalImpressions: Math.round(priorImpressions),
+    priorBlendedCtr:
+      priorImpressions > 0 ? (priorClicks / priorImpressions) * 100 : 0,
+    priorAvgPosition:
+      priorPosWeight > 0
+        ? Number((priorPosSum / priorPosWeight).toFixed(1))
+        : null,
+    clickDeltaAbs,
+    impressionDeltaAbs,
+    clickDeltaRatio:
+      priorClicks > 0
+        ? (currentTotalClicks - priorClicks) / priorClicks
+        : null,
+    impressionDeltaRatio:
+      priorImpressions > 0
+        ? (currentTotalImpressions - priorImpressions) / priorImpressions
+        : null,
+    stateCounts,
+  };
+}
+
+// ─── Union-Find (SERP overlap clustering) ────────────────────────────────────
 
 class UnionFind {
   private parent: number[];
