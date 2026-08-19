@@ -1,0 +1,113 @@
+import time
+import datetime as dt
+from pathlib import Path
+
+import pandas as pd
+from googleapiclient.errors import HttpError
+
+ROW_LIMIT = 25000          # per-request max
+CACHE = Path(".gsc_cache")
+CACHE.mkdir(exist_ok=True)
+
+
+def _slug(s):
+    return "".join(c if c.isalnum() else "_" for c in s)
+
+
+def fetch_range(service, site_url, start, end, dimensions=("query", "page")):
+    """One date range, fully paginated. Returns a DataFrame."""
+    rows, start_row = [], 0
+    while True:
+        body = {
+            "startDate": start.isoformat(),
+            "endDate": end.isoformat(),
+            "dimensions": list(dimensions),
+            "rowLimit": ROW_LIMIT,
+            "startRow": start_row,
+            "dataState": "all",
+            "type": "web",
+        }
+        batch = _execute(service, site_url, body)
+        if not batch:
+            break
+        rows.extend(batch)
+        if len(batch) < ROW_LIMIT:
+            break
+        start_row += ROW_LIMIT
+
+    if not rows:
+        return pd.DataFrame(columns=list(dimensions) + ["clicks", "impressions", "ctr", "position"])
+
+    df = pd.DataFrame([
+        dict(zip(dimensions, r["keys"]),
+             clicks=r["clicks"], impressions=r["impressions"],
+             ctr=r["ctr"], position=r["position"])
+        for r in rows
+    ])
+    return df
+
+
+def _execute(service, site_url, body, attempts=5):
+    """Exponential backoff on rate limiting and transient errors."""
+    for i in range(attempts):
+        try:
+            resp = service.searchanalytics().query(siteUrl=site_url, body=body).execute()
+            return resp.get("rows", [])
+        except HttpError as e:
+            if e.resp.status in (429, 500, 503) and i < attempts - 1:
+                time.sleep(2 ** i)
+                continue
+            raise
+    return []
+
+
+def fetch_weeks(service, site_url, start, end, use_cache=True):
+    """Weekly chunks, each cached to parquet. Re-runs cost nothing."""
+    frames, cursor = [], start
+    while cursor <= end:
+        wk_end = min(cursor + dt.timedelta(days=6), end)
+        path = CACHE / f"{_slug(site_url)}__{cursor}__{wk_end}.parquet"
+
+        if use_cache and path.exists():
+            wk = pd.read_parquet(path)
+        else:
+            wk = fetch_range(service, site_url, cursor, wk_end)
+            wk.to_parquet(path, index=False)
+
+        wk["week_start"] = cursor
+        frames.append(wk)
+        cursor = wk_end + dt.timedelta(days=1)
+
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def collapse(df):
+    """Flatten weekly rows into one row per query-page. Position is impression-weighted."""
+    d = df.copy()
+    d["pos_x_imp"] = d["position"] * d["impressions"]
+    g = d.groupby(["query", "page"], as_index=False).agg(
+        clicks=("clicks", "sum"),
+        impressions=("impressions", "sum"),
+        pos_x_imp=("pos_x_imp", "sum"),
+    )
+    g["position"] = g["pos_x_imp"] / g["impressions"].replace(0, pd.NA)
+    g["ctr"] = g["clicks"] / g["impressions"].replace(0, pd.NA)
+    return g.drop(columns=["pos_x_imp"])
+
+
+def add_state(current, prior, min_impressions=10):
+    """Current vs prior window. Precedence order, first match wins."""
+    m = current.merge(prior, on=["query", "page"], how="left", suffixes=("", "_p"))
+    m[["clicks_p", "impressions_p"]] = m[["clicks_p", "impressions_p"]].fillna(0)
+
+    click_delta = (m["clicks"] - m["clicks_p"]) / m["clicks_p"].replace(0, pd.NA)
+    imp_delta = (m["impressions"] - m["impressions_p"]) / m["impressions_p"].replace(0, pd.NA)
+    enough = m["impressions"] >= min_impressions
+
+    m["state"] = "stable"
+    m.loc[imp_delta > 0.30, "state"] = "rising"
+    m.loc[(click_delta < -0.30) & (imp_delta.abs() <= 0.10), "state"] = "displaced"
+    m.loc[enough & (m["ctr"] < 0.005), "state"] = "zero_click"
+    m.loc[enough & m["position"].between(5, 15), "state"] = "striking_distance"
+    m.loc[m["impressions_p"] == 0, "state"] = "new"
+    return m
