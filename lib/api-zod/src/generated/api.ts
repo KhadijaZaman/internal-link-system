@@ -2086,6 +2086,8 @@ export const GetBingPagesResponse = zod.object({
   "aiCitations": zod.number().nullable(),
   "aiSessions": zod.number().nullable()
 })),
+  "gscWindowStart": zod.coerce.date().nullable(),
+  "gscWindowEnd": zod.coerce.date().nullable(),
   "bingSyncedAt": zod.string().nullable().describe('When the Bing API sync last ran (null = never)'),
   "aiCitationsAt": zod.string().nullable().describe('When the AI citation rollup was last applied (null = never)'),
   "latestUpload": zod.union([zod.object({
@@ -3403,6 +3405,8 @@ export const ListActionsResponse = zod.object({
   "done": zod.number(),
   "dismissed": zod.number()
 }),
+  "gscWindowStart": zod.coerce.date().nullable(),
+  "gscWindowEnd": zod.coerce.date().nullable(),
   "items": zod.array(zod.object({
   "id": zod.number(),
   "actionType": zod.enum(['add_inbound_links', 'add_outbound_links', 'fix_losing_query', 'review_suggestions', 'optimize_content', 'improve_ctr', 'fix_cannibalization']),

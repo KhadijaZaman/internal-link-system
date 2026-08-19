@@ -11,5 +11,9 @@ import type { ActionQueueCounts } from './actionQueueCounts';
 export interface ActionQueue {
   generatedAt: Date;
   counts: ActionQueueCounts;
+  /** @nullable */
+  gscWindowStart: Date | null;
+  /** @nullable */
+  gscWindowEnd: Date | null;
   items: ActionItem[];
 }

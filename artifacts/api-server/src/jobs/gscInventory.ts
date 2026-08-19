@@ -4,6 +4,7 @@ import {
   queryLosersTable,
   inventoryTable,
   pagesTable,
+  appStateTable,
 } from "@workspace/db";
 import { queryGsc, type GscRow } from "../integrations/gsc";
 import {
@@ -17,6 +18,7 @@ import { sectionFor } from "../lib/sections";
 import type { SiteContext } from "../lib/site";
 import { IntegrationNotConnectedError } from "../lib/siteIntegrations";
 import { chainActionQueueRecompute } from "../services/actionQueue";
+import { persistGscWindow } from "../lib/gscWindow";
 import { logger } from "../lib/logger";
 
 function dateOffset(days: number): string {
@@ -246,6 +248,12 @@ export async function runGscInventoryAndLosers(site: SiteContext): Promise<void>
       });
   }
   logger.info({ urls: byPath.size }, "GSC: inventory + pages updated");
+
+  // Record the exact query window used for this sync so the UI can show
+  // accurate date labels next to stored rollup figures (impressions, clicks).
+  // Written only here — after real data has been applied — so a graceful
+  // no-op skip (GSC disconnected) never overwrites the previous accurate window.
+  await persistGscWindow(site.id, currStart, currEnd);
 
   // Fresh inventory + losers change action priorities — refresh the queue.
   await chainActionQueueRecompute("gsc_inventory_and_losers", site.id);

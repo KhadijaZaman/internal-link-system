@@ -290,6 +290,9 @@ router.get("/bing/pages", requireAuth, requireSite, async (req, res) => {
     }
   }
 
+  const { loadGscWindow } = await import("../lib/gscWindow");
+  const gscWindow = await loadGscWindow(site.id);
+
   res.json({
     rows: visible.map((p) => ({
       path: p.path,
@@ -304,6 +307,8 @@ router.get("/bing/pages", requireAuth, requireSite, async (req, res) => {
       aiCitations: p.aiCitations,
       aiSessions: p.aiSessions,
     })),
+    gscWindowStart: gscWindow.gscWindowStart,
+    gscWindowEnd: gscWindow.gscWindowEnd,
     bingSyncedAt: bingSyncedAt?.toISOString() ?? null,
     aiCitationsAt: aiCitationsAt?.toISOString() ?? null,
     latestUpload: latestPagesUpload ? serializeUpload(latestPagesUpload) : null,

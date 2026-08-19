@@ -11,6 +11,10 @@ import type { BingPagesReportTotals } from './bingPagesReportTotals';
 
 export interface BingPagesReport {
   rows: BingPageMapRow[];
+  /** @nullable */
+  gscWindowStart: Date | null;
+  /** @nullable */
+  gscWindowEnd: Date | null;
   /**
      * When the Bing API sync last ran (null = never)
      * @nullable

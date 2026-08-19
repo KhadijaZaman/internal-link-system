@@ -2882,7 +2882,7 @@ components:
         lastSeenAt: { type: ["string", "null"], format: date-time }
     ActionQueue:
       type: object
-      required: [generatedAt, counts, items]
+      required: [generatedAt, counts, gscWindowStart, gscWindowEnd, items]
       properties:
         generatedAt: { type: string, format: date-time }
         counts:
@@ -2892,6 +2892,10 @@ components:
             open: { type: integer }
             done: { type: integer }
             dismissed: { type: integer }
+        # The 7-day GSC window the stored impressions/clicks figures cover
+        # (sync pulls days -9..-3 relative to the sync run, YYYY-MM-DD).
+        gscWindowStart: { type: ["string", "null"], format: date }
+        gscWindowEnd: { type: ["string", "null"], format: date }
         items:
           type: array
           items:
@@ -5755,12 +5759,16 @@ components:
         aiSessions: { type: ["integer", "null"] }
     BingPagesReport:
       type: object
-      required: [rows, bingSyncedAt, aiCitationsAt, latestUpload, totals]
+      required: [rows, gscWindowStart, gscWindowEnd, bingSyncedAt, aiCitationsAt, latestUpload, totals]
       properties:
         rows:
           type: array
           items:
             $ref: "#/components/schemas/BingPageMapRow"
+        # The 7-day GSC window the stored gscClicks/gscImpressions/gscPosition columns cover
+        # (sync pulls days -9..-3 relative to the sync run, YYYY-MM-DD).
+        gscWindowStart: { type: ["string", "null"], format: date }
+        gscWindowEnd: { type: ["string", "null"], format: date }
         bingSyncedAt:
           type: ["string", "null"]
           description: When the Bing API sync last ran (null = never)

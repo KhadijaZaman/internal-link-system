@@ -525,6 +525,10 @@ export type ActionQueueCounts = {
 export interface ActionQueue {
   generatedAt: string;
   counts: ActionQueueCounts;
+  /** @nullable */
+  gscWindowStart: string | null;
+  /** @nullable */
+  gscWindowEnd: string | null;
   items: ActionItem[];
 }
 
@@ -3354,6 +3358,10 @@ export type BingPagesReportTotals = {
 
 export interface BingPagesReport {
   rows: BingPageMapRow[];
+  /** @nullable */
+  gscWindowStart: string | null;
+  /** @nullable */
+  gscWindowEnd: string | null;
   /**
      * When the Bing API sync last ran (null = never)
      * @nullable

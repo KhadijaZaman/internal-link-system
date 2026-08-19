@@ -4,6 +4,7 @@ import { db, actionItemsTable, type ActionItem } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
 import { requireSite, getSite } from "../lib/site";
 import { ListActionsQueryParams, SetActionStatusBody } from "@workspace/api-zod";
+import { loadGscWindow } from "../lib/gscWindow";
 
 const router: IRouter = Router();
 
@@ -33,7 +34,7 @@ router.get("/actions", requireAuth, requireSite, async (req, res) => {
   const parsed = ListActionsQueryParams.safeParse(req.query);
   const status = parsed.success ? (parsed.data.status ?? "open") : "open";
 
-  const [rows, countRows] = await Promise.all([
+  const [rows, countRows, gscWindow] = await Promise.all([
     status === "all"
       ? db
           .select()
@@ -56,6 +57,7 @@ router.get("/actions", requireAuth, requireSite, async (req, res) => {
       .from(actionItemsTable)
       .where(eq(actionItemsTable.siteId, site.id))
       .groupBy(actionItemsTable.status),
+    loadGscWindow(site.id),
   ]);
 
   const counts = { open: 0, done: 0, dismissed: 0 };
@@ -68,6 +70,8 @@ router.get("/actions", requireAuth, requireSite, async (req, res) => {
   res.json({
     generatedAt: new Date().toISOString(),
     counts,
+    gscWindowStart: gscWindow.gscWindowStart,
+    gscWindowEnd: gscWindow.gscWindowEnd,
     items: rows.map(serialize),
   });
 });

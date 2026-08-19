@@ -34,6 +34,16 @@ import { InfoTip } from "@/components/info-tip";
 
 type StatusFilter = "open" | "done" | "dismissed" | "all";
 
+/** "Aug 6 – Aug 12, 2026" for the 7-day stored GSC window, or a fallback. */
+function gscWindowLabel(start: string | null | undefined, end: string | null | undefined): string {
+  if (!start || !end) return "latest Google window";
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  const s = new Date(`${start}T00:00:00Z`);
+  const e = new Date(`${end}T00:00:00Z`);
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return "latest Google window";
+  return `${s.toLocaleDateString(undefined, { ...opts, timeZone: "UTC" })} – ${e.toLocaleDateString(undefined, { ...opts, year: "numeric", timeZone: "UTC" })}`;
+}
+
 const TYPE_CONFIG: Record<
   string,
   {
@@ -345,6 +355,16 @@ export default function Actions() {
           </TabsTrigger>
         </TabsList>
       </Tabs>
+
+      {data?.gscWindowStart != null && (
+        <p className="text-xs text-muted-foreground">
+          Google impression and click figures reflect the{" "}
+          <span className="font-medium">
+            {gscWindowLabel(data.gscWindowStart, data.gscWindowEnd)}
+          </span>{" "}
+          GSC sync window.
+        </p>
+      )}
 
       {isLoading ? (
         <div className="flex justify-center py-16">

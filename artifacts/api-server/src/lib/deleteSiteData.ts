@@ -88,10 +88,17 @@ export async function deleteSiteData(siteId: number): Promise<void> {
     await tx.delete(watchlistQueriesTable).where(eq(watchlistQueriesTable.siteId, siteId));
     await tx.delete(jobRunsTable).where(eq(jobRunsTable.siteId, siteId));
     await tx.delete(siteIntegrationsTable).where(eq(siteIntegrationsTable.siteId, siteId));
-    // Per-site app_state entries (e.g. the keyword movement spreadsheet id).
+    // Per-site app_state entries (e.g. the keyword movement spreadsheet id and
+    // the GSC rollup window dates written by gscInventory after each sync).
     await tx
       .delete(appStateTable)
       .where(eq(appStateTable.key, `keyword_movement_sheet_id:${siteId}`));
+    await tx
+      .delete(appStateTable)
+      .where(eq(appStateTable.key, `gsc_window_start:${siteId}`));
+    await tx
+      .delete(appStateTable)
+      .where(eq(appStateTable.key, `gsc_window_end:${siteId}`));
     await tx.delete(sitesTable).where(eq(sitesTable.id, siteId));
   });
   invalidateSiteCache(siteId);

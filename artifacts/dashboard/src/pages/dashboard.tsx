@@ -714,6 +714,16 @@ export default function Dashboard() {
                             <div className="mt-3 flex items-center justify-between">
                               <div className="text-[11px] font-mono text-muted-foreground">
                                 <span className="font-bold text-foreground">{action.impressionsAtStake.toLocaleString()}</span> imp at stake
+                                {actionsData?.gscWindowStart && (
+                                  <span className="ml-1 opacity-60">
+                                    · {(() => {
+                                      const s = new Date(`${actionsData.gscWindowStart}T00:00:00Z`);
+                                      const e = new Date(`${actionsData.gscWindowEnd}T00:00:00Z`);
+                                      const fmt = (d: Date) => d.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+                                      return `${fmt(s)}–${fmt(e)}`;
+                                    })()}
+                                  </span>
+                                )}
                               </div>
                               <WouterLink href="/actions" className="text-xs font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity flex items-center">
                                 Fix it <ArrowUpRight className="h-3 w-3 ml-0.5" />

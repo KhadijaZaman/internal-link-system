@@ -64,6 +64,16 @@ function fmtDate(iso: string | null | undefined): string {
   return Number.isNaN(d.getTime()) ? "never" : d.toLocaleString();
 }
 
+/** "Aug 6 – Aug 12, 2026" for the 7-day GSC window, or a fallback string. */
+function gscWindowLabel(start: string | null | undefined, end: string | null | undefined): string {
+  if (!start || !end) return "latest GSC sync";
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  const s = new Date(`${start}T00:00:00Z`);
+  const e = new Date(`${end}T00:00:00Z`);
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return "latest GSC sync";
+  return `${s.toLocaleDateString(undefined, { ...opts, timeZone: "UTC" })} – ${e.toLocaleDateString(undefined, { ...opts, year: "numeric", timeZone: "UTC" })}`;
+}
+
 export default function BingPage() {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortState<SortKey>>({ key: "aiCitations", dir: "desc" });
@@ -186,12 +196,13 @@ export default function BingPage() {
     const t = data.totals;
     const hasCitations = t.aiCitations > 0;
 
+    const gscWin = gscWindowLabel(data.gscWindowStart, data.gscWindowEnd);
     const paragraphs: React.ReactNode[] = [
       <>
         Your pages appeared <Num>{gscImp.toLocaleString()} times</Num> in Google search results and{" "}
         <Num>{bingImp.toLocaleString()} times</Num> in Bing (those are &quot;impressions&quot; — being
-        shown, whether or not anyone clicked). Note the windows differ: Google numbers cover the latest
-        GSC sync (~28 days), while Bing&apos;s cover roughly the last 6 months — so don&apos;t compare
+        shown, whether or not anyone clicked). Note the windows differ: Google numbers cover{" "}
+        <Num>{gscWin}</Num>, while Bing&apos;s cover roughly the last 6 months — so don&apos;t compare
         them head-to-head.
         {gPos !== null || bPos !== null ? (
           <>
@@ -350,7 +361,7 @@ export default function BingPage() {
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <StatCard label="Google clicks" value={data.totals.gscClicks.toLocaleString()} hint="latest GSC sync" tip="Times someone clicked through to your site from Google's results, in the latest Search Console sync." />
+            <StatCard label="Google clicks" value={data.totals.gscClicks.toLocaleString()} hint={gscWindowLabel(data.gscWindowStart, data.gscWindowEnd)} tip="Times someone clicked through to your site from Google's results, in the latest Search Console sync window." />
             <StatCard
               label="Bing clicks"
               value={data.totals.bingClicks.toLocaleString()}
@@ -436,9 +447,9 @@ export default function BingPage() {
                 <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <SortableHeader col="path" label="Path" sort={sort} onChange={setSort} align="left" />
-                    <SortableHeader col="gscClicks" label="GSC Clicks" sort={sort} onChange={setSort} tip="Times someone clicked through to this page from Google's results." />
-                    <SortableHeader col="gscImpressions" label="GSC Impr." sort={sort} onChange={setSort} tip="Impressions on Google: times this page appeared in Google's results, whether or not it was clicked." />
-                    <SortableHeader col="gscPosition" label="GSC Pos." sort={sort} onChange={setSort} tip="Average ranking spot on Google. Lower is better — 1 is the top." />
+                    <SortableHeader col="gscClicks" label="GSC Clicks" sort={sort} onChange={setSort} tip={`Times someone clicked through to this page from Google's results (${gscWindowLabel(data.gscWindowStart, data.gscWindowEnd)}).`} />
+                    <SortableHeader col="gscImpressions" label="GSC Impr." sort={sort} onChange={setSort} tip={`Impressions on Google: times this page appeared in Google's results, whether or not it was clicked (${gscWindowLabel(data.gscWindowStart, data.gscWindowEnd)}).`} />
+                    <SortableHeader col="gscPosition" label="GSC Pos." sort={sort} onChange={setSort} tip={`Average ranking spot on Google; lower is better (${gscWindowLabel(data.gscWindowStart, data.gscWindowEnd)}).`} />
                     <SortableHeader col="bingClicks" label="Bing Clicks" sort={sort} onChange={setSort} tip="Times someone clicked through to this page from Bing's results (rolling ~6-month window)." />
                     <SortableHeader col="bingImpressions" label="Bing Impr." sort={sort} onChange={setSort} tip="Impressions on Bing: times this page appeared in Bing's results, whether or not it was clicked." />
                     <SortableHeader col="bingPosition" label="Bing Pos." sort={sort} onChange={setSort} tip="Average ranking spot on Bing. Lower is better — 1 is the top." />
