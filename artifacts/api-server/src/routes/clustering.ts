@@ -8,7 +8,11 @@ import {
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
 import { requireSite, getSite } from "../lib/site";
-import { StartClusterRunBody } from "@workspace/api-zod";
+import {
+  GetClusterSerpEstimateQueryParams,
+  GetClusterSerpEstimateResponse,
+  StartClusterRunBody,
+} from "@workspace/api-zod";
 import { runJob } from "../jobs/runner";
 import { withCache } from "../integrations/gsc";
 import {
@@ -17,7 +21,11 @@ import {
   DEFAULT_CORE_THRESHOLD,
 } from "../services/authoritySnapshot";
 import { cosineSim } from "../lib/semanticScorer";
-import { aggregateClusterPrior, resolveRunWeeks } from "../services/clustering";
+import {
+  aggregateClusterPrior,
+  estimateClusterSerpCostCents,
+  resolveRunWeeks,
+} from "../services/clustering";
 
 const router: IRouter = Router();
 
@@ -85,6 +93,25 @@ const STALE_MS = 3 * 60_000;
 const STALE_QUEUED_MS = 10 * 60_000;
 const INTERRUPTED_MESSAGE =
   "The server restarted while this clustering run was in progress. Start a new run to try again.";
+
+router.get("/clustering/estimate", requireAuth, requireSite, async (req, res): Promise<void> => {
+  const params = GetClusterSerpEstimateQueryParams.safeParse(req.query);
+  if (!params.success || !Number.isInteger(params.data.keywordCount)) {
+    res.status(400).json({
+      error: params.success
+        ? "Invalid keyword count"
+        : params.error.issues[0]?.message ?? "Invalid keyword count",
+    });
+    return;
+  }
+
+  res.json(
+    GetClusterSerpEstimateResponse.parse({
+      keywordCount: params.data.keywordCount,
+      estimatedCostCents: estimateClusterSerpCostCents(params.data.keywordCount),
+    }),
+  );
+});
 
 function serializeRun(run: ClusterRun) {
   return {
@@ -165,6 +192,10 @@ router.post("/clustering/runs", requireAuth, requireSite, async (req, res) => {
     return;
   }
   const body = parsed.data;
+  if (!Number.isInteger(body.keywordLimit)) {
+    res.status(400).json({ error: "Invalid input: keywordLimit must be an integer." });
+    return;
+  }
   if (body.paidRunConfirmed !== true) {
     res.status(400).json({
       error: "Confirm the estimated SERP cost before starting a clustering run.",

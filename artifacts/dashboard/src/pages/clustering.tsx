@@ -5,6 +5,7 @@ import {
   useStartClusterRun,
   useRebuildClusterRun,
   useListClusterRunClusters,
+  useGetClusterSerpEstimate,
   getListClusterRunClustersQueryKey,
   type ClusterRun,
   type KeywordCluster,
@@ -425,16 +426,39 @@ export default function Clustering() {
   const previewWindows = useMemo(() => getUtcWindows(weeks), [weeks]);
 
   const startMutation = useStartClusterRun();
-  const keywordCount = Math.max(10, Math.min(1000, Number(keywordLimit) || 250));
-  const estCost = (keywordCount * 0.0006).toFixed(2);
+  const parsedKeywordCount = Number(keywordLimit);
+  const keywordCount = Math.max(
+    10,
+    Math.min(
+      1000,
+      Number.isFinite(parsedKeywordCount) ? Math.floor(parsedKeywordCount) : 250,
+    ),
+  );
+  const estimateQ = useGetClusterSerpEstimate(
+    { keywordCount },
+  );
+  const estimateReady =
+    estimateQ.data?.keywordCount === keywordCount &&
+    !estimateQ.isFetching &&
+    !estimateQ.isError;
+  const estCost = estimateQ.data?.keywordCount === keywordCount
+    ? (estimateQ.data.estimatedCostCents / 100).toFixed(2)
+    : null;
+  const handleOpenConfirmation = () => {
+    setKeywordLimit(String(keywordCount));
+    setConfirmRunOpen(true);
+    void estimateQ.refetch();
+  };
   const handleStart = () => {
-    const limit = Math.max(10, Math.min(1000, Number(keywordLimit) || 250));
+    const approvedKeywordCount = estimateQ.data?.keywordCount;
+    if (!estimateReady || approvedKeywordCount !== keywordCount) return;
+
     startMutation.mutate(
       {
         data: {
           weeks,
           ...(country !== "all" ? { country } : {}),
-          keywordLimit: limit,
+          keywordLimit: approvedKeywordCount,
           locationCode: Number(locationCode),
           excludeBrand,
           paidRunConfirmed: true,
@@ -713,11 +737,11 @@ export default function Clustering() {
             </label>
             <div className="flex items-center gap-3">
               <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
-                Scrapes one live Google page per keyword (~${estCost} per run)
+                Scrapes one live Google page per keyword ({estCost ? `~$${estCost}` : "checking current price"} per run)
                 <InfoTip>Each keyword uses one paid Google-results lookup (a SERP credit). The dollar figure is the estimated cost for this run — bigger keyword counts cost more.</InfoTip>
               </span>
               <Button
-                onClick={() => setConfirmRunOpen(true)}
+                onClick={handleOpenConfirmation}
                 disabled={startMutation.isPending || !!activeRun}
                 className="font-medium shadow-sm"
                 data-testid="button-open-clustering-confirmation"
@@ -752,13 +776,17 @@ export default function Clustering() {
             <div className="flex items-baseline justify-between gap-4">
               <span className="font-medium text-foreground">Estimated SERP cost</span>
               <span className="text-lg font-semibold tabular-nums text-foreground" data-testid="text-confirmed-serp-estimate">
-                ${estCost}
+                {estimateQ.isError
+                  ? "Unavailable"
+                  : estimateReady && estCost
+                    ? `$${estCost}`
+                    : "Loading…"}
               </span>
             </div>
             <dl className="mt-3 space-y-1.5 text-xs text-muted-foreground">
               <div className="flex justify-between gap-4">
                 <dt>Keywords to scrape</dt>
-                <dd className="font-medium text-foreground">{fmtInt(keywordCount)}</dd>
+                <dd className="font-medium text-foreground">{fmtInt(estimateQ.data?.keywordCount ?? keywordCount)}</dd>
               </div>
               <div className="flex justify-between gap-4">
                 <dt>Comparison period</dt>
@@ -785,7 +813,7 @@ export default function Clustering() {
             </Button>
             <Button
               onClick={handleStart}
-              disabled={startMutation.isPending}
+              disabled={startMutation.isPending || !estimateReady}
               data-testid="button-confirm-clustering-run"
             >
               {startMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

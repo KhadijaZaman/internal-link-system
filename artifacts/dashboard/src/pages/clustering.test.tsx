@@ -1,16 +1,19 @@
 // @ts-nocheck
 // @vitest-environment jsdom
 import React from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as matchers from "@testing-library/jest-dom/matchers";
 expect.extend(matchers);
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { render, screen, fireEvent, within, cleanup } from "@testing-library/react";
 import Clustering, { ExpandedClusterDetail } from "./clustering";
 import { KeywordCluster, KeywordState } from "@workspace/api-client-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-const mockStartMutation = vi.fn();
-const mockInvalidateQueries = vi.fn();
+const { mockStartMutation, mockInvalidateQueries, mockEstimateQuery } = vi.hoisted(() => ({
+  mockStartMutation: vi.fn(),
+  mockInvalidateQueries: vi.fn(),
+  mockEstimateQuery: vi.fn(),
+}));
 
 vi.mock("@workspace/api-client-react", async (importOriginal) => {
   const actual = await importOriginal();
@@ -22,6 +25,8 @@ vi.mock("@workspace/api-client-react", async (importOriginal) => {
     useRebuildClusterRun: () => ({ mutate: vi.fn(), isPending: false }),
     useListClusterRunClusters: () => ({ data: [] }),
     getListClusterRunClustersQueryKey: (id: number) => ["/api/clustering/runs", id, "clusters"],
+    useGetClusterSerpEstimate: (params: { keywordCount: number }) =>
+      mockEstimateQuery(params),
   };
 });
 
@@ -44,10 +49,21 @@ vi.mock("@/components/spend-cap-badge", () => ({
 beforeEach(() => {
   mockStartMutation.mockReset();
   mockInvalidateQueries.mockReset();
+  mockEstimateQuery.mockReset();
+  mockEstimateQuery.mockImplementation(({ keywordCount }: { keywordCount: number }) => ({
+    data: { keywordCount, estimatedCostCents: 37 },
+    isFetching: false,
+    isError: false,
+    refetch: vi.fn(),
+  }));
+});
+
+afterEach(() => {
+  cleanup();
 });
 
 describe("paid clustering confirmation", () => {
-  it("does not submit on cancel and submits the displayed 4-week, 10-keyword estimate only after approval", () => {
+  it("normalizes a fractional count and shows the server estimate before approval", () => {
     render(
       <TooltipProvider>
         <Clustering />
@@ -55,11 +71,11 @@ describe("paid clustering confirmation", () => {
     );
 
     fireEvent.change(screen.getByRole("slider"), { target: { value: "4" } });
-    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "10" } });
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "10.5" } });
     fireEvent.click(screen.getByTestId("button-open-clustering-confirmation"));
 
     const confirmation = screen.getByTestId("dialog-confirm-clustering-run");
-    expect(within(confirmation).getByTestId("text-confirmed-serp-estimate")).toHaveTextContent("$0.01");
+    expect(within(confirmation).getByTestId("text-confirmed-serp-estimate")).toHaveTextContent("$0.37");
     expect(within(confirmation).getByText("4 weeks")).toBeInTheDocument();
     expect(within(confirmation).getByText("10")).toBeInTheDocument();
     expect(mockStartMutation).not.toHaveBeenCalled();
@@ -81,6 +97,39 @@ describe("paid clustering confirmation", () => {
         paidRunConfirmed: true,
       },
     });
+  });
+
+  it.each([
+    ["loading", { data: undefined, isFetching: true, isError: false }, "Loading…"],
+    [
+      "failed with a retained prior estimate",
+      {
+        data: { keywordCount: 250, estimatedCostCents: 37 },
+        isFetching: false,
+        isError: true,
+      },
+      "Unavailable",
+    ],
+  ])("blocks approval while the estimate is %s but still allows cancellation", (_label, state, text) => {
+    mockEstimateQuery.mockReturnValue({ ...state, refetch: vi.fn() });
+
+    render(
+      <TooltipProvider>
+        <Clustering />
+      </TooltipProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId("button-open-clustering-confirmation"));
+
+    expect(screen.getByTestId("text-confirmed-serp-estimate")).toHaveTextContent(text);
+    expect(screen.getByTestId("button-confirm-clustering-run")).toBeDisabled();
+    expect(screen.getByTestId("button-cancel-clustering-run")).toBeEnabled();
+
+    fireEvent.click(screen.getByTestId("button-confirm-clustering-run"));
+    expect(mockStartMutation).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("button-cancel-clustering-run"));
+    expect(screen.queryByTestId("dialog-confirm-clustering-run")).not.toBeInTheDocument();
   });
 });
 

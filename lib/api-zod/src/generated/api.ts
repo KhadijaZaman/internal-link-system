@@ -1620,6 +1620,31 @@ export const ListClusterRunsResponse = zod.array(ListClusterRunsResponseItem)
 
 
 /**
+ * @summary Estimate the current SERP cost for a keyword clustering run
+ */
+export const getClusterSerpEstimateQueryKeywordCountMin = 10;
+export const getClusterSerpEstimateQueryKeywordCountMax = 1000;
+
+
+
+export const GetClusterSerpEstimateQueryParams = zod.object({
+  "keywordCount": zod.coerce.number().min(getClusterSerpEstimateQueryKeywordCountMin).max(getClusterSerpEstimateQueryKeywordCountMax)
+})
+
+export const getClusterSerpEstimateResponseKeywordCountMin = 10;
+export const getClusterSerpEstimateResponseKeywordCountMax = 1000;
+
+export const getClusterSerpEstimateResponseEstimatedCostCentsMin = 0;
+
+
+
+export const GetClusterSerpEstimateResponse = zod.object({
+  "keywordCount": zod.number().min(getClusterSerpEstimateResponseKeywordCountMin).max(getClusterSerpEstimateResponseKeywordCountMax),
+  "estimatedCostCents": zod.number().min(getClusterSerpEstimateResponseEstimatedCostCentsMin).describe('Current SERP estimate in whole US cents, rounded up so the displayed estimate never understates the provider charge.')
+})
+
+
+/**
  * @summary Get one clustering run (status, progress, stats)
  */
 export const GetClusterRunParams = zod.object({

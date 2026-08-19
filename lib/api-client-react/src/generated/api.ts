@@ -40,6 +40,7 @@ import type {
   ClaimLegacyInput,
   ClaimRateLimited,
   ClusterRun,
+  ClusterSerpEstimate,
   CmsPublishInput,
   CmsPublishResult,
   ConnectBingInput,
@@ -65,6 +66,7 @@ import type {
   GenerateLinkMapInput,
   GenerateTopicalMapInput,
   GetAuthoritySnapshotParams,
+  GetClusterSerpEstimateParams,
   GetDailyActivityParams,
   GetGa4PagesParams,
   GetGscAuthUrl200,
@@ -4659,6 +4661,90 @@ export function useListClusterRuns<TData = Awaited<ReturnType<typeof listCluster
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListClusterRunsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetClusterSerpEstimateUrl = (params: GetClusterSerpEstimateParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/clustering/estimate?${stringifiedParams}` : `/api/clustering/estimate`
+}
+
+/**
+ * @summary Estimate the current SERP cost for a keyword clustering run
+ */
+export const getClusterSerpEstimate = async (params: GetClusterSerpEstimateParams, options?: RequestInit): Promise<ClusterSerpEstimate> => {
+
+  return customFetch<ClusterSerpEstimate>(getGetClusterSerpEstimateUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetClusterSerpEstimateQueryKey = (params?: GetClusterSerpEstimateParams,) => {
+    return [
+    `/api/clustering/estimate`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetClusterSerpEstimateQueryOptions = <TData = Awaited<ReturnType<typeof getClusterSerpEstimate>>, TError = ErrorType<void>>(params: GetClusterSerpEstimateParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getClusterSerpEstimate>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetClusterSerpEstimateQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getClusterSerpEstimate>>> = ({ signal }) => getClusterSerpEstimate(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getClusterSerpEstimate>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetClusterSerpEstimateQueryResult = NonNullable<Awaited<ReturnType<typeof getClusterSerpEstimate>>>
+export type GetClusterSerpEstimateQueryError = ErrorType<void>
+
+
+/**
+ * @summary Estimate the current SERP cost for a keyword clustering run
+ */
+
+export function useGetClusterSerpEstimate<TData = Awaited<ReturnType<typeof getClusterSerpEstimate>>, TError = ErrorType<void>>(
+ params: GetClusterSerpEstimateParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getClusterSerpEstimate>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetClusterSerpEstimateQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

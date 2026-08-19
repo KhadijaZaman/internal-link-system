@@ -1145,6 +1145,28 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ClusterRun"
+  /clustering/estimate:
+    get:
+      operationId: getClusterSerpEstimate
+      tags: [clustering]
+      summary: Estimate the current SERP cost for a keyword clustering run
+      parameters:
+        - in: query
+          name: keywordCount
+          required: true
+          schema:
+            type: integer
+            minimum: 10
+            maximum: 1000
+      responses:
+        "200":
+          description: Current provider-price estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterSerpEstimate"
+        "400":
+          description: Invalid keyword count
   /clustering/runs/{runId}:
     get:
       operationId: getClusterRun
@@ -5546,6 +5568,18 @@ components:
           type: boolean
           const: true
           description: Explicit owner approval of the paid SERP scrape shown in the confirmation step.
+    ClusterSerpEstimate:
+      type: object
+      required: [keywordCount, estimatedCostCents]
+      properties:
+        keywordCount:
+          type: integer
+          minimum: 10
+          maximum: 1000
+        estimatedCostCents:
+          type: integer
+          minimum: 0
+          description: Current SERP estimate in whole US cents, rounded up so the displayed estimate never understates the provider charge.
     ClusterRunWindow:
       type: object
       required: [currentStart, currentEnd, priorStart, priorEnd]

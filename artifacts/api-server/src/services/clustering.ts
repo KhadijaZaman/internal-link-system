@@ -62,6 +62,22 @@ export interface AggregatedQueryMetrics {
 /** Default weeks used when neither weeks nor days is supplied. */
 export const DEFAULT_WEEKS = 12;
 
+// DataForSEO's current Google SERP price. Microdollars keep the price rule
+// integer-based: $0.0006 = 600 microdollars. Update this one value when provider
+// pricing changes; all estimates are served from the same rule.
+export const SERP_PRICE_MICRODOLLARS_PER_KEYWORD = 600;
+const MICRODOLLARS_PER_CENT = 10_000;
+
+/**
+ * Return the current SERP estimate in whole cents. Partial cents round up so
+ * the owner never approves an estimate lower than the provider-priced work.
+ */
+export function estimateClusterSerpCostCents(keywordCount: number): number {
+  return Math.ceil(
+    (keywordCount * SERP_PRICE_MICRODOLLARS_PER_KEYWORD) / MICRODOLLARS_PER_CENT,
+  );
+}
+
 /**
  * Resolve the effective number of weeks for a clustering run from the raw
  * request body fields.

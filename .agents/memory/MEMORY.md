@@ -24,6 +24,7 @@
 - [GSC Generative AI data access](gsc-generative-ai-api.md) — AI Overviews/AI Mode report is UI-only (2026-07): no API type/searchAppearance; re-probe before promising Google-AI columns.
 - [Multi-tenant auth gates](multi-tenant-auth-gates.md) — after swapping admin-password for self-signup auth, audit every auth-only route for missing ownership gates; spend/proxy routes evade scoping sweeps.
 - [Orval inline body collision](orval-inline-body-collision.md) — inline requestBody schemas make orval emit a zod const and TS type with the same *Body name → star-export clash; always $ref a named component.
+- [Orval integer validation](orval-integer-validation.md) — generated Zod query/body schemas currently enforce numeric bounds but not integer-ness; add explicit integer checks at API boundaries.
 - [Per-site background jobs](per-site-jobs.md) — crons iterate sites sequentially with isolated failures; budget-truncated crawls must skip reconcile-deletes or they mass-delete inventory.
 - [Drizzle array params](drizzle-array-params.md) — a JS array in a sql template becomes a tuple, breaking `= any()`; use inArray.
 - [Concurrency pools must allSettle](concurrency-pool-unhandled-rejection.md) — Promise.all over worker loops leaves second rejections unobserved → Node 24 process crash.

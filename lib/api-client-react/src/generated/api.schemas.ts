@@ -3104,6 +3104,19 @@ export interface StartClusterRunInput {
   paidRunConfirmed: true;
 }
 
+export interface ClusterSerpEstimate {
+  /**
+     * @minimum 10
+     * @maximum 1000
+     */
+  keywordCount: number;
+  /**
+     * Current SERP estimate in whole US cents, rounded up so the displayed estimate never understates the provider charge.
+     * @minimum 0
+     */
+  estimatedCostCents: number;
+}
+
 /**
  * Exact ISO date ranges used for current and prior GSC periods
  */
@@ -3853,6 +3866,14 @@ days?: number;
  * @pattern ^[A-Za-z]{3}$
  */
 country?: string;
+};
+
+export type GetClusterSerpEstimateParams = {
+/**
+ * @minimum 10
+ * @maximum 1000
+ */
+keywordCount: number;
 };
 
 export type GetGscOverviewParams = {
