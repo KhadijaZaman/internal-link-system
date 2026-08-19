@@ -103,6 +103,13 @@ export interface GscTotals {
   position: number;
 }
 
+/**
+ * Hard safety cap used by the paginated mode of queryGscDimension.
+ * This protects a single paginated request. Callers spanning multiple date
+ * chunks must also enforce a whole-operation cap.
+ */
+export const QUERY_DIMENSION_PAGINATED_CAP = 2_000_000;
+
 export async function queryGscDimension(opts: {
   siteId: number;
   startDate: string;
@@ -124,9 +131,25 @@ export async function queryGscDimension(opts: {
    * "final": stable data only, which typically ends 2-3 days ago.
    */
   dataState?: "all" | "final";
+  /**
+   * When true, paginate to exhaustion rather than returning the first page
+   * only. Each GSC API page is `rowLimit` rows (capped at 25 000 per call).
+   * If the accumulated row count would exceed `paginatedCap` (default
+   * QUERY_DIMENSION_PAGINATED_CAP = 2 000 000) the function throws rather
+   * than silently returning a truncated result.
+   *
+   * Existing callers that do NOT set this flag retain the old single-page
+   * behaviour unchanged.
+   */
+  paginated?: boolean;
+  /**
+   * Hard row cap for paginated mode. Defaults to QUERY_DIMENSION_PAGINATED_CAP.
+   * Throws when the accumulated result would exceed this value.
+   */
+  paginatedCap?: number;
 }): Promise<GscDimensionRow[]> {
   const { sc, siteUrl } = await connect(opts.siteId);
-  const rowLimit = opts.rowLimit ?? 5000;
+  const rowLimit = Math.min(opts.rowLimit ?? 5000, 25_000);
   const body: searchconsole_v1.Schema$SearchAnalyticsQueryRequest = {
     startDate: opts.startDate,
     endDate: opts.endDate,
@@ -158,17 +181,59 @@ export async function queryGscDimension(opts: {
   if (filters.length > 0) {
     body.dimensionFilterGroups = [{ filters }];
   }
-  const res = await sc.searchanalytics.query({
-    siteUrl,
-    requestBody: body,
-  });
-  return (res.data.rows ?? []).map((r) => ({
-    key: r.keys?.[0] ?? "",
-    clicks: r.clicks ?? 0,
-    impressions: r.impressions ?? 0,
-    ctr: r.ctr ?? 0,
-    position: r.position ?? 0,
-  }));
+
+  if (!opts.paginated) {
+    // Legacy single-page path: unchanged behaviour for all existing callers.
+    const res = await sc.searchanalytics.query({ siteUrl, requestBody: body });
+    return (res.data.rows ?? []).map((r) => ({
+      key: r.keys?.[0] ?? "",
+      clicks: r.clicks ?? 0,
+      impressions: r.impressions ?? 0,
+      ctr: r.ctr ?? 0,
+      position: r.position ?? 0,
+    }));
+  }
+
+  // Paginated-to-exhaustion mode with fail-closed cap.
+  const cap = opts.paginatedCap ?? QUERY_DIMENSION_PAGINATED_CAP;
+  const all: GscDimensionRow[] = [];
+  let startRow = 0;
+  for (;;) {
+    const remaining = cap - all.length;
+    if (remaining <= 0) {
+      throw new Error(
+        `GSC dimension (${opts.dimension}) fetch exceeded safety cap of ${cap} rows ` +
+          `(${opts.startDate}–${opts.endDate}). Narrow the date range or apply stricter filters.`,
+      );
+    }
+    const requestRowLimit = Math.min(rowLimit, remaining);
+    const res = await sc.searchanalytics.query({
+      siteUrl,
+      requestBody: { ...body, rowLimit: requestRowLimit, startRow },
+    });
+    const rows = res.data.rows ?? [];
+    if (rows.length > requestRowLimit) {
+      throw new Error("GSC returned more dimension rows than requested.");
+    }
+    for (const r of rows) {
+      all.push({
+        key: r.keys?.[0] ?? "",
+        clicks: r.clicks ?? 0,
+        impressions: r.impressions ?? 0,
+        ctr: r.ctr ?? 0,
+        position: r.position ?? 0,
+      });
+    }
+    if (rows.length < requestRowLimit) break;
+    startRow += rows.length;
+    if (all.length >= cap) {
+      throw new Error(
+        `GSC dimension (${opts.dimension}) fetch exceeded safety cap of ${cap} rows ` +
+          `(${opts.startDate}–${opts.endDate}). Narrow the date range or apply stricter filters.`,
+      );
+    }
+  }
+  return all;
 }
 
 /**
@@ -207,6 +272,135 @@ export function keywordContainsRegex(keyword: string): string {
     .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
     .replace(/\s+/g, "\\s+");
   return `(?i)(^|\\s)${escaped}(\\s|$)`;
+}
+
+export interface GscQueryPageRow {
+  query: string;
+  page: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+
+/**
+ * Fetch all GSC query×page rows for a given date range, paginating to
+ * exhaustion. Country-filtered. Throws at a hard safety cap rather than
+ * silently truncating.
+ *
+ * This is used to gather page-level evidence for GSC-page clustering.
+ * Metrics (clicks/impressions/position) on each row are for that specific
+ * (query, page) pair for the given window.
+ *
+ * Safety cap: if the response would exceed MAX_QUERY_PAGE_ROWS rows we throw
+ * rather than silently returning a truncated picture. The caller must handle
+ * this error and decide whether to abort or re-parameterize.
+ */
+const DEFAULT_MAX_QUERY_PAGE_ROWS = 500_000;
+
+export async function queryGscQueryPage(opts: {
+  siteId: number;
+  startDate: string;
+  endDate: string;
+  /** ISO 3166-1 alpha-3 country code (lowercase), e.g. "usa", "gbr". */
+  countryFilter?: string;
+  /**
+   * RE2 regex applied to the query dimension (combined with countryFilter
+   * using AND). Used to scope page-evidence fetches to a selected-query batch,
+   * avoiding pulling all query×page data when only a subset is needed.
+   */
+  queryRegex?: string;
+  /**
+   * Rows per GSC API page (max 25 000). Defaults to 25 000.
+   * Smaller values are useful for testing.
+   */
+  pageSize?: number;
+  /**
+   * Hard cap for this paginated request. Callers can lower this to the
+   * remaining allowance in a whole-run budget.
+   */
+  maxRows?: number;
+}): Promise<GscQueryPageRow[]> {
+  const { sc, siteUrl } = await connect(opts.siteId);
+  const maxRows = opts.maxRows ?? DEFAULT_MAX_QUERY_PAGE_ROWS;
+  const pageSize = Math.min(opts.pageSize ?? 25_000, 25_000, maxRows);
+  if (pageSize < 1 || maxRows < 1) {
+    throw new Error("GSC query+page fetch requires a positive row allowance.");
+  }
+
+  const filters: NonNullable<
+    NonNullable<
+      searchconsole_v1.Schema$SearchAnalyticsQueryRequest["dimensionFilterGroups"]
+    >[number]["filters"]
+  > = [];
+  if (opts.countryFilter) {
+    filters.push({
+      dimension: "country",
+      operator: "equals",
+      expression: opts.countryFilter,
+    });
+  }
+  if (opts.queryRegex) {
+    filters.push({
+      dimension: "query",
+      operator: "includingRegex",
+      expression: opts.queryRegex,
+    });
+  }
+
+  const all: GscQueryPageRow[] = [];
+  let startRow = 0;
+
+  for (;;) {
+    const remaining = maxRows - all.length;
+    if (remaining <= 0) {
+      throw new Error(
+        `GSC query+page fetch exceeded safety cap of ${maxRows} rows ` +
+          `(${opts.startDate}–${opts.endDate}). Narrow the date range or apply stricter filters.`,
+      );
+    }
+    const requestPageSize = Math.min(pageSize, remaining);
+    const body: searchconsole_v1.Schema$SearchAnalyticsQueryRequest = {
+      startDate: opts.startDate,
+      endDate: opts.endDate,
+      dimensions: ["query", "page"],
+      rowLimit: requestPageSize,
+      startRow,
+    };
+    if (filters.length > 0) {
+      body.dimensionFilterGroups = [{ filters }];
+    }
+
+    const res = await sc.searchanalytics.query({ siteUrl, requestBody: body });
+    const rows = res.data.rows ?? [];
+    if (rows.length > requestPageSize) {
+      throw new Error("GSC returned more query+page rows than requested.");
+    }
+
+    for (const r of rows) {
+      const keys = r.keys ?? [];
+      all.push({
+        query: keys[0] ?? "",
+        page: keys[1] ?? "",
+        clicks: r.clicks ?? 0,
+        impressions: r.impressions ?? 0,
+        ctr: r.ctr ?? 0,
+        position: r.position ?? 0,
+      });
+    }
+
+    if (rows.length < requestPageSize) break;
+    startRow += rows.length;
+
+    if (all.length >= maxRows) {
+      throw new Error(
+        `GSC query+page fetch exceeded safety cap of ${maxRows} rows ` +
+          `(${opts.startDate}–${opts.endDate}). Narrow the date range or apply stricter filters.`,
+      );
+    }
+  }
+
+  return all;
 }
 
 export function aggregateTotals(rows: { clicks: number; impressions: number; position: number }[]): GscTotals {

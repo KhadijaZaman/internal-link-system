@@ -6,10 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type GetClusterSerpEstimateParams = {
-/**
- * @minimum 10
- * @maximum 1000
- */
-keywordCount: number;
-};
+export interface ClusterGscPage {
+  url: string;
+  clicks: number;
+  impressions: number;
+  position: number;
+}

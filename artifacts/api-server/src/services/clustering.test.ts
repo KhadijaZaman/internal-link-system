@@ -4,9 +4,14 @@ import {
   computeRunWindow,
   weeklyChunks,
   aggregateGscChunks,
+  aggregateGscQueryPageChunks,
   classifyKeyword,
   aggregateClusterPrior,
   resolveRunWeeks,
+  normalizeQuery,
+  selectEligibleQueries,
+  canonicalizePageUrl,
+  buildGscPageClusters,
   DEFAULT_WEEKS,
   MIN_IMPRESSIONS,
   RISING_THRESHOLD,
@@ -15,6 +20,9 @@ import {
   ZERO_CLICK_CTR,
   STRIKING_DISTANCE_LOW,
   STRIKING_DISTANCE_HIGH,
+  HUB_FIXED_THRESHOLD,
+  HUB_FRACTION,
+  PAGE_SHARE_THRESHOLD,
 } from "./clustering";
 
 // ─── isOperatorQuery ──────────────────────────────────────────────────────────
@@ -870,5 +878,650 @@ describe("computeRunWindow + weeklyChunks full coverage", () => {
     const chunks = weeklyChunks(w.priorStart, w.priorEnd);
     expect(chunks[0]!.start).toBe(w.priorStart);
     expect(chunks[chunks.length - 1]!.end).toBe(w.priorEnd);
+  });
+});
+
+// ─── normalizeQuery ───────────────────────────────────────────────────────────
+
+describe("normalizeQuery", () => {
+  it("lowercases ASCII", () => {
+    expect(normalizeQuery("SEO Tools")).toBe("seo tools");
+  });
+
+  it("trims leading and trailing whitespace", () => {
+    expect(normalizeQuery("  hello world  ")).toBe("hello world");
+  });
+
+  it("collapses internal whitespace runs to single space", () => {
+    expect(normalizeQuery("seo   tools  2026")).toBe("seo tools 2026");
+  });
+
+  it("applies NFKC normalization — collapses compatibility variants", () => {
+    // U+2126 OHM SIGN → U+03A9 GREEK CAPITAL LETTER OMEGA, then lowercased
+    expect(normalizeQuery("\u2126")).toBe("\u03c9");
+  });
+
+  it("NFKC does NOT convert curly/smart double quotes to straight ASCII quotes — they remain curly", () => {
+    // U+201C / U+201D are NOT compatibility equivalents of U+0022 under NFKC.
+    // isOperatorQuery handles curly quotes via an explicit Unicode regex check.
+    const withCurly = "\u201cseo\u201d tools";
+    const normalized = normalizeQuery(withCurly);
+    // Curly quotes survive normalization (they are preserved by NFKC).
+    expect(normalized.includes("\u201c")).toBe(true);
+    expect(normalized.includes("\u201d")).toBe(true);
+    // But isOperatorQuery still flags the normalized form.
+    expect(isOperatorQuery(normalized)).toBe(true);
+  });
+
+  it("NFKC normalizes ligatures (ﬁ → fi)", () => {
+    // U+FB01 LATIN SMALL LIGATURE FI → "fi"
+    expect(normalizeQuery("\uFB01ntech")).toBe("fintech");
+  });
+
+  it("deduplication: different Unicode casing/spacing forms merge to same key", () => {
+    const a = normalizeQuery("  AI  SEO  ");
+    const b = normalizeQuery("ai seo");
+    expect(a).toBe(b);
+  });
+
+  it("isOperatorQuery flags normalized queries with curly quotes (regex catches Unicode)", () => {
+    // NFKC preserves curly quotes; isOperatorQuery catches them via the Unicode regex.
+    const normalized = normalizeQuery("\u201cseo tools\u201d");
+    expect(isOperatorQuery(normalized)).toBe(true);
+  });
+
+  it("returns empty string for whitespace-only input", () => {
+    expect(normalizeQuery("   ")).toBe("");
+  });
+
+  it("returns empty string for empty input", () => {
+    expect(normalizeQuery("")).toBe("");
+  });
+});
+
+// ─── aggregateGscChunks uses normalizeQuery ────────────────────────────────
+
+describe("aggregateGscChunks — NFKC deduplication", () => {
+  it("merges rows that differ only in Unicode case/whitespace", () => {
+    // Both rows normalize to "seo tools"
+    const result = aggregateGscChunks([
+      [{ key: "  SEO Tools  ", clicks: 5, impressions: 50, ctr: 0.1, position: 3 }],
+      [{ key: "seo tools", clicks: 10, impressions: 100, ctr: 0.1, position: 4 }],
+    ]);
+    expect(result.has("seo tools")).toBe(true);
+    expect(result.get("seo tools")!.clicks).toBe(15);
+    expect(result.get("seo tools")!.impressions).toBe(150);
+  });
+
+  it("stores normalized key preserving Unicode curly quotes (NFKC keeps them)", () => {
+    // NFKC does not convert curly quotes; they remain in the normalized form.
+    // The key stored will be the NFKC+trim+collapse+lowercase form of the raw key.
+    const curlyKey = "\u201cseo tools\u201d";
+    const result = aggregateGscChunks([
+      [{ key: curlyKey, clicks: 3, impressions: 30, ctr: 0.1, position: 5 }],
+    ]);
+    // The stored key matches normalizeQuery applied to the same input.
+    const stored = normalizeQuery(curlyKey);
+    expect(result.has(stored)).toBe(true);
+    expect(result.get(stored)!.clicks).toBe(3);
+    // And such a query would be flagged by isOperatorQuery.
+    expect(isOperatorQuery(stored)).toBe(true);
+  });
+});
+
+// ─── canonicalizePageUrl ──────────────────────────────────────────────────────
+
+describe("canonicalizePageUrl", () => {
+  it("lowercases the hostname", () => {
+    expect(canonicalizePageUrl("https://EXAMPLE.COM/path")).toBe(
+      "https://example.com/path",
+    );
+  });
+
+  it("removes trailing slash from path (non-root)", () => {
+    expect(canonicalizePageUrl("https://example.com/blog/post/")).toBe(
+      "https://example.com/blog/post",
+    );
+  });
+
+  it("keeps root trailing slash (pathname = /)", () => {
+    expect(canonicalizePageUrl("https://example.com/")).toBe(
+      "https://example.com/",
+    );
+  });
+
+  it("removes fragment", () => {
+    expect(canonicalizePageUrl("https://example.com/page#section")).toBe(
+      "https://example.com/page",
+    );
+  });
+
+  it("preserves query string", () => {
+    expect(canonicalizePageUrl("https://example.com/page?foo=bar")).toBe(
+      "https://example.com/page?foo=bar",
+    );
+  });
+
+  it("preserves query string and removes fragment", () => {
+    expect(canonicalizePageUrl("https://example.com/page?foo=bar#anchor")).toBe(
+      "https://example.com/page?foo=bar",
+    );
+  });
+
+  it("returns original string on parse error", () => {
+    expect(canonicalizePageUrl("not-a-url")).toBe("not-a-url");
+  });
+
+  it("distinguishes http from https (both kept as-is)", () => {
+    const http = canonicalizePageUrl("http://example.com/page");
+    const https = canonicalizePageUrl("https://example.com/page");
+    expect(http).toBe("http://example.com/page");
+    expect(https).toBe("https://example.com/page");
+    expect(http).not.toBe(https);
+  });
+});
+
+// ─── aggregateGscQueryPageChunks ─────────────────────────────────────────────
+
+describe("aggregateGscQueryPageChunks", () => {
+  it("groups rows by normalized query and canonical page", () => {
+    const result = aggregateGscQueryPageChunks([
+      [
+        { query: "seo tools", page: "https://example.com/blog/", clicks: 5, impressions: 50, ctr: 0.1, position: 3 },
+        { query: "seo tools", page: "https://example.com/blog", clicks: 3, impressions: 30, ctr: 0.1, position: 4 },
+      ],
+    ]);
+    // Both pages canonicalize to https://example.com/blog
+    const pages = result.get("seo tools");
+    expect(pages).toBeDefined();
+    expect(pages!.size).toBe(1);
+    const entry = pages!.get("https://example.com/blog");
+    expect(entry!.clicks).toBe(8);
+    expect(entry!.impressions).toBe(80);
+  });
+
+  it("normalizes query keys (NFKC, case, whitespace)", () => {
+    const result = aggregateGscQueryPageChunks([
+      [
+        { query: "  AI Tools  ", page: "https://example.com/ai", clicks: 2, impressions: 20, ctr: 0.1, position: 5 },
+        { query: "ai tools", page: "https://example.com/ai", clicks: 1, impressions: 10, ctr: 0.1, position: 6 },
+      ],
+    ]);
+    const pages = result.get("ai tools");
+    expect(pages).toBeDefined();
+    expect(pages!.get("https://example.com/ai")!.impressions).toBe(30);
+  });
+
+  it("aggregates impressions and clicks across weekly chunks for the same query+page", () => {
+    const result = aggregateGscQueryPageChunks([
+      [{ query: "test", page: "https://a.com/x", clicks: 10, impressions: 100, ctr: 0.1, position: 3 }],
+      [{ query: "test", page: "https://a.com/x", clicks: 20, impressions: 200, ctr: 0.1, position: 5 }],
+    ]);
+    const entry = result.get("test")!.get("https://a.com/x")!;
+    expect(entry.clicks).toBe(30);
+    expect(entry.impressions).toBe(300);
+    // impression-weighted position: (3*100 + 5*200) / 300 = 1300/300 ≈ 4.33
+    expect(entry.position).toBeCloseTo(1300 / 300, 5);
+  });
+
+  it("skips rows with empty query or page after normalization", () => {
+    const result = aggregateGscQueryPageChunks([
+      [
+        { query: "", page: "https://a.com/x", clicks: 1, impressions: 10, ctr: 0.1, position: 2 },
+        { query: "kw", page: "", clicks: 1, impressions: 5, ctr: 0.2, position: 3 },
+        { query: "kw", page: "https://a.com/x", clicks: 5, impressions: 50, ctr: 0.1, position: 2 },
+      ],
+    ]);
+    expect(result.size).toBe(1);
+    expect(result.get("kw")!.size).toBe(1);
+  });
+
+  it("returns empty map for empty input", () => {
+    expect(aggregateGscQueryPageChunks([])).toEqual(new Map());
+    expect(aggregateGscQueryPageChunks([[]])).toEqual(new Map());
+  });
+});
+
+// ─── buildGscPageClusters ─────────────────────────────────────────────────────
+
+describe("buildGscPageClusters", () => {
+  /**
+   * Helper: build a queryPageEvidence map from a simple spec.
+   * spec: { query: { pageUrl: impressions } }
+   */
+  function makeEvidence(
+    spec: Record<string, Record<string, number>>,
+  ): Map<string, Map<string, import("@workspace/db").ClusterGscPageEntry>> {
+    const result = new Map<string, Map<string, import("@workspace/db").ClusterGscPageEntry>>();
+    for (const [q, pages] of Object.entries(spec)) {
+      const pageMap = new Map<string, import("@workspace/db").ClusterGscPageEntry>();
+      for (const [url, impressions] of Object.entries(pages)) {
+        pageMap.set(url, { url, clicks: 0, impressions, position: 5 });
+      }
+      result.set(q, pageMap);
+    }
+    return result;
+  }
+
+  it("returns empty array for 0 queries", () => {
+    expect(buildGscPageClusters([], new Map())).toEqual([]);
+  });
+
+  it("returns empty array for 1 query (no pair to cluster)", () => {
+    const ev = makeEvidence({ q1: { "https://a.com/x": 100 } });
+    expect(buildGscPageClusters(["q1"], ev)).toEqual([]);
+  });
+
+  it("clusters two queries sharing a qualifying page", () => {
+    // q1: page_a=1000 (only page, so 100% share)
+    // q2: page_a=1000 (only page, so 100% share)
+    // Both satisfy >= 20% share threshold → clustered.
+    const ev = makeEvidence({
+      q1: { "https://a.com/page": 1000 },
+      q2: { "https://a.com/page": 1000 },
+    });
+    const components = buildGscPageClusters(["q1", "q2"], ev);
+    expect(components).toHaveLength(1);
+    expect(components[0]!.sort()).toEqual([0, 1]);
+  });
+
+  it("does NOT cluster when shared page is below 20% share for one query", () => {
+    // q1: page_a=100, page_b=900 → page_a share = 10% (below threshold)
+    // q2: page_a=500 → page_a share = 100%
+    // Share check fails for q1 (10% < 20%) → no edge.
+    const ev = makeEvidence({
+      q1: { "https://a.com/x": 100, "https://a.com/y": 900 },
+      q2: { "https://a.com/x": 500 },
+    });
+    const components = buildGscPageClusters(["q1", "q2"], ev);
+    expect(components).toHaveLength(0);
+  });
+
+  it("suppresses hub pages (attached to more than threshold queries)", () => {
+    // Use 130 queries so both limits are meaningful. The 20% threshold is 26,
+    // but the fixed maximum is 25, so a page in 27 queries is suppressed.
+    const queries: string[] = [];
+    const spec: Record<string, Record<string, number>> = {};
+    const HUB_PAGE = "https://hub.com/main";
+    const UNIQUE_PAGE_BASE = "https://a.com/p";
+
+    for (let i = 0; i < 130; i++) {
+      const q = `query${i}`;
+      queries.push(q);
+      spec[q] = {};
+      // First 27 queries get the hub page + a unique page.
+      if (i < 27) {
+        spec[q]![HUB_PAGE] = 500;
+        spec[q]![`${UNIQUE_PAGE_BASE}${i}`] = 100;
+      } else {
+        // Others only get a distinct unique page.
+        spec[q]![`${UNIQUE_PAGE_BASE}${i}`] = 100;
+      }
+    }
+    const ev = makeEvidence(spec);
+    const hubThreshold = Math.min(HUB_FIXED_THRESHOLD, Math.ceil(HUB_FRACTION * 130));
+    // 27 > hubThreshold (25) → hub page is suppressed, so first 27 queries
+    // lose their common evidence and cannot cluster together via the hub.
+    expect(27 > hubThreshold).toBe(true);
+    const components = buildGscPageClusters(queries, ev);
+    // The hub page is suppressed; unique pages are unique → no clusters.
+    for (const comp of components) {
+      // No component should contain indices from the first 27 (hub-only evidence).
+      const hasHubQuery = comp.some((idx) => idx < 27);
+      // If the component has hub queries they must also share a non-hub page.
+      if (hasHubQuery) {
+        // This scenario has no non-hub pages shared between hub queries.
+        expect(false).toBe(true); // Should not happen.
+      }
+    }
+  });
+
+  it("singletons (no edges) are not returned as clusters", () => {
+    // Three queries each with a unique page.
+    const ev = makeEvidence({
+      q1: { "https://a.com/1": 100 },
+      q2: { "https://a.com/2": 100 },
+      q3: { "https://a.com/3": 100 },
+    });
+    const components = buildGscPageClusters(["q1", "q2", "q3"], ev);
+    expect(components).toHaveLength(0);
+  });
+
+  it("zero-impression pages are excluded from evidence", () => {
+    // q1: page_a=0 (excluded), page_b=500
+    // q2: page_a=0 (excluded), page_b=500
+    // Both have page_b but page_a is filtered → page_b creates the edge.
+    const ev = makeEvidence({
+      q1: { "https://a.com/x": 0, "https://a.com/b": 500 },
+      q2: { "https://a.com/x": 0, "https://a.com/b": 500 },
+    });
+    const components = buildGscPageClusters(["q1", "q2"], ev);
+    // page_b share for q1 = 500/500 = 100% ≥ 20%; same for q2 → clustered.
+    expect(components).toHaveLength(1);
+  });
+
+  it("three queries in one component when they all share one qualifying page", () => {
+    const ev = makeEvidence({
+      q1: { "https://a.com/shared": 1000 },
+      q2: { "https://a.com/shared": 1000 },
+      q3: { "https://a.com/shared": 1000 },
+    });
+    const components = buildGscPageClusters(["q1", "q2", "q3"], ev);
+    expect(components).toHaveLength(1);
+    expect(components[0]!.length).toBe(3);
+  });
+
+  it("two separate clusters when no cross-cluster page is shared", () => {
+    // Group A: q1, q2 share page_A
+    // Group B: q3, q4 share page_B
+    const ev = makeEvidence({
+      q1: { "https://a.com/A": 500 },
+      q2: { "https://a.com/A": 500 },
+      q3: { "https://a.com/B": 500 },
+      q4: { "https://a.com/B": 500 },
+    });
+    const components = buildGscPageClusters(["q1", "q2", "q3", "q4"], ev);
+    expect(components).toHaveLength(2);
+    const sizes = components.map((c) => c.length).sort((a, b) => a - b);
+    expect(sizes).toEqual([2, 2]);
+  });
+
+  it("queries with no pages are always unclustered (singletons)", () => {
+    const ev = makeEvidence({
+      q1: { "https://a.com/shared": 500 },
+      q2: { "https://a.com/shared": 500 },
+      // q3 has no evidence entry
+    });
+    const components = buildGscPageClusters(["q1", "q2", "q3"], ev);
+    // q1 and q2 cluster; q3 has no pages → singleton, not returned.
+    expect(components).toHaveLength(1);
+    expect(components[0]!.sort()).toEqual([0, 1]);
+  });
+
+  it("deterministic — same input always produces same output", () => {
+    const ev = makeEvidence({
+      q1: { "https://a.com/x": 500, "https://a.com/y": 300 },
+      q2: { "https://a.com/x": 500 },
+      q3: { "https://a.com/y": 300 },
+    });
+    const queries = ["q1", "q2", "q3"];
+    const r1 = buildGscPageClusters(queries, ev);
+    const r2 = buildGscPageClusters(queries, ev);
+    expect(JSON.stringify(r1)).toBe(JSON.stringify(r2));
+  });
+});
+
+// ─── selectEligibleQueries ────────────────────────────────────────────────────
+
+describe("selectEligibleQueries", () => {
+  // Helper: build input items from a plain string array.
+  function items(qs: string[]): Array<{ query: string }> {
+    return qs.map((q) => ({ query: q }));
+  }
+
+  // ── Basic pass-through ────────────────────────────────────────────────────
+
+  it("returns all queries when none are filtered and no limit", () => {
+    const { queries, duplicatesRemoved, brandFiltered, operatorFiltered } =
+      selectEligibleQueries(items(["seo tools", "ai content", "link building"]), "");
+    expect(queries).toEqual(["seo tools", "ai content", "link building"]);
+    expect(duplicatesRemoved).toBe(0);
+    expect(brandFiltered).toBe(0);
+    expect(operatorFiltered).toBe(0);
+  });
+
+  it("preserves input order", () => {
+    const input = ["zebra seo", "apple ranking", "mango traffic"];
+    const { queries } = selectEligibleQueries(items(input), "");
+    expect(queries).toEqual(["zebra seo", "apple ranking", "mango traffic"]);
+  });
+
+  it("returns normalized (lowercase/trimmed/collapsed) query strings", () => {
+    const { queries } = selectEligibleQueries(
+      items(["  SEO Tools  ", "AI Content"]),
+      "",
+    );
+    expect(queries).toEqual(["seo tools", "ai content"]);
+  });
+
+  // ── NFKC normalization ────────────────────────────────────────────────────
+
+  it("applies NFKC normalization — ligature ﬁ merges with fi", () => {
+    // U+FB01 LATIN SMALL LIGATURE FI normalizes to "fi"
+    const { queries } = selectEligibleQueries(
+      items(["\uFB01ntech investing"]),
+      "",
+    );
+    expect(queries).toEqual(["fintech investing"]);
+  });
+
+  it("deduplicates NFKC equivalents — ligature and plain form treated as same", () => {
+    // Both normalize to "fintech investing"
+    const { queries, duplicatesRemoved } = selectEligibleQueries(
+      items(["\uFB01ntech investing", "fintech investing"]),
+      "",
+    );
+    expect(queries).toEqual(["fintech investing"]);
+    expect(duplicatesRemoved).toBe(1);
+  });
+
+  // ── Deduplication ─────────────────────────────────────────────────────────
+
+  it("deduplicates case variants — first-seen wins", () => {
+    const { queries, duplicatesRemoved } = selectEligibleQueries(
+      items(["SEO Tools", "seo tools", "SEO TOOLS"]),
+      "",
+    );
+    expect(queries).toEqual(["seo tools"]);
+    expect(duplicatesRemoved).toBe(2);
+  });
+
+  it("deduplicates whitespace variants", () => {
+    const { queries, duplicatesRemoved } = selectEligibleQueries(
+      items(["seo  tools", "seo tools", "  seo tools  "]),
+      "",
+    );
+    expect(queries).toEqual(["seo tools"]);
+    expect(duplicatesRemoved).toBe(2);
+  });
+
+  it("deduplicates mixed case + whitespace", () => {
+    const { queries, duplicatesRemoved } = selectEligibleQueries(
+      items(["Best SEO Tools", "best seo tools", " Best  Seo  Tools "]),
+      "",
+    );
+    expect(queries).toEqual(["best seo tools"]);
+    expect(duplicatesRemoved).toBe(2);
+  });
+
+  // ── Brand filtering ───────────────────────────────────────────────────────
+
+  it("excludes queries containing the brand token", () => {
+    const { queries, brandFiltered } = selectEligibleQueries(
+      items(["acme seo tool", "best seo tool", "acme pricing", "link building"]),
+      "acme",
+    );
+    expect(queries).toEqual(["best seo tool", "link building"]);
+    expect(brandFiltered).toBe(2);
+  });
+
+  it("brand token is compared against the normalized query", () => {
+    // Brand token "acme" should match "ACME seo" after normalization.
+    const { queries, brandFiltered } = selectEligibleQueries(
+      items(["ACME seo tools", "content strategy"]),
+      "acme",
+    );
+    expect(queries).toEqual(["content strategy"]);
+    expect(brandFiltered).toBe(1);
+  });
+
+  it("empty brandToken disables brand filtering", () => {
+    const { queries, brandFiltered } = selectEligibleQueries(
+      items(["acme seo", "other tool"]),
+      "",
+    );
+    expect(queries).toEqual(["acme seo", "other tool"]);
+    expect(brandFiltered).toBe(0);
+  });
+
+  it("brand filtering uses substring match (partial brand name in query is excluded)", () => {
+    // "acme" appears inside "acacme" — that's excluded too (substring).
+    const { brandFiltered } = selectEligibleQueries(
+      items(["acme tools", "best acme", "acacme", "noacme"]),
+      "acme",
+    );
+    expect(brandFiltered).toBe(4); // all contain "acme" as substring
+  });
+
+  // ── Operator filtering ────────────────────────────────────────────────────
+
+  it("excludes quoted-phrase queries (straight double quotes)", () => {
+    const { queries, operatorFiltered } = selectEligibleQueries(
+      items(['"fintech" "founded 2020"', "seo tools"]),
+      "",
+    );
+    expect(queries).toEqual(["seo tools"]);
+    expect(operatorFiltered).toBe(1);
+  });
+
+  it("excludes queries with curly/smart quotes (belt-and-suspenders check)", () => {
+    // U+201C / U+201D — not converted by NFKC but caught by isOperatorQuery regex
+    const { queries, operatorFiltered } = selectEligibleQueries(
+      items(["\u201cfintech\u201d tools", "seo strategy"]),
+      "",
+    );
+    expect(queries).toEqual(["seo strategy"]);
+    expect(operatorFiltered).toBe(1);
+  });
+
+  it("excludes parenthesized boolean queries", () => {
+    const { queries, operatorFiltered } = selectEligibleQueries(
+      items([
+        "(fintech companies) and (uk)",
+        "(seo tools) or (marketing software)",
+        "best seo tools",
+      ]),
+      "",
+    );
+    expect(queries).toEqual(["best seo tools"]);
+    expect(operatorFiltered).toBe(2);
+  });
+
+  it("excludes search-operator prefix queries", () => {
+    const { queries, operatorFiltered } = selectEligibleQueries(
+      items(["site:example.com seo", "inurl:blog tips", "seo guide"]),
+      "",
+    );
+    expect(queries).toEqual(["seo guide"]);
+    expect(operatorFiltered).toBe(2);
+  });
+
+  it("keeps human queries with 'and'/'or' (not boolean structure)", () => {
+    const { queries } = selectEligibleQueries(
+      items(["pros and cons of seo", "seo or sem", "bed and breakfast seo"]),
+      "",
+    );
+    expect(queries).toEqual([
+      "pros and cons of seo",
+      "seo or sem",
+      "bed and breakfast seo",
+    ]);
+  });
+
+  // ── Limit ─────────────────────────────────────────────────────────────────
+
+  it("respects the limit — stops after exactly N eligible queries", () => {
+    const { queries } = selectEligibleQueries(
+      items(["a", "b", "c", "d", "e"]),
+      "",
+      3,
+    );
+    expect(queries).toEqual(["a", "b", "c"]);
+  });
+
+  it("limit applies after all filters — filtered queries don't count toward limit", () => {
+    // Operator query interspersed — limit of 2 should yield 2 non-operator queries.
+    const { queries, operatorFiltered } = selectEligibleQueries(
+      items([
+        "good query one",
+        '"operator query"',
+        "good query two",
+        "good query three",
+      ]),
+      "",
+      2,
+    );
+    expect(queries).toEqual(["good query one", "good query two"]);
+    expect(operatorFiltered).toBe(1);
+  });
+
+  it("limit of 0 returns empty array", () => {
+    const { queries } = selectEligibleQueries(items(["a", "b"]), "", 0);
+    expect(queries).toEqual([]);
+  });
+
+  it("limit larger than input returns all eligible queries", () => {
+    const { queries } = selectEligibleQueries(items(["a", "b", "c"]), "", 999);
+    expect(queries).toEqual(["a", "b", "c"]);
+  });
+
+  // ── Interaction: dedupe + brand + operator + limit all together ───────────
+
+  it("all filters interact correctly with a limit", () => {
+    // Input order (impressions already sorted by caller):
+    //   "acme seo"           — brand filtered (brandToken="acme")
+    //   "best seo tools"     — passes as #1
+    //   "acme pricing"       — brand filtered
+    //   '"ai tools"'         — operator filtered
+    //   "keyword research"   — passes as #2 → limit reached, loop exits
+    //   "BEST SEO TOOLS"     — never seen (loop exited at limit); no dedupe count
+    //   "content marketing"  — never seen (loop exited at limit)
+    //
+    // NOTE: the limit check fires at the TOP of the loop before any filters,
+    // so once limit is reached the remaining items are not processed and do
+    // not contribute to any filter counts.
+    const { queries, duplicatesRemoved, brandFiltered, operatorFiltered } =
+      selectEligibleQueries(
+        items([
+          "acme seo",
+          "best seo tools",
+          "acme pricing",
+          '"ai tools"',
+          "keyword research",
+          "BEST SEO TOOLS",
+          "content marketing",
+        ]),
+        "acme",
+        2,
+      );
+    expect(queries).toEqual(["best seo tools", "keyword research"]);
+    // Items after limit is reached are not processed, so no dedupe count.
+    expect(duplicatesRemoved).toBe(0);
+    expect(brandFiltered).toBe(2);
+    expect(operatorFiltered).toBe(1);
+  });
+
+  // ── Edge cases ─────────────────────────────────────────────────────────────
+
+  it("skips empty strings after normalization", () => {
+    const { queries } = selectEligibleQueries(items(["", "  ", "seo tools"]), "");
+    expect(queries).toEqual(["seo tools"]);
+  });
+
+  it("returns empty result for empty input", () => {
+    const result = selectEligibleQueries(items([]), "");
+    expect(result.queries).toEqual([]);
+    expect(result.duplicatesRemoved).toBe(0);
+    expect(result.brandFiltered).toBe(0);
+    expect(result.operatorFiltered).toBe(0);
+  });
+
+  it("accepts any iterable (Map.values())", () => {
+    const map = new Map([
+      ["k1", { query: "seo tools" }],
+      ["k2", { query: "link building" }],
+    ]);
+    const { queries } = selectEligibleQueries(map.values(), "");
+    expect(queries).toEqual(["seo tools", "link building"]);
   });
 });

@@ -37,21 +37,46 @@ export interface ClusterRunParams {
   country: string | null;
   /** Max number of top queries (by impressions) to cluster. */
   keywordLimit: number;
-  /** DataForSEO location_code for SERP scraping (e.g. 2840 = United States). */
-  locationCode: number;
+  /**
+   * DataForSEO location_code for SERP scraping (e.g. 2840 = United States).
+   * Legacy-only for SERP-based runs. Optional for GSC-page runs.
+   */
+  locationCode?: number;
   /** Exclude queries containing the brand token. */
   excludeBrand: boolean;
   /**
-   * When true, the next job pickup rebuilds this run from its stored SERP
-   * data (re-cluster + re-label) instead of scraping again.
+   * When true, the next job pickup rebuilds this run from its stored data
+   * (re-cluster + re-label) instead of fetching again.
    */
   reprocess?: boolean;
   /** Exact date windows used for this run (set once GSC is fetched). */
   window?: ClusterRunWindow;
+  /**
+   * Evidence source for this run.
+   * - "gsc_page": pure GSC query+page clustering (no DataForSEO).
+   * - absent / undefined: legacy SERP-based run.
+   */
+  evidenceSource?: "gsc_page";
+  /**
+   * Algorithm version tag for this run. Used to identify which clustering
+   * logic version produced the stored results.
+   */
+  algorithmVersion?: string | number;
 }
 
 export interface ClusterSerpUrl {
   url: string;
+  position: number;
+}
+
+/**
+ * A GSC page evidence entry for a keyword entry.
+ * Populated for gsc_page runs; absent for legacy SERP runs.
+ */
+export interface ClusterGscPageEntry {
+  url: string;
+  clicks: number;
+  impressions: number;
   position: number;
 }
 
@@ -70,8 +95,19 @@ export interface ClusterKeywordEntry {
   impressions: number;
   ctr: number;
   position: number;
-  /** Top organic SERP URLs captured for this query (kept for debug/re-cluster). */
-  serpUrls: ClusterSerpUrl[];
+  /**
+   * Top organic SERP URLs captured for this query (kept for debug/re-cluster).
+   * Legacy SERP runs only. Never populated for gsc_page runs.
+   * @deprecated Use gscPages for new (gsc_page) runs.
+   */
+  serpUrls?: ClusterSerpUrl[];
+
+  /**
+   * GSC page evidence for this query. Populated for gsc_page runs.
+   * Each entry is a page that had impressions for this query in the current
+   * window, with aggregated metrics.
+   */
+  gscPages?: ClusterGscPageEntry[];
 
   // ---- Prior-period comparison fields (nullable — absent on old runs) ----
   /** Prior-period clicks, or null if no prior data was collected for this run. */

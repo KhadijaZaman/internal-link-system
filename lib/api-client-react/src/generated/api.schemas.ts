@@ -3097,24 +3097,7 @@ export interface StartClusterRunInput {
      * @maximum 1000
      */
   keywordLimit?: number;
-  /** DataForSEO SERP location_code (2840 = United States) */
-  locationCode?: number;
   excludeBrand?: boolean;
-  /** Explicit owner approval of the paid SERP scrape shown in the confirmation step. */
-  paidRunConfirmed: true;
-}
-
-export interface ClusterSerpEstimate {
-  /**
-     * @minimum 10
-     * @maximum 1000
-     */
-  keywordCount: number;
-  /**
-     * Current SERP estimate in whole US cents, rounded up so the displayed estimate never understates the provider charge.
-     * @minimum 0
-     */
-  estimatedCostCents: number;
 }
 
 /**
@@ -3131,6 +3114,16 @@ export interface ClusterRunWindow {
   priorEnd: string;
 }
 
+/**
+ * Evidence source used for clustering (gsc_page = GSC page-level data)
+ */
+export type ClusterRunParamsEvidenceSource = typeof ClusterRunParamsEvidenceSource[keyof typeof ClusterRunParamsEvidenceSource];
+
+
+export const ClusterRunParamsEvidenceSource = {
+  gsc_page: 'gsc_page',
+} as const;
+
 export interface ClusterRunParams {
   /** GSC lookback window in weeks (4–52, default 12) */
   weeks?: number;
@@ -3139,9 +3132,14 @@ export interface ClusterRunParams {
   /** @nullable */
   country: string | null;
   keywordLimit: number;
-  locationCode: number;
+  /** Deprecated/legacy: no longer used for new runs; kept for serializing old run records only */
+  locationCode?: number;
   excludeBrand: boolean;
-  /** Set while a rebuild-from-stored-SERPs is queued/running */
+  /** Evidence source used for clustering (gsc_page = GSC page-level data) */
+  evidenceSource?: ClusterRunParamsEvidenceSource;
+  /** Clustering algorithm version */
+  algorithmVersion?: number;
+  /** Set while a rebuild-from-stored GSC page evidence is queued/running */
   reprocess?: boolean;
   window?: ClusterRunWindow;
 }
@@ -3177,11 +3175,6 @@ export interface ClusterRun {
   finishedAt: string | null;
 }
 
-export interface ClusterSerpUrl {
-  url: string;
-  position: number;
-}
-
 /**
  * Performance state of a keyword comparing current vs prior period.
 new: no prior impressions. rising: impressions up >30%.
@@ -3203,13 +3196,21 @@ export const KeywordState = {
   stable: 'stable',
 } as const;
 
+export interface ClusterGscPage {
+  url: string;
+  clicks: number;
+  impressions: number;
+  position: number;
+}
+
 export interface ClusterKeyword {
   query: string;
   clicks: number;
   impressions: number;
   ctr: number;
   position: number;
-  serpUrls: ClusterSerpUrl[];
+  /** GSC page-level evidence for this keyword (present on runs with evidenceSource=gsc_page) */
+  gscPages?: ClusterGscPage[];
   /**
      * Prior-period clicks
      * @nullable
@@ -3252,16 +3253,6 @@ export interface ClusterKeyword {
   impressionDeltaAbs?: number | null;
   /** Keyword performance state classification */
   state?: KeywordState | null;
-}
-
-export interface ClusterUrl {
-  url: string;
-  domain: string;
-  keywordCount: number;
-  /** @nullable */
-  bestPosition: number | null;
-  /** @nullable */
-  avgPosition: number | null;
 }
 
 /**
@@ -3369,8 +3360,6 @@ export interface KeywordCluster {
   /** Count of keywords per state; null for old runs without state data */
   stateCounts?: ClusterStateCounts | null;
   keywords: ClusterKeyword[];
-  ownUrls: ClusterUrl[];
-  competitorUrls: ClusterUrl[];
 }
 
 export interface StartSimilarityRunInput {
@@ -3711,7 +3700,7 @@ export interface TopicalMapNode {
   gscImpressions: number | null;
   /** @nullable */
   gscPosition: number | null;
-  /** Competitor domains already ranking for this topic, from stored SERP data (latest keyword-clustering run) */
+  /** Competitor domains already ranking for this topic, from stored SERP data (latest legacy SERP keyword-clustering run; absent for GSC-page-only deployments) */
   competitors?: TopicalMapNodeCompetitor[];
 }
 
@@ -3866,14 +3855,6 @@ days?: number;
  * @pattern ^[A-Za-z]{3}$
  */
 country?: string;
-};
-
-export type GetClusterSerpEstimateParams = {
-/**
- * @minimum 10
- * @maximum 1000
- */
-keywordCount: number;
 };
 
 export type GetGscOverviewParams = {

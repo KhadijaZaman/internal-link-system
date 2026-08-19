@@ -208,12 +208,22 @@ async function competitorsByNode(
   }
 
   // --- Fallback: cluster-run SERP matching for nodes without stored data ---
+  // Only legacy runs (evidenceSource absent or not "gsc_page") contain
+  // serpUrls. GSC-page runs never populate that field, so filter them in SQL
+  // and select the newest legacy report regardless of how many newer GSC runs
+  // have completed.
   if (needsFallback.length === 0) return out;
 
   const [run] = await db
     .select({ id: clusterRunsTable.id })
     .from(clusterRunsTable)
-    .where(and(eq(clusterRunsTable.siteId, siteId), eq(clusterRunsTable.status, "complete")))
+    .where(
+      and(
+        eq(clusterRunsTable.siteId, siteId),
+        eq(clusterRunsTable.status, "complete"),
+        sql`${clusterRunsTable.params}->>'evidenceSource' is distinct from 'gsc_page'`,
+      ),
+    )
     .orderBy(desc(clusterRunsTable.id))
     .limit(1);
   if (!run) return out;

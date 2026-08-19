@@ -1559,7 +1559,7 @@ export const GetKeywordReportResponse = zod.object({
 
 
 /**
- * @summary Start a keyword clustering run (paid DataForSEO SERP scrape)
+ * @summary Start a GSC-only keyword clustering run
  */
 export const startClusterRunBodyWeeksMin = 4;
 export const startClusterRunBodyWeeksMax = 52;
@@ -1572,7 +1572,6 @@ export const startClusterRunBodyKeywordLimitDefault = 250;
 export const startClusterRunBodyKeywordLimitMin = 10;
 export const startClusterRunBodyKeywordLimitMax = 1000;
 
-export const startClusterRunBodyLocationCodeDefault = 2840;
 export const startClusterRunBodyExcludeBrandDefault = true;
 
 export const StartClusterRunBody = zod.object({
@@ -1580,9 +1579,7 @@ export const StartClusterRunBody = zod.object({
   "days": zod.number().min(startClusterRunBodyDaysMin).max(startClusterRunBodyDaysMax).optional().describe('Legacy: GSC lookback window in days. Converted to nearest weeks when weeks is absent. Ignored when weeks is explicitly supplied.'),
   "country": zod.string().regex(startClusterRunBodyCountryRegExp).nullish().describe('ISO 3166-1 alpha-3 GSC country filter; omit for worldwide'),
   "keywordLimit": zod.number().min(startClusterRunBodyKeywordLimitMin).max(startClusterRunBodyKeywordLimitMax).default(startClusterRunBodyKeywordLimitDefault),
-  "locationCode": zod.number().default(startClusterRunBodyLocationCodeDefault).describe('DataForSEO SERP location_code (2840 = United States)'),
-  "excludeBrand": zod.boolean().default(startClusterRunBodyExcludeBrandDefault),
-  "paidRunConfirmed": zod.boolean().describe('Explicit owner approval of the paid SERP scrape shown in the confirmation step.')
+  "excludeBrand": zod.boolean().default(startClusterRunBodyExcludeBrandDefault)
 })
 
 
@@ -1598,9 +1595,11 @@ export const ListClusterRunsResponseItem = zod.object({
   "days": zod.number().optional().describe('Legacy lookback in days (kept for backward compat; prefer weeks)'),
   "country": zod.string().nullable(),
   "keywordLimit": zod.number(),
-  "locationCode": zod.number(),
+  "locationCode": zod.number().optional().describe('Deprecated\/legacy: no longer used for new runs; kept for serializing old run records only'),
   "excludeBrand": zod.boolean(),
-  "reprocess": zod.boolean().optional().describe('Set while a rebuild-from-stored-SERPs is queued\/running'),
+  "evidenceSource": zod.enum(['gsc_page']).optional().describe('Evidence source used for clustering (gsc_page = GSC page-level data)'),
+  "algorithmVersion": zod.number().optional().describe('Clustering algorithm version'),
+  "reprocess": zod.boolean().optional().describe('Set while a rebuild-from-stored GSC page evidence is queued\/running'),
   "window": zod.object({
   "currentStart": zod.string().describe('Start of current period (YYYY-MM-DD)'),
   "currentEnd": zod.string().describe('End of current period (YYYY-MM-DD, UTC today minus 3 days)'),
@@ -1620,31 +1619,6 @@ export const ListClusterRunsResponse = zod.array(ListClusterRunsResponseItem)
 
 
 /**
- * @summary Estimate the current SERP cost for a keyword clustering run
- */
-export const getClusterSerpEstimateQueryKeywordCountMin = 10;
-export const getClusterSerpEstimateQueryKeywordCountMax = 1000;
-
-
-
-export const GetClusterSerpEstimateQueryParams = zod.object({
-  "keywordCount": zod.coerce.number().min(getClusterSerpEstimateQueryKeywordCountMin).max(getClusterSerpEstimateQueryKeywordCountMax)
-})
-
-export const getClusterSerpEstimateResponseKeywordCountMin = 10;
-export const getClusterSerpEstimateResponseKeywordCountMax = 1000;
-
-export const getClusterSerpEstimateResponseEstimatedCostCentsMin = 0;
-
-
-
-export const GetClusterSerpEstimateResponse = zod.object({
-  "keywordCount": zod.number().min(getClusterSerpEstimateResponseKeywordCountMin).max(getClusterSerpEstimateResponseKeywordCountMax),
-  "estimatedCostCents": zod.number().min(getClusterSerpEstimateResponseEstimatedCostCentsMin).describe('Current SERP estimate in whole US cents, rounded up so the displayed estimate never understates the provider charge.')
-})
-
-
-/**
  * @summary Get one clustering run (status, progress, stats)
  */
 export const GetClusterRunParams = zod.object({
@@ -1660,9 +1634,11 @@ export const GetClusterRunResponse = zod.object({
   "days": zod.number().optional().describe('Legacy lookback in days (kept for backward compat; prefer weeks)'),
   "country": zod.string().nullable(),
   "keywordLimit": zod.number(),
-  "locationCode": zod.number(),
+  "locationCode": zod.number().optional().describe('Deprecated\/legacy: no longer used for new runs; kept for serializing old run records only'),
   "excludeBrand": zod.boolean(),
-  "reprocess": zod.boolean().optional().describe('Set while a rebuild-from-stored-SERPs is queued\/running'),
+  "evidenceSource": zod.enum(['gsc_page']).optional().describe('Evidence source used for clustering (gsc_page = GSC page-level data)'),
+  "algorithmVersion": zod.number().optional().describe('Clustering algorithm version'),
+  "reprocess": zod.boolean().optional().describe('Set while a rebuild-from-stored GSC page evidence is queued\/running'),
   "window": zod.object({
   "currentStart": zod.string().describe('Start of current period (YYYY-MM-DD)'),
   "currentEnd": zod.string().describe('End of current period (YYYY-MM-DD, UTC today minus 3 days)'),
@@ -1681,7 +1657,7 @@ export const GetClusterRunResponse = zod.object({
 
 
 /**
- * @summary Rebuild a run's clusters from its stored SERP data (free — no new scraping)
+ * @summary Rebuild a run's clusters from its stored GSC page evidence (free — no new data collection)
  */
 export const RebuildClusterRunParams = zod.object({
   "runId": zod.coerce.number()
@@ -1730,10 +1706,12 @@ export const ListClusterRunClustersResponseItem = zod.object({
   "impressions": zod.number(),
   "ctr": zod.number(),
   "position": zod.number(),
-  "serpUrls": zod.array(zod.object({
+  "gscPages": zod.array(zod.object({
   "url": zod.string(),
+  "clicks": zod.number(),
+  "impressions": zod.number(),
   "position": zod.number()
-})),
+})).optional().describe('GSC page-level evidence for this keyword (present on runs with evidenceSource=gsc_page)'),
   "priorClicks": zod.number().nullish().describe('Prior-period clicks'),
   "priorImpressions": zod.number().nullish().describe('Prior-period impressions'),
   "priorCtr": zod.number().nullish().describe('Prior-period CTR (0–1)'),
@@ -1743,20 +1721,6 @@ export const ListClusterRunClustersResponseItem = zod.object({
   "clickDeltaAbs": zod.number().nullish().describe('Absolute change in clicks (current − prior)'),
   "impressionDeltaAbs": zod.number().nullish().describe('Absolute change in impressions (current − prior)'),
   "state": zod.enum(['new', 'rising', 'displaced', 'zero_click', 'striking_distance', 'stable']).describe('Performance state of a keyword comparing current vs prior period.\nnew: no prior impressions. rising: impressions up >30%.\ndisplaced: clicks down >30% while impressions stable (≤10% change).\nzero_click: enough impressions but CTR<0.005.\nstriking_distance: enough impressions and position 5–15.\nstable: none of the above apply.\n').nullish().describe('Keyword performance state classification')
-})),
-  "ownUrls": zod.array(zod.object({
-  "url": zod.string(),
-  "domain": zod.string(),
-  "keywordCount": zod.number(),
-  "bestPosition": zod.number().nullable(),
-  "avgPosition": zod.number().nullable()
-})),
-  "competitorUrls": zod.array(zod.object({
-  "url": zod.string(),
-  "domain": zod.string(),
-  "keywordCount": zod.number(),
-  "bestPosition": zod.number().nullable(),
-  "avgPosition": zod.number().nullable()
 }))
 })
 export const ListClusterRunClustersResponse = zod.array(ListClusterRunClustersResponseItem)
@@ -1982,7 +1946,7 @@ export const GetTopicalMapRunResponse = zod.object({
   "url": zod.string(),
   "bestPosition": zod.number().nullable(),
   "matchedQuery": zod.string()
-})).optional().describe('Competitor domains already ranking for this topic, from stored SERP data (latest keyword-clustering run)')
+})).optional().describe('Competitor domains already ranking for this topic, from stored SERP data (latest legacy SERP keyword-clustering run; absent for GSC-page-only deployments)')
 })),
   "bridges": zod.array(zod.object({
   "id": zod.number(),
@@ -2064,7 +2028,7 @@ export const GetLatestTopicalMapResponse = zod.object({
   "url": zod.string(),
   "bestPosition": zod.number().nullable(),
   "matchedQuery": zod.string()
-})).optional().describe('Competitor domains already ranking for this topic, from stored SERP data (latest keyword-clustering run)')
+})).optional().describe('Competitor domains already ranking for this topic, from stored SERP data (latest legacy SERP keyword-clustering run; absent for GSC-page-only deployments)')
 })),
   "bridges": zod.array(zod.object({
   "id": zod.number(),
@@ -2133,7 +2097,7 @@ export const UpdateTopicalMapNodeResponse = zod.object({
   "url": zod.string(),
   "bestPosition": zod.number().nullable(),
   "matchedQuery": zod.string()
-})).optional().describe('Competitor domains already ranking for this topic, from stored SERP data (latest keyword-clustering run)')
+})).optional().describe('Competitor domains already ranking for this topic, from stored SERP data (latest legacy SERP keyword-clustering run; absent for GSC-page-only deployments)')
 })
 
 

@@ -12,8 +12,9 @@
  *   (drop bottom 20% / top 10% by impressions)
  *
  * Also exports pure helpers for GSC date-range computation, weekly chunk
- * slicing, multi-chunk aggregation, and keyword-state classification that are
- * used by keywordClustering.ts and unit-tested independently.
+ * slicing, multi-chunk aggregation, keyword-state classification, query
+ * normalization, and GSC-page clustering — used by keywordClustering.ts and
+ * unit-tested independently.
  */
 
 export const MIN_COMMON_URLS = 3;
@@ -38,9 +39,29 @@ export const ZERO_CLICK_CTR = 0.005;
 export const STRIKING_DISTANCE_LOW = 5;
 export const STRIKING_DISTANCE_HIGH = 15;
 
+// ─── GSC-page clustering constants ───────────────────────────────────────────
+
+/**
+ * A page is suppressed from evidence when it exceeds either 20% of the
+ * eligible queries or 25 queries. A small-query floor keeps legitimate compact
+ * clusters from being mistaken for hubs.
+ */
+export const HUB_FIXED_THRESHOLD = 25;
+export const HUB_MIN_THRESHOLD = 5;
+export const HUB_FRACTION = 0.2;
+
+/**
+ * A shared page creates an edge between two queries only when its impressions
+ * are >= this fraction of each query's total retained-page impressions.
+ */
+export const PAGE_SHARE_THRESHOLD = 0.2;
+
+/** Algorithm version tag for the current GSC-page clustering logic. */
+export const GSC_PAGE_ALGORITHM_VERSION = 1;
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-import type { KeywordState } from "@workspace/db";
+import type { KeywordState, ClusterGscPageEntry } from "@workspace/db";
 
 export interface GscPeriodMetrics {
   clicks: number;
@@ -57,26 +78,38 @@ export interface AggregatedQueryMetrics {
   prior: GscPeriodMetrics | null;
 }
 
+// ─── Query normalization ──────────────────────────────────────────────────────
+
+/**
+ * Normalize a raw GSC query string for deduplication and filtering.
+ *
+ * Rules (applied in order):
+ *  1. Unicode NFKC normalization (collapses compatibility variants, curly
+ *     quotes → straight quotes, ligatures, etc.)
+ *  2. Trim leading/trailing whitespace.
+ *  3. Collapse internal whitespace runs to a single space.
+ *  4. Lowercase.
+ *
+ * This is the single centralized normalization function. Apply it before:
+ *  - deduplication
+ *  - brand exclusion
+ *  - isOperatorQuery
+ *  - query selection
+ *  - page matching
+ *  - rebuild from stored entries
+ */
+export function normalizeQuery(raw: string): string {
+  return raw
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
 // ─── Request discrimination / weeks resolution ────────────────────────────────
 
 /** Default weeks used when neither weeks nor days is supplied. */
 export const DEFAULT_WEEKS = 12;
-
-// DataForSEO's current Google SERP price. Microdollars keep the price rule
-// integer-based: $0.0006 = 600 microdollars. Update this one value when provider
-// pricing changes; all estimates are served from the same rule.
-export const SERP_PRICE_MICRODOLLARS_PER_KEYWORD = 600;
-const MICRODOLLARS_PER_CENT = 10_000;
-
-/**
- * Return the current SERP estimate in whole cents. Partial cents round up so
- * the owner never approves an estimate lower than the provider-priced work.
- */
-export function estimateClusterSerpCostCents(keywordCount: number): number {
-  return Math.ceil(
-    (keywordCount * SERP_PRICE_MICRODOLLARS_PER_KEYWORD) / MICRODOLLARS_PER_CENT,
-  );
-}
 
 /**
  * Resolve the effective number of weeks for a clustering run from the raw
@@ -238,6 +271,9 @@ export interface RawGscRow {
  *  - CTR is recomputed as clicks / impressions
  *  - position is impression-weighted average
  *
+ * Normalization: query keys are NFKC-normalized, trimmed, whitespace-collapsed,
+ * and lowercased via normalizeQuery() so variant forms merge.
+ *
  * Queries with 0 total impressions across all chunks are retained (they will
  * be filtered by the caller as needed).
  */
@@ -251,7 +287,7 @@ export function aggregateGscChunks(
 
   for (const rows of chunks) {
     for (const r of rows) {
-      const q = r.key.trim().toLowerCase();
+      const q = normalizeQuery(r.key);
       if (!q) continue;
       const existing = acc.get(q);
       if (existing) {
@@ -590,6 +626,11 @@ export function buildClusters(urlSets: Array<Set<string>>): number[][] {
  *
  * Detection is structural on purpose — a bare " and " / " or " test would
  * wrongly drop legitimate queries like "pros and cons of x".
+ *
+ * The input query should already be NFKC-normalized (via normalizeQuery) so
+ * that curly/smart quotes are canonicalized to straight ASCII quotes before
+ * the double-quote check fires. The regex also catches the original Unicode
+ * curly quotes as a belt-and-suspenders fallback.
  */
 const OPERATOR_PREFIX_RE =
   /(?:^|\s|-)(?:site|inurl|allinurl|intitle|allintitle|intext|allintext|filetype|related|cache):/;
@@ -597,10 +638,324 @@ const BOOLEAN_STRUCTURE_RE = /\)\s*(?:and|or|\||&)\s*\(/;
 
 export function isOperatorQuery(query: string): boolean {
   const q = query.toLowerCase();
+  // After NFKC normalization, curly quotes become straight quotes (\u201c → ").
+  // The ASCII double-quote check handles the normalized form; the Unicode
+  // check is a belt-and-suspenders fallback for un-normalized input.
   if (q.includes('"') || /[\u201c\u201d\u00ab\u00bb]/.test(q)) return true;
   if (OPERATOR_PREFIX_RE.test(q)) return true;
   if (BOOLEAN_STRUCTURE_RE.test(q)) return true;
   return false;
+}
+
+// ─── Query eligibility pipeline ──────────────────────────────────────────────
+
+/**
+ * Result returned by selectEligibleQueries.
+ */
+export interface EligibleQueryResult {
+  /** Queries that passed all filters, in input order, up to `limit`. */
+  queries: string[];
+  /** Number of input entries that were dropped because they deduplicated to an
+   *  already-seen normalized form (NFKC/case/whitespace equivalents). */
+  duplicatesRemoved: number;
+  /** Number of input entries dropped by the brand-token check. */
+  brandFiltered: number;
+  /** Number of input entries dropped by isOperatorQuery. */
+  operatorFiltered: number;
+}
+
+/**
+ * Centralized query eligibility pipeline shared by fresh runs and rebuilds.
+ *
+ * For each item in `input` (consumed in order):
+ *  1. **Normalize** the query with normalizeQuery() (NFKC, trim, collapse
+ *     whitespace, lowercase).
+ *  2. **Skip empty** strings after normalization.
+ *  3. **Dedupe** — skip if the normalized form was already seen (first-seen
+ *     wins, preserving input order).
+ *  4. **Brand filter** — if `brandToken` is non-empty, skip queries that
+ *     contain it as a substring (brand token should already be normalized
+ *     with normalizeQuery before passing in).
+ *  5. **Operator filter** — skip queries that isOperatorQuery() flags.
+ *  6. **Limit** — stop accepting once `limit` eligible queries are collected
+ *     (pass `Infinity` or omit to accept all).
+ *
+ * Returns the eligible queries (normalized strings) plus per-stage drop counts
+ * useful for run stats.
+ *
+ * @param input       Iterable of objects with at least a `query: string` field.
+ * @param brandToken  Already-normalized brand token to exclude, or "" to skip
+ *                    brand filtering.  Obtain via
+ *                    `normalizeQuery(host.split(".")[0])` when excludeBrand.
+ * @param limit       Maximum number of eligible queries to return.
+ */
+export function selectEligibleQueries(
+  input: Iterable<{ query: string }>,
+  brandToken: string,
+  limit: number = Infinity,
+): EligibleQueryResult {
+  const queries: string[] = [];
+  let duplicatesRemoved = 0;
+  let brandFiltered = 0;
+  let operatorFiltered = 0;
+  const seen = new Set<string>();
+  const normalizedBrandToken = normalizeQuery(brandToken);
+
+  for (const item of input) {
+    if (queries.length >= limit) break;
+
+    const q = normalizeQuery(item.query);
+    if (!q) continue;
+
+    // Dedupe
+    if (seen.has(q)) {
+      duplicatesRemoved++;
+      continue;
+    }
+    seen.add(q);
+
+    // Brand filter
+    if (normalizedBrandToken && q.includes(normalizedBrandToken)) {
+      brandFiltered++;
+      continue;
+    }
+
+    // Operator filter
+    if (isOperatorQuery(q)) {
+      operatorFiltered++;
+      continue;
+    }
+
+    queries.push(q);
+  }
+
+  return { queries, duplicatesRemoved, brandFiltered, operatorFiltered };
+}
+
+// ─── GSC page URL canonicalization ───────────────────────────────────────────
+
+/**
+ * Canonicalize a GSC page URL for evidence matching:
+ *  - Parse as URL (throws on invalid — caller should catch if needed)
+ *  - Lowercase hostname
+ *  - Remove fragment
+ *  - Remove trailing slash from pathname (unless it is the root "/")
+ *  - Preserve query string
+ *  - Normalize http / https schemes (kept as-is; both forms are kept distinct)
+ *
+ * Returns the original string on parse error (best-effort).
+ */
+export function canonicalizePageUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    const host = u.hostname.toLowerCase();
+    const path = u.pathname.length > 1 ? u.pathname.replace(/\/+$/, "") : u.pathname;
+    const search = u.search;
+    return `${u.protocol}//${host}${path}${search}`;
+  } catch {
+    return raw;
+  }
+}
+
+// ─── GSC query×page aggregation ──────────────────────────────────────────────
+
+export interface RawGscQueryPageRow {
+  query: string;
+  page: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+
+/**
+ * Aggregate multiple weekly GSC query×page chunks into a Map:
+ *   normalizedQuery → Map<canonicalPageUrl, ClusterGscPageEntry>
+ *
+ * Rules:
+ *  - Query key: normalizeQuery() (NFKC, trim, collapse whitespace, lowercase)
+ *  - Page key: canonicalizePageUrl() (lowercase host, no fragment, no trailing slash)
+ *  - clicks/impressions: summed across chunks
+ *  - position: impression-weighted average across chunks
+ *  - ctr: recomputed as clicks/impressions
+ *
+ * Rows with empty query or page (after normalization) are skipped.
+ * Zero-impression rows are retained here; the caller filters them.
+ */
+export function aggregateGscQueryPageChunks(
+  chunks: RawGscQueryPageRow[][],
+): Map<string, Map<string, ClusterGscPageEntry>> {
+  // query → page → accumulator
+  const acc = new Map<
+    string,
+    Map<string, { clicks: number; impressions: number; posSum: number; posWeight: number }>
+  >();
+
+  for (const rows of chunks) {
+    for (const r of rows) {
+      const q = normalizeQuery(r.query);
+      if (!q) continue;
+      const page = canonicalizePageUrl(r.page);
+      if (!page) continue;
+
+      let pageMap = acc.get(q);
+      if (!pageMap) {
+        pageMap = new Map();
+        acc.set(q, pageMap);
+      }
+
+      const existing = pageMap.get(page);
+      if (existing) {
+        existing.clicks += r.clicks;
+        existing.impressions += r.impressions;
+        existing.posSum += r.position * Math.max(r.impressions, 0);
+        existing.posWeight += Math.max(r.impressions, 0);
+      } else {
+        pageMap.set(page, {
+          clicks: r.clicks,
+          impressions: r.impressions,
+          posSum: r.position * Math.max(r.impressions, 0),
+          posWeight: Math.max(r.impressions, 0),
+        });
+      }
+    }
+  }
+
+  const result = new Map<string, Map<string, ClusterGscPageEntry>>();
+  for (const [q, pageMap] of acc) {
+    const pages = new Map<string, ClusterGscPageEntry>();
+    for (const [page, v] of pageMap) {
+      pages.set(page, {
+        url: page,
+        clicks: Math.round(v.clicks),
+        impressions: Math.round(v.impressions),
+        position: v.posWeight > 0 ? v.posSum / v.posWeight : 0,
+      });
+    }
+    result.set(q, pages);
+  }
+  return result;
+}
+
+// ─── GSC-page clustering (pure) ──────────────────────────────────────────────
+
+/**
+ * Build clusters from GSC query×page evidence.
+ *
+ * Algorithm:
+ *  1. For each query, collect its retained pages (non-zero impressions only).
+ *  2. Compute a hub threshold: max(HUB_MIN_THRESHOLD, min(HUB_FIXED_THRESHOLD,
+ *     ceil(HUB_FRACTION * N))) where N = number of eligible queries.
+ *  3. Remove pages that appear in more queries than the hub threshold.
+ *  4. For each query, compute total retained-page impressions.
+ *  5. Connect two queries when they share at least one retained page whose
+ *     impressions are >= PAGE_SHARE_THRESHOLD of EACH query's total
+ *     retained-page impressions.
+ *  6. Return connected components of size >= 2 as clusters (arrays of query indices).
+ *
+ * @param eligibleQueries   Array of query strings (already normalized).
+ * @param queryPageEvidence Map from normalized query → Map<canonicalPageUrl, entry>
+ *                          (zero-impression pages should already be removed, or
+ *                          will be filtered here).
+ * @returns Array of components, each being an array of indices into eligibleQueries.
+ *          Singletons are omitted (callers treat them as unclustered).
+ */
+export function buildGscPageClusters(
+  eligibleQueries: string[],
+  queryPageEvidence: Map<string, Map<string, ClusterGscPageEntry>>,
+): number[][] {
+  const n = eligibleQueries.length;
+  if (n === 0) return [];
+
+  // Step 1: collect retained pages per query (non-zero impressions).
+  const queryPages: Array<Map<string, ClusterGscPageEntry>> = eligibleQueries.map((q) => {
+    const allPages = queryPageEvidence.get(q);
+    if (!allPages) return new Map();
+    const retained = new Map<string, ClusterGscPageEntry>();
+    for (const [url, entry] of allPages) {
+      if (entry.impressions > 0) retained.set(url, entry);
+    }
+    return retained;
+  });
+
+  // Step 2: compute hub threshold.
+  const hubThreshold = Math.max(
+    HUB_MIN_THRESHOLD,
+    Math.min(HUB_FIXED_THRESHOLD, Math.ceil(HUB_FRACTION * n)),
+  );
+
+  // Step 3: count how many queries each page appears in.
+  const pageQueryCount = new Map<string, number>();
+  for (const pages of queryPages) {
+    for (const url of pages.keys()) {
+      pageQueryCount.set(url, (pageQueryCount.get(url) ?? 0) + 1);
+    }
+  }
+
+  // Step 4: build per-query retained-page impression totals after hub removal.
+  // retainedPages[i] = Map of pages for query i that survived hub suppression.
+  const retainedPages: Array<Map<string, ClusterGscPageEntry>> = queryPages.map((pages) => {
+    const retained = new Map<string, ClusterGscPageEntry>();
+    for (const [url, entry] of pages) {
+      if ((pageQueryCount.get(url) ?? 0) <= hubThreshold) {
+        retained.set(url, entry);
+      }
+    }
+    return retained;
+  });
+
+  // Step 5: total retained-page impressions per query.
+  const totalImpressions: number[] = retainedPages.map((pages) => {
+    let total = 0;
+    for (const entry of pages.values()) total += entry.impressions;
+    return total;
+  });
+
+  // Step 6: union-find — connect queries sharing a qualifying page.
+  const uf = new UnionFind(n);
+
+  // Build inverted index: page → query indices that retained it.
+  const pageToQueries = new Map<string, number[]>();
+  for (let i = 0; i < n; i++) {
+    for (const url of retainedPages[i]!.keys()) {
+      const list = pageToQueries.get(url);
+      if (list) list.push(i);
+      else pageToQueries.set(url, [i]);
+    }
+  }
+
+  // For each page shared by ≥2 queries, check the share threshold.
+  for (const [url, queryIndices] of pageToQueries) {
+    if (queryIndices.length < 2) continue;
+    for (let a = 0; a < queryIndices.length; a++) {
+      for (let b = a + 1; b < queryIndices.length; b++) {
+        const i = queryIndices[a]!;
+        const j = queryIndices[b]!;
+        const totalI = totalImpressions[i]!;
+        const totalJ = totalImpressions[j]!;
+        if (totalI === 0 || totalJ === 0) continue;
+
+        const impI = retainedPages[i]!.get(url)?.impressions ?? 0;
+        const impJ = retainedPages[j]!.get(url)?.impressions ?? 0;
+        const shareI = impI / totalI;
+        const shareJ = impJ / totalJ;
+
+        if (shareI >= PAGE_SHARE_THRESHOLD && shareJ >= PAGE_SHARE_THRESHOLD) {
+          uf.union(i, j);
+        }
+      }
+    }
+  }
+
+  // Collect components of size >= 2.
+  const components = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) {
+    const root = uf.find(i);
+    const list = components.get(root);
+    if (list) list.push(i);
+    else components.set(root, [i]);
+  }
+  return [...components.values()].filter((c) => c.length >= 2);
 }
 
 const STOP_WORDS = new Set([

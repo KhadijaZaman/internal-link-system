@@ -5,7 +5,6 @@ import {
   useStartClusterRun,
   useRebuildClusterRun,
   useListClusterRunClusters,
-  useGetClusterSerpEstimate,
   getListClusterRunClustersQueryKey,
   type ClusterRun,
   type KeywordCluster,
@@ -35,16 +34,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { COUNTRY_OPTIONS } from "@/components/perf-blocks";
 import { HowThisWorks } from "@/components/how-this-works";
-import { JobSpendCapNotice } from "@/components/spend-cap-badge";
 import { InfoTip } from "@/components/info-tip";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   AlertCircle,
   Boxes,
@@ -68,18 +58,6 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { getUtcWindows, formatWindowDate } from "@/lib/date-helpers";
-
-const SERP_LOCATIONS = [
-  { value: "2840", label: "United States" },
-  { value: "2826", label: "United Kingdom" },
-  { value: "2356", label: "India" },
-  { value: "2124", label: "Canada" },
-  { value: "2036", label: "Australia" },
-  { value: "2276", label: "Germany" },
-  { value: "2250", label: "France" },
-  { value: "2528", label: "Netherlands" },
-  { value: "2702", label: "Singapore" },
-];
 
 const QUADRANT_META: Record<
   string,
@@ -112,10 +90,9 @@ const QUADRANT_META: Record<
 };
 
 const PHASE_LABELS: Record<string, string> = {
-  fetching_queries: "Pulling top queries from Search Console…",
-  posting_serp_tasks: "Sending keywords to DataForSEO…",
-  fetching_serps: "Scraping live Google results…",
-  clustering: "Building intent clusters…",
+  fetching_queries: "Reading weekly Search Console queries…",
+  fetching_pages: "Matching queries to GSC landing pages…",
+  clustering: "Grouping shared landing-page evidence…",
   labeling: "Naming clusters with AI…",
   saving: "Saving results…",
   done: "Done",
@@ -193,7 +170,7 @@ function runLabel(r: ClusterRun): string {
     hour: "numeric",
     minute: "2-digit",
   });
-  const kws = r.stats?.["keywords"];
+  const kws = r.stats?.["gscQueriesFetched"] ?? r.stats?.["keywords"];
   const runParams = r.params as { weeks?: number | null; days?: number | null; keywordLimit?: number | null };
   const duration = runParams.weeks ? `${runParams.weeks}w` : `${runParams.days}d`;
   return `${date} — ${duration}, ${kws ? `${fmtInt(kws)} keywords` : `up to ${runParams.keywordLimit} keywords`}`;
@@ -204,9 +181,6 @@ export function ExpandedClusterDetail({ cluster }: { cluster: KeywordCluster }) 
 
   const kws = cluster.keywords ?? [];
   const displayedKws = kwStateFilter === "all" ? kws : kws.filter(kw => kw.state === kwStateFilter);
-
-  const ownUrls = cluster.ownUrls ?? [];
-  const compUrls = cluster.competitorUrls ?? [];
 
   return (
     <div className="p-4 space-y-4">
@@ -246,16 +220,21 @@ export function ExpandedClusterDetail({ cluster }: { cluster: KeywordCluster }) 
                   <div className="whitespace-normal break-words max-w-[300px] sm:max-w-md font-medium text-foreground text-sm">
                     {kw.query}
                   </div>
-                  {kw.serpUrls && kw.serpUrls.length > 0 && (
-                    <div className="mt-1 flex flex-col gap-0.5">
-                      {kw.serpUrls.slice(0, 3).map((su) => (
-                        <a key={su.url} href={su.url} target="_blank" rel="noreferrer" className="text-[10px] text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 w-fit">
-                          <span className="opacity-50">#{su.position}</span>
-                          <span className="truncate max-w-[250px]">{su.url}</span>
+                  {kw.gscPages && kw.gscPages.length > 0 && (
+                    <div className="mt-2 flex flex-col gap-1 border-l-2 border-border/50 pl-2">
+                      <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                        GSC landing pages
+                      </div>
+                      {kw.gscPages.slice(0, 3).map((gp) => (
+                        <a key={gp.url} href={gp.url} target="_blank" rel="noreferrer" className="text-[10px] text-muted-foreground hover:text-primary transition-colors flex flex-col w-fit">
+                          <span className="truncate max-w-[250px]">{gp.url}</span>
+                          <span className="opacity-70 text-[9px]">
+                            {fmtInt(gp.impressions)} imp • {fmtInt(gp.clicks)} clicks • pos {gp.position.toFixed(1)}
+                          </span>
                         </a>
                       ))}
-                      {kw.serpUrls.length > 3 && (
-                        <span className="text-[10px] text-muted-foreground opacity-70">+{kw.serpUrls.length - 3} more</span>
+                      {kw.gscPages.length > 3 && (
+                        <span className="text-[10px] text-muted-foreground opacity-70">+{kw.gscPages.length - 3} more</span>
                       )}
                     </div>
                   )}
@@ -323,47 +302,6 @@ export function ExpandedClusterDetail({ cluster }: { cluster: KeywordCluster }) 
           </TableBody>
         </Table>
       </div>
-
-      <div className="grid gap-6 sm:grid-cols-2 mt-4 pt-4 border-t border-border/50">
-        <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Your ranking URLs
-          </div>
-          {ownUrls.length === 0 ? (
-            <p className="text-sm text-muted-foreground">None found in the top results.</p>
-          ) : (
-            <ul className="space-y-1.5">
-              {ownUrls.map((u) => (
-                <li key={u.url}>
-                  <a href={u.url} target="_blank" rel="noreferrer" className="group flex items-start gap-1.5 text-sm text-foreground hover:text-primary transition-colors">
-                    <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-50 group-hover:opacity-100" />
-                    <span className="break-all">{u.url}</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Competitors ranking in results
-          </div>
-          {compUrls.length === 0 ? (
-            <p className="text-sm text-muted-foreground">None recorded.</p>
-          ) : (
-            <ul className="space-y-1.5">
-              {compUrls.map((u) => (
-                <li key={u.url}>
-                  <a href={u.url} target="_blank" rel="noreferrer" className="group flex items-start gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors">
-                    <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-50 group-hover:opacity-100" />
-                    <span className="break-all line-clamp-2">{u.url}</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
@@ -419,9 +357,7 @@ export default function Clustering() {
   const [weeks, setWeeks] = useState(12);
   const [country, setCountry] = useState("all");
   const [keywordLimit, setKeywordLimit] = useState("250");
-  const [locationCode, setLocationCode] = useState("2840");
   const [excludeBrand, setExcludeBrand] = useState(true);
-  const [confirmRunOpen, setConfirmRunOpen] = useState(false);
 
   const previewWindows = useMemo(() => getUtcWindows(weeks), [weeks]);
 
@@ -434,43 +370,23 @@ export default function Clustering() {
       Number.isFinite(parsedKeywordCount) ? Math.floor(parsedKeywordCount) : 250,
     ),
   );
-  const estimateQ = useGetClusterSerpEstimate(
-    { keywordCount },
-  );
-  const estimateReady =
-    estimateQ.data?.keywordCount === keywordCount &&
-    !estimateQ.isFetching &&
-    !estimateQ.isError;
-  const estCost = estimateQ.data?.keywordCount === keywordCount
-    ? (estimateQ.data.estimatedCostCents / 100).toFixed(2)
-    : null;
-  const handleOpenConfirmation = () => {
-    setKeywordLimit(String(keywordCount));
-    setConfirmRunOpen(true);
-    void estimateQ.refetch();
-  };
-  const handleStart = () => {
-    const approvedKeywordCount = estimateQ.data?.keywordCount;
-    if (!estimateReady || approvedKeywordCount !== keywordCount) return;
 
+  const handleStart = () => {
     startMutation.mutate(
       {
         data: {
           weeks,
           ...(country !== "all" ? { country } : {}),
-          keywordLimit: approvedKeywordCount,
-          locationCode: Number(locationCode),
+          keywordLimit: keywordCount,
           excludeBrand,
-          paidRunConfirmed: true,
         },
       },
       {
         onSuccess: () => {
-          setConfirmRunOpen(false);
           toast({
             title: "Clustering run started",
             description:
-              "Scraping live Google results usually takes 2–5 minutes. This page updates automatically.",
+              "Grouping keywords from your Search Console data. This usually takes a few minutes.",
           });
           queryClient.invalidateQueries({ queryKey: getListClusterRunsQueryKey() });
         },
@@ -494,7 +410,7 @@ export default function Clustering() {
           toast({
             title: "Rebuilding clusters",
             description:
-              "Re-grouping and renaming from the already-scraped Google results — no new scraping cost. Takes under a minute.",
+              "Re-grouping and renaming from the existing data. Takes under a minute.",
           });
           queryClient.invalidateQueries({ queryKey: getListClusterRunsQueryKey() });
         },
@@ -558,7 +474,10 @@ export default function Clustering() {
     days?: number | null;
     window?: { currentStart: string; currentEnd: string; priorStart: string; priorEnd: string } | null;
     keywordLimit?: number | null;
+    evidenceSource?: string | null;
   } | null;
+
+  const isLegacy = selectedRunParams?.evidenceSource !== "gsc_page";
 
   return (
     <div className="max-w-6xl space-y-6 pb-20">
@@ -568,26 +487,22 @@ export default function Clustering() {
           Keyword Clusters
         </h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-4xl leading-relaxed">
-          Groups your top Search Console queries by real Google search intent: two
-          keywords land in the same cluster when they share at least 3 of the same
-          ranking URLs. Each cluster shows your page vs the competitor pages winning
-          the clicks, measured across strictly equal current vs prior windows.
+          Queries are grouped when they share meaningful Google Search Console landing-page evidence.
+          Current-vs-prior performance uses weekly GSC data. Query cleanup removes duplicates,
+          brand terms (when enabled), and quoted/operator/Boolean queries before grouping.
         </p>
-        <div className="mt-3">
-          <JobSpendCapNotice jobName="keyword_clustering" suppressed={!!failedLatest} />
-        </div>
       </div>
 
       <HowThisWorks
-        summary="Groups your Google Search Console keywords into topic clusters based on which pages actually show up in Google for them. Compares performance between two exactly equal time windows."
+        summary="Groups your Google Search Console keywords into topic clusters based on shared landing pages. Compares performance between two exactly equal time windows."
         steps={[
           {
             title: "Start a run",
-            body: "Choose how many weeks of data to analyze, how many keywords to include, and which country's Google results to check, then press Start clustering. A fresh run uses paid search credits.",
+            body: "Choose how many weeks of data to analyze, how many keywords to include, and an optional country filter, then press Start clustering.",
           },
           {
             title: "Wait a few minutes",
-            body: "The page tracks progress automatically as it pulls your queries, checks Google, and groups them.",
+            body: "The page tracks progress automatically as it pulls your queries, checks landing pages, and groups them.",
           },
           {
             title: "Read the map",
@@ -595,30 +510,25 @@ export default function Clustering() {
           },
           {
             title: "Open a cluster",
-            body: "Expand any row to see the exact queries, their individual current vs prior performance, movement state, and the competitor pages ranking in the same search results.",
+            body: "Expand any row to see the exact queries, their individual current vs prior performance, movement state, and the GSC landing pages they share.",
           },
           {
             title: "Improve names for free",
-            body: "Use “Improve cluster names” to re-group and rename an existing run from data already stored — no new scraping cost.",
+            body: "Use “Improve cluster names” to re-group and rename an existing run from data already stored.",
           },
         ]}
         faqs={[
-          {
-            title: "Does running this cost money?",
-            body: "Yes — a fresh run scrapes one live Google results page per keyword and uses paid SERP credits. The dollar estimate is shown by the Start button. Rebuilding or renaming an existing run is free.",
-          },
           {
             title: "How does the comparison window work?",
             body: "The report takes your selected number of weeks, ending 3 days ago, and compares it to the exact equal prior window. It classifies keywords into states like Rising or Displaced based on how clicks and impressions moved between the two periods.",
           },
           {
             title: "Why are some keywords “unclustered”?",
-            body: "Two keywords only join the same cluster when they share at least 3 of the same ranking pages in Google. Keywords too unique to match anything are left out.",
+            body: "Two keywords only join the same cluster when they share meaningful landing-page evidence. Keywords too unique to match anything are left out.",
           },
         ]}
         tips={[
           "Look for 'Striking Distance' keywords inside 'Opportunities' clusters — these are quick wins where small ranking improvements yield huge CTR jumps.",
-          "Start with a smaller keyword count to keep the cost low, then run bigger once you trust the results.",
         ]}
       />
 
@@ -698,7 +608,7 @@ export default function Clustering() {
             <div>
               <label className="text-xs font-medium text-muted-foreground inline-flex items-center gap-1">
                 Keywords to cluster
-                <InfoTip>How many of your most-seen keywords to group. More keywords give a fuller map but cost more to scrape (one paid Google lookup each).</InfoTip>
+                <InfoTip>How many of your most-seen keywords to group.</InfoTip>
               </label>
               <Input
                 className="mt-1 tabular-nums"
@@ -708,20 +618,6 @@ export default function Clustering() {
                 value={keywordLimit}
                 onChange={(e) => setKeywordLimit(e.target.value)}
               />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground inline-flex items-center gap-1">
-                Google results location
-                <InfoTip>Which country's Google results to check when grouping keywords. Pick the market you care about most.</InfoTip>
-              </label>
-              <Select value={locationCode} onValueChange={setLocationCode}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {SERP_LOCATIONS.map((l) => (
-                    <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
@@ -736,15 +632,11 @@ export default function Clustering() {
               <InfoTip>Leaves out searches for your own brand name so they don't crowd out real topic opportunities.</InfoTip>
             </label>
             <div className="flex items-center gap-3">
-              <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
-                Scrapes one live Google page per keyword ({estCost ? `~$${estCost}` : "checking current price"} per run)
-                <InfoTip>Each keyword uses one paid Google-results lookup (a SERP credit). The dollar figure is the estimated cost for this run — bigger keyword counts cost more.</InfoTip>
-              </span>
               <Button
-                onClick={handleOpenConfirmation}
+                onClick={handleStart}
                 disabled={startMutation.isPending || !!activeRun}
                 className="font-medium shadow-sm"
-                data-testid="button-open-clustering-confirmation"
+                data-testid="button-start-clustering"
               >
                 {startMutation.isPending || activeRun ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -758,71 +650,6 @@ export default function Clustering() {
         </CardContent>
       </Card>
 
-      <Dialog
-        open={confirmRunOpen}
-        onOpenChange={(open) => {
-          if (!startMutation.isPending) setConfirmRunOpen(open);
-        }}
-      >
-        <DialogContent className="sm:max-w-md" data-testid="dialog-confirm-clustering-run">
-          <DialogHeader>
-            <DialogTitle>Confirm paid clustering run</DialogTitle>
-            <DialogDescription>
-              This run scrapes live Google results and uses paid SERP credits. Review the
-              estimate before starting.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-900/50 dark:bg-amber-950/30">
-            <div className="flex items-baseline justify-between gap-4">
-              <span className="font-medium text-foreground">Estimated SERP cost</span>
-              <span className="text-lg font-semibold tabular-nums text-foreground" data-testid="text-confirmed-serp-estimate">
-                {estimateQ.isError
-                  ? "Unavailable"
-                  : estimateReady && estCost
-                    ? `$${estCost}`
-                    : "Loading…"}
-              </span>
-            </div>
-            <dl className="mt-3 space-y-1.5 text-xs text-muted-foreground">
-              <div className="flex justify-between gap-4">
-                <dt>Keywords to scrape</dt>
-                <dd className="font-medium text-foreground">{fmtInt(estimateQ.data?.keywordCount ?? keywordCount)}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt>Comparison period</dt>
-                <dd className="font-medium text-foreground">{weeks} weeks</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt>Current window</dt>
-                <dd className="font-medium text-foreground">{previewWindows.currentStart} – {previewWindows.currentEnd}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt>Prior window</dt>
-                <dd className="font-medium text-foreground">{previewWindows.priorStart} – {previewWindows.priorEnd}</dd>
-              </div>
-            </dl>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setConfirmRunOpen(false)}
-              disabled={startMutation.isPending}
-              data-testid="button-cancel-clustering-run"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleStart}
-              disabled={startMutation.isPending || !estimateReady}
-              data-testid="button-confirm-clustering-run"
-            >
-              {startMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Approve and start run
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Active run status */}
       {activeRun && (
         <Card className="border-primary/40 shadow-sm bg-primary/5">
@@ -831,7 +658,7 @@ export default function Clustering() {
               <Loader2 className="h-4 w-4 animate-spin" />
               {PHASE_LABELS[activeRun.phase ?? ""] ?? "Starting…"}
             </div>
-            {activeRun.phase === "fetching_serps" && activeRun.progressTotal > 0 && (
+            {activeRun.phase === "fetching_pages" && activeRun.progressTotal > 0 && (
               <div className="space-y-1.5">
                 <div className="h-2 w-full rounded-full bg-primary/20 overflow-hidden">
                   <div
@@ -840,8 +667,7 @@ export default function Clustering() {
                   />
                 </div>
                 <div className="text-xs font-medium text-primary/80 tabular-nums">
-                  {fmtInt(activeRun.progressDone)} of {fmtInt(activeRun.progressTotal)} keyword
-                  SERPs scraped
+                  {fmtInt(activeRun.progressDone)} of {fmtInt(activeRun.progressTotal)} queries matched
                 </div>
               </div>
             )}
@@ -887,40 +713,52 @@ export default function Clustering() {
               {selectedRun.stats && (
                 <span className="text-xs text-muted-foreground font-medium">
                   {fmtInt(selectedRun.stats["clusters"] ?? 0)} clusters from{" "}
-                  {fmtInt(selectedRun.stats["keywords"] ?? 0)} keywords
+                  {fmtInt(selectedRun.stats["gscQueriesFetched"] ?? selectedRun.stats["keywords"] ?? 0)} keywords
                   {(selectedRun.stats["unclustered"] ?? 0) > 0 &&
                     ` · ${fmtInt(selectedRun.stats["unclustered"] ?? 0)} unclustered`}
                   {(selectedRun.stats["operatorFiltered"] ?? 0) > 0 &&
                     ` · ${fmtInt(selectedRun.stats["operatorFiltered"] ?? 0)} junk excluded`}
                 </span>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleRebuild(selectedRun.id)}
-                disabled={rebuildMutation.isPending || !!activeRun}
-                title="Re-groups and renames this run's clusters using the already-scraped Google results and AI naming — no new scraping cost."
-                className="ml-auto bg-card"
-              >
-                {rebuildMutation.isPending ? (
-                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                ) : (
-                  <Sparkles className="h-3.5 w-3.5 mr-1.5 text-primary" />
-                )}
-                Improve cluster names (free)
-              </Button>
+              {isLegacy ? (
+                <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800">
+                  Legacy SERP report
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800">
+                  GSC landing-page evidence
+                </Badge>
+              )}
+              {!isLegacy && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleRebuild(selectedRun.id)}
+                  disabled={rebuildMutation.isPending || !!activeRun}
+                  title="Re-groups and renames this run's clusters using the existing data."
+                  className="ml-auto bg-card"
+                >
+                  {rebuildMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5 mr-1.5 text-primary" />
+                  )}
+                  Improve cluster names (free)
+                </Button>
+              )}
             </div>
 
-            {selectedRunParams?.window ? (
+            {selectedRunParams?.window && (
               <div className="text-[11.5px] font-medium bg-muted/40 border border-border/50 px-2.5 py-1.5 rounded-md inline-flex items-center gap-3" data-testid="text-run-window">
                 <span>Comparing <span className="font-semibold text-foreground">{selectedRunParams.weeks} weeks</span>:</span>
                 <span><span className="text-foreground">{formatWindowDate(selectedRunParams.window.currentStart)} – {formatWindowDate(selectedRunParams.window.currentEnd)}</span> (Current)</span>
                 <span className="text-muted-foreground">vs</span>
                 <span><span className="text-foreground">{formatWindowDate(selectedRunParams.window.priorStart)} – {formatWindowDate(selectedRunParams.window.priorEnd)}</span> (Prior)</span>
               </div>
-            ) : (
+            )}
+            {isLegacy && (
               <div className="text-[11.5px] font-medium text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 px-2.5 py-1.5 rounded-md inline-flex items-center" data-testid="text-run-legacy">
-                Legacy run — no comparison data available. Start a new run to see current vs prior metrics.
+                Legacy run — this report predates the GSC-only landing-page method.{!selectedRunParams?.window && " No comparison data available."}
               </div>
             )}
           </div>

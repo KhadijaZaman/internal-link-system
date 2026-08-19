@@ -53,6 +53,6 @@ export interface TopicalMapNode {
   gscImpressions: number | null;
   /** @nullable */
   gscPosition: number | null;
-  /** Competitor domains already ranking for this topic, from stored SERP data (latest keyword-clustering run) */
+  /** Competitor domains already ranking for this topic, from stored SERP data (latest legacy SERP keyword-clustering run; absent for GSC-page-only deployments) */
   competitors?: TopicalMapNodeCompetitor[];
 }

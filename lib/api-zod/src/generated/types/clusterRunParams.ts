@@ -5,6 +5,7 @@
  * Linkweave internal linking system API
  * OpenAPI spec version: 0.1.0
  */
+import type { ClusterRunParamsEvidenceSource } from './clusterRunParamsEvidenceSource';
 import type { ClusterRunWindow } from './clusterRunWindow';
 
 export interface ClusterRunParams {
@@ -15,9 +16,14 @@ export interface ClusterRunParams {
   /** @nullable */
   country: string | null;
   keywordLimit: number;
-  locationCode: number;
+  /** Deprecated/legacy: no longer used for new runs; kept for serializing old run records only */
+  locationCode?: number;
   excludeBrand: boolean;
-  /** Set while a rebuild-from-stored-SERPs is queued/running */
+  /** Evidence source used for clustering (gsc_page = GSC page-level data) */
+  evidenceSource?: ClusterRunParamsEvidenceSource;
+  /** Clustering algorithm version */
+  algorithmVersion?: number;
+  /** Set while a rebuild-from-stored GSC page evidence is queued/running */
   reprocess?: boolean;
   window?: ClusterRunWindow;
 }

@@ -5,28 +5,33 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as matchers from "@testing-library/jest-dom/matchers";
 expect.extend(matchers);
 import { render, screen, fireEvent, within, cleanup } from "@testing-library/react";
+
+global.ResizeObserver = class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
+
 import Clustering, { ExpandedClusterDetail } from "./clustering";
-import { KeywordCluster, KeywordState } from "@workspace/api-client-react";
+import { KeywordCluster, KeywordState, ClusterRun } from "@workspace/api-client-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-const { mockStartMutation, mockInvalidateQueries, mockEstimateQuery } = vi.hoisted(() => ({
+const { mockStartMutation, mockInvalidateQueries, mockListClusterRuns } = vi.hoisted(() => ({
   mockStartMutation: vi.fn(),
   mockInvalidateQueries: vi.fn(),
-  mockEstimateQuery: vi.fn(),
+  mockListClusterRuns: vi.fn().mockReturnValue({ data: [] }),
 }));
 
 vi.mock("@workspace/api-client-react", async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
-    useListClusterRuns: () => ({ data: [] }),
+    useListClusterRuns: () => mockListClusterRuns(),
     getListClusterRunsQueryKey: () => ["/api/clustering/runs"],
     useStartClusterRun: () => ({ mutate: mockStartMutation, isPending: false }),
     useRebuildClusterRun: () => ({ mutate: vi.fn(), isPending: false }),
     useListClusterRunClusters: () => ({ data: [] }),
     getListClusterRunClustersQueryKey: (id: number) => ["/api/clustering/runs", id, "clusters"],
-    useGetClusterSerpEstimate: (params: { keywordCount: number }) =>
-      mockEstimateQuery(params),
   };
 });
 
@@ -42,28 +47,17 @@ vi.mock("@/hooks/use-toast", () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
 
-vi.mock("@/components/spend-cap-badge", () => ({
-  JobSpendCapNotice: () => null,
-}));
-
 beforeEach(() => {
   mockStartMutation.mockReset();
   mockInvalidateQueries.mockReset();
-  mockEstimateQuery.mockReset();
-  mockEstimateQuery.mockImplementation(({ keywordCount }: { keywordCount: number }) => ({
-    data: { keywordCount, estimatedCostCents: 37 },
-    isFetching: false,
-    isError: false,
-    refetch: vi.fn(),
-  }));
 });
 
 afterEach(() => {
   cleanup();
 });
 
-describe("paid clustering confirmation", () => {
-  it("normalizes a fractional count and shows the server estimate before approval", () => {
+describe("direct start run", () => {
+  it("submits the run immediately with no paid or location fields", () => {
     render(
       <TooltipProvider>
         <Clustering />
@@ -72,69 +66,73 @@ describe("paid clustering confirmation", () => {
 
     fireEvent.change(screen.getByRole("slider"), { target: { value: "4" } });
     fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "10.5" } });
-    fireEvent.click(screen.getByTestId("button-open-clustering-confirmation"));
-
-    const confirmation = screen.getByTestId("dialog-confirm-clustering-run");
-    expect(within(confirmation).getByTestId("text-confirmed-serp-estimate")).toHaveTextContent("$0.37");
-    expect(within(confirmation).getByText("4 weeks")).toBeInTheDocument();
-    expect(within(confirmation).getByText("10")).toBeInTheDocument();
-    expect(mockStartMutation).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByTestId("button-cancel-clustering-run"));
-    expect(screen.queryByTestId("dialog-confirm-clustering-run")).not.toBeInTheDocument();
-    expect(mockStartMutation).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByTestId("button-open-clustering-confirmation"));
-    fireEvent.click(screen.getByTestId("button-confirm-clustering-run"));
+    fireEvent.click(screen.getByTestId("button-start-clustering"));
 
     expect(mockStartMutation).toHaveBeenCalledTimes(1);
     expect(mockStartMutation.mock.calls[0]?.[0]).toEqual({
       data: {
         weeks: 4,
         keywordLimit: 10,
-        locationCode: 2840,
         excludeBrand: true,
-        paidRunConfirmed: true,
       },
     });
   });
+});
 
-  it.each([
-    ["loading", { data: undefined, isFetching: true, isError: false }, "Loading…"],
-    [
-      "failed with a retained prior estimate",
-      {
-        data: { keywordCount: 250, estimatedCostCents: 37 },
-        isFetching: false,
-        isError: true,
-      },
-      "Unavailable",
-    ],
-  ])("blocks approval while the estimate is %s but still allows cancellation", (_label, state, text) => {
-    mockEstimateQuery.mockReturnValue({ ...state, refetch: vi.fn() });
+describe("run history display", () => {
+  it("renders GSC reports with badge and rebuild button", () => {
+    mockListClusterRuns.mockReturnValue({
+      data: [
+        {
+          id: 10,
+          status: "complete",
+          createdAt: new Date().toISOString(),
+          progressDone: 100,
+          progressTotal: 100,
+          params: { weeks: 4, keywordLimit: 10, evidenceSource: "gsc_page" },
+          stats: { clusters: 5, keywords: 10 }
+        } as ClusterRun
+      ]
+    });
 
     render(
       <TooltipProvider>
         <Clustering />
-      </TooltipProvider>,
+      </TooltipProvider>
     );
 
-    fireEvent.click(screen.getByTestId("button-open-clustering-confirmation"));
+    expect(screen.getByText("GSC landing-page evidence")).toBeInTheDocument();
+    expect(screen.getByText("Improve cluster names (free)")).toBeInTheDocument();
+  });
 
-    expect(screen.getByTestId("text-confirmed-serp-estimate")).toHaveTextContent(text);
-    expect(screen.getByTestId("button-confirm-clustering-run")).toBeDisabled();
-    expect(screen.getByTestId("button-cancel-clustering-run")).toBeEnabled();
+  it("renders legacy reports with badge and without rebuild button", () => {
+    mockListClusterRuns.mockReturnValue({
+      data: [
+        {
+          id: 11,
+          status: "complete",
+          createdAt: new Date().toISOString(),
+          progressDone: 100,
+          progressTotal: 100,
+          params: { weeks: 4, keywordLimit: 10, evidenceSource: "serp" },
+          stats: { clusters: 5, keywords: 10 }
+        } as ClusterRun
+      ]
+    });
 
-    fireEvent.click(screen.getByTestId("button-confirm-clustering-run"));
-    expect(mockStartMutation).not.toHaveBeenCalled();
+    render(
+      <TooltipProvider>
+        <Clustering />
+      </TooltipProvider>
+    );
 
-    fireEvent.click(screen.getByTestId("button-cancel-clustering-run"));
-    expect(screen.queryByTestId("dialog-confirm-clustering-run")).not.toBeInTheDocument();
+    expect(screen.getByText("Legacy SERP report")).toBeInTheDocument();
+    expect(screen.queryByText("Improve cluster names (free)")).not.toBeInTheDocument();
   });
 });
 
 describe("ExpandedClusterDetail", () => {
-  it("renders a new-format keyword correctly, displaying query, actual serpUrls, and formatting metrics including legacy state gracefully", () => {
+  it("renders a new-format keyword correctly, displaying query, actual gscPages, and formatting metrics including legacy state gracefully", () => {
     const cluster = {
       id: 1,
       clusterKey: 1,
@@ -164,9 +162,9 @@ describe("ExpandedClusterDetail", () => {
           clickDeltaAbs: 5,
           impressionDelta: 1,
           impressionDeltaAbs: 50,
-          serpUrls: [
-            { url: "https://example.com/seo", position: 1 },
-            { url: "https://example.com/other", position: 2 },
+          gscPages: [
+            { url: "https://example.com/seo", impressions: 100, clicks: 10, position: 1 },
+            { url: "https://example.com/other", impressions: 50, clicks: 5, position: 2 },
           ]
         },
         {
@@ -184,7 +182,7 @@ describe("ExpandedClusterDetail", () => {
           clickDeltaAbs: 5,
           impressionDelta: null,
           impressionDeltaAbs: 100,
-          serpUrls: []
+          gscPages: []
         },
         {
           query: "legacy keyword",
@@ -193,11 +191,8 @@ describe("ExpandedClusterDetail", () => {
           ctr: 0.05, // 5%
           position: 5,
           state: undefined,
-          serpUrls: []
         }
       ],
-      ownUrls: [{ url: "https://mysite.com/seo", domain: "mysite.com", keywordCount: 2 }],
-      competitorUrls: [{ url: "https://example.com/seo", domain: "example.com", keywordCount: 2 }]
     } as unknown as KeywordCluster;
 
     render(
@@ -209,13 +204,13 @@ describe("ExpandedClusterDetail", () => {
     // Renders the full query
     expect(screen.getByText("how to do seo")).toBeInTheDocument();
     
-    // Renders the serpUrls
+    // Renders the gscPages
     const seoLinks = screen.getAllByText("https://example.com/seo");
     expect(seoLinks.length).toBeGreaterThan(0);
     expect(seoLinks[0]).toBeInTheDocument();
-    expect(screen.getByText("#1")).toBeInTheDocument();
+    expect(screen.getByText("100 imp • 10 clicks • pos 1.0")).toBeInTheDocument();
     expect(screen.getByText("https://example.com/other")).toBeInTheDocument();
-    expect(screen.getByText("#2")).toBeInTheDocument();
+    expect(screen.getByText("50 imp • 5 clicks • pos 2.0")).toBeInTheDocument();
 
     // Renders the percentages properly (clickDelta = 1 -> 100.0%)
     const textNodes = screen.getAllByText("+100.0%");
@@ -241,8 +236,9 @@ describe("ExpandedClusterDetail", () => {
     // It should have the "New" text for missing ratio
     expect(screen.getAllByText("New")[1]).toBeInTheDocument();
     
-    // Renders own URLs and competitor URLs
-    expect(screen.getByText("https://mysite.com/seo")).toBeInTheDocument();
+    // Competitor and own URLs should not be rendered
+    expect(screen.queryByText("Your ranking URLs")).not.toBeInTheDocument();
+    expect(screen.queryByText("Competitors ranking in results")).not.toBeInTheDocument();
 
     // Test formatting of state
     expect(screen.getByText("Rising")).toBeInTheDocument();

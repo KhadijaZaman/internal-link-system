@@ -5,7 +5,7 @@
  * Linkweave internal linking system API
  * OpenAPI spec version: 0.1.0
  */
-import type { ClusterSerpUrl } from './clusterSerpUrl';
+import type { ClusterGscPage } from './clusterGscPage';
 import type { KeywordState } from './keywordState';
 
 export interface ClusterKeyword {
@@ -14,7 +14,8 @@ export interface ClusterKeyword {
   impressions: number;
   ctr: number;
   position: number;
-  serpUrls: ClusterSerpUrl[];
+  /** GSC page-level evidence for this keyword (present on runs with evidenceSource=gsc_page) */
+  gscPages?: ClusterGscPage[];
   /**
      * Prior-period clicks
      * @nullable

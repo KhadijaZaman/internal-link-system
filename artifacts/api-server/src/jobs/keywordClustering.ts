@@ -4,71 +4,48 @@ import {
   clusterRunClustersTable,
   type ClusterRun,
   type ClusterKeywordEntry,
-  type ClusterUrlEntry,
   type ClusterRunParams,
+  type ClusterGscPageEntry,
 } from "@workspace/db";
 import { and, asc, eq, lt, isNull, or } from "drizzle-orm";
-import { queryGscDimension, type GscDimensionRow } from "../integrations/gsc";
-import { postSerpTasks, fetchSerpTaskResult } from "../integrations/dataforseo";
 import {
-  buildClusters,
+  queryGscDimension,
+  queryGscQueryPage,
+  QUERY_DIMENSION_PAGINATED_CAP,
+  type GscDimensionRow,
+  type GscQueryPageRow,
+} from "../integrations/gsc";
+import {
+  buildGscPageClusters,
   pickTopic,
   assignQuadrants,
-  isOperatorQuery,
+  normalizeQuery,
+  selectEligibleQueries,
   computeRunWindow,
   weeklyChunks,
-  aggregateGscChunks,
   classifyKeyword,
   aggregateClusterPrior,
+  canonicalizePageUrl,
   DEFAULT_WEEKS,
-  type RawGscRow,
+  GSC_PAGE_ALGORITHM_VERSION,
   type GscPeriodMetrics,
 } from "../services/clustering";
 import { generateClusterLabels } from "../integrations/openaiClusterLabels";
 import { withDbRetry } from "../lib/dbRetry";
-import { budgetForSite, type JobBudget } from "../lib/jobBudget";
 import type { SiteContext } from "../lib/site";
 import { logger } from "../lib/logger";
 
 const STALE_MS = 3 * 60_000;
 const INTERRUPTED_MESSAGE =
   "The server restarted while this clustering run was in progress. Start a new run to try again.";
-const SERP_INITIAL_WAIT_MS = 30_000;
-const SERP_SWEEP_INTERVAL_MS = 25_000;
-const SERP_TIMEOUT_MS = 12 * 60_000;
-const SERP_URLS_KEPT = 10;
-const MAX_COMPETITOR_URLS = 10;
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function isoDay(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
-  } catch {
-    return "";
-  }
-}
-
-function isOwnHost(host: string, site: string): boolean {
-  return site !== "" && (host === site || host.endsWith(`.${site}`));
-}
-
-/** Normalize a SERP URL for overlap matching: drop fragment, trailing slash. */
-function normalizeSerpUrl(raw: string): string {
-  try {
-    const u = new URL(raw);
-    const path = u.pathname.replace(/\/+$/, "");
-    return `${u.protocol}//${u.hostname.toLowerCase()}${path}${u.search}`;
-  } catch {
-    return raw;
-  }
-}
+/**
+ * Message thrown when a rebuild is attempted on a legacy SERP run.
+ * Never delete old rows for this case.
+ */
+const LEGACY_SERP_REBUILD_MESSAGE =
+  "This run was created with SERP-based clustering (DataForSEO) and cannot be " +
+  "rebuilt by the GSC-only clustering job. Start a new GSC-only run instead.";
 
 /** Derive the effective weeks count from run params (backward compat). */
 function resolveWeeks(p: ClusterRunParams): number {
@@ -122,27 +99,60 @@ async function reconcileStaleRuns(siteId: number): Promise<void> {
 }
 
 /**
- * Fetch all weekly GSC chunks for a given date range and aggregate them.
+ * Rows per GSC API call for the weekly query-only fetch.
+ * GSC's max is 25 000; using the maximum minimises the number of round trips
+ * on large sites.
+ */
+const GSC_QUERY_PAGE_SIZE = 25_000;
+const GSC_QUERY_CHUNK_CAP = 500_000;
+
+interface GscPeriodResult {
+  metrics: Map<string, GscPeriodMetrics>;
+  aliases: Map<string, Set<string>>;
+}
+
+/**
+ * Fetch all weekly GSC query-only chunks for a given date range and aggregate.
  *
- * If ANY single chunk request fails the entire operation throws — this
- * guarantees we never classify partial data.
+ * Uses paginated queryGscDimension (paginated=true, rowLimit=25 000) per
+ * weekly chunk so large sites are never silently truncated. A 500k per-chunk
+ * cap and 2m whole-period cap bound memory and quota for long windows.
  *
- * Note on dataState: queryGscDimension supports `dataState: "all"` which
- * includes unfinalized rows for the most recent ~2 days. We do NOT pass
- * dataState here so GSC uses its default "final" mode. The 3-day lag on our
- * end window already ensures all data in both windows is finalized.
+ * Each chunk's rows are streamed immediately into the aggregate map so no
+ * large intermediate arrays are retained after each chunk completes.
+ *
+ * Fail-closed: if ANY single chunk request fails the entire operation throws,
+ * guaranteeing we never classify partial data.
+ *
+ * Note on dataState: we do NOT pass dataState, so GSC uses its default
+ * "final" mode. The 3-day lag on the end window already ensures all data
+ * in both windows is finalized.
  */
 async function fetchGscPeriodChunks(opts: {
   siteId: number;
   startDate: string;
   endDate: string;
   countryFilter?: string;
-  rowLimit: number;
-}): Promise<Map<string, GscPeriodMetrics>> {
+  collectAliases?: boolean;
+}): Promise<GscPeriodResult> {
   const chunks = weeklyChunks(opts.startDate, opts.endDate);
-  const allChunkRows: RawGscRow[][] = [];
+  // Stream each chunk directly into the aggregator to avoid retaining all
+  // raw weekly arrays in memory simultaneously.
+  const acc = new Map<
+    string,
+    { clicks: number; impressions: number; posSum: number; posWeight: number }
+  >();
+  const aliases = new Map<string, Set<string>>();
+  let totalRows = 0;
 
   for (const chunk of chunks) {
+    const remainingRows = QUERY_DIMENSION_PAGINATED_CAP - totalRows;
+    if (remainingRows <= 0) {
+      throw new Error(
+        `GSC weekly query fetch exceeded the whole-period safety cap of ` +
+          `${QUERY_DIMENSION_PAGINATED_CAP} rows. Reduce the date range or add a country filter.`,
+      );
+    }
     let rows: GscDimensionRow[];
     try {
       rows = await queryGscDimension({
@@ -150,7 +160,9 @@ async function fetchGscPeriodChunks(opts: {
         startDate: chunk.start,
         endDate: chunk.end,
         dimension: "query",
-        rowLimit: opts.rowLimit,
+        rowLimit: GSC_QUERY_PAGE_SIZE,
+        paginated: true,
+        paginatedCap: Math.min(GSC_QUERY_CHUNK_CAP, remainingRows),
         ...(opts.countryFilter ? { countryFilter: opts.countryFilter } : {}),
       });
     } catch (err) {
@@ -159,15 +171,257 @@ async function fetchGscPeriodChunks(opts: {
         `GSC comparison fetch failed for chunk ${chunk.start}–${chunk.end}: ${msg}`,
       );
     }
-    allChunkRows.push(rows);
+    totalRows += rows.length;
+    if (totalRows > QUERY_DIMENSION_PAGINATED_CAP) {
+      throw new Error(
+        `GSC weekly query fetch exceeded the whole-period safety cap of ` +
+          `${QUERY_DIMENSION_PAGINATED_CAP} rows. Reduce the date range or add a country filter.`,
+      );
+    }
+    // Inline aggregate: same logic as aggregateGscChunks but without
+    // collecting all chunk arrays into memory first.
+    for (const r of rows) {
+      const q = normalizeQuery(r.key);
+      if (!q) continue;
+      if (opts.collectAliases) {
+        let rawAliases = aliases.get(q);
+        if (!rawAliases) {
+          rawAliases = new Set<string>();
+          aliases.set(q, rawAliases);
+        }
+        rawAliases.add(r.key);
+      }
+      const existing = acc.get(q);
+      if (existing) {
+        existing.clicks += r.clicks;
+        existing.impressions += r.impressions;
+        existing.posSum += r.position * Math.max(r.impressions, 0);
+        existing.posWeight += Math.max(r.impressions, 0);
+      } else {
+        acc.set(q, {
+          clicks: r.clicks,
+          impressions: r.impressions,
+          posSum: r.position * Math.max(r.impressions, 0),
+          posWeight: Math.max(r.impressions, 0),
+        });
+      }
+    }
   }
 
-  return aggregateGscChunks(allChunkRows);
+  const result = new Map<string, GscPeriodMetrics>();
+  for (const [q, v] of acc) {
+    result.set(q, {
+      clicks: Math.round(v.clicks),
+      impressions: Math.round(v.impressions),
+      ctr: v.impressions > 0 ? v.clicks / v.impressions : 0,
+      position: v.posWeight > 0 ? v.posSum / v.posWeight : 0,
+    });
+  }
+  return { metrics: result, aliases };
+}
+
+/**
+ * Expression-length budget for a single GSC query-regex batch (RE2 safe).
+ * Conservative to stay well within GSC's 4 096-byte limit for the full
+ * request body, accounting for JSON encoding overhead.
+ */
+const QUERY_REGEX_BATCH_CHARS = 3_500;
+const QUERY_REGEX_WRAPPER_CHARS = 4; // ^( ... )$
+
+/**
+ * Per-run hard row cap for the query×page evidence fetch.
+ * 500 000 rows keeps memory bounded for a 52-week × country-filtered run
+ * on a large site.
+ */
+const QUERY_PAGE_RUN_CAP = 500_000;
+
+/**
+ * Build batches of selected-query aliases into RE2-safe "|"-joined regexes,
+ * each staying under QUERY_REGEX_BATCH_CHARS characters.
+ *
+ * @param queryAliasMap  Map from normalizedQuery → Set of raw alias strings
+ *   (all the raw forms seen in GSC for that normalized key).
+ * @returns Array of { regex, queriesInBatch } batches.
+ */
+export function buildQueryRegexBatches(
+  queryAliasMap: Map<string, Set<string>>,
+): Array<{ regex: string; queriesInBatch: Set<string> }> {
+  /**
+   * Escape a single raw query string for use as a literal RE2 alternative.
+   * RE2 metacharacters that need escaping: . * + ? ^ $ { } ( ) | [ ] \
+   */
+  function escapeRe2(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  const batches: Array<{ regex: string; queriesInBatch: Set<string> }> = [];
+  let currentAlts: string[] = [];
+  let currentNorm: Set<string> = new Set();
+  let currentLen = 0;
+
+  function flushBatch(): void {
+    if (currentAlts.length === 0) return;
+    batches.push({
+      regex: `^(${currentAlts.join("|")})$`,
+      queriesInBatch: currentNorm,
+    });
+    currentAlts = [];
+    currentNorm = new Set();
+    currentLen = 0;
+  }
+
+  for (const [normalizedQ, aliases] of queryAliasMap) {
+    for (const alias of aliases) {
+      const escaped = escapeRe2(alias);
+      if (escaped.length + QUERY_REGEX_WRAPPER_CHARS > QUERY_REGEX_BATCH_CHARS) {
+        throw new Error(
+          `A selected GSC query is too long to safely batch (${alias.length} characters).`,
+        );
+      }
+      // +1 for the "|" separator that will precede it (if not first in batch).
+      const addLen = escaped.length + (currentAlts.length > 0 ? 1 : 0);
+      if (
+        currentAlts.length > 0 &&
+        currentLen + addLen + QUERY_REGEX_WRAPPER_CHARS > QUERY_REGEX_BATCH_CHARS
+      ) {
+        flushBatch();
+      }
+      currentAlts.push(escaped);
+      currentNorm.add(normalizedQ);
+      currentLen += escaped.length + (currentAlts.length > 1 ? 1 : 0);
+    }
+  }
+  flushBatch();
+  return batches;
+}
+
+/**
+ * Fetch GSC query×page evidence scoped to the selected queries, weekly
+ * per chunk, with per-batch regex filtering.
+ *
+ * Algorithm:
+ *  1. Collect all raw alias forms for each selected normalized query from
+ *     the current-period query-only rows (queryMetrics map keyed by normalized
+ *     query). For each normalized key, the canonical form is the only alias
+ *     stored; callers may extend this map if they have additional raw forms.
+ *  2. Batch aliases into RE2-safe regex alternatives (≤ QUERY_REGEX_BATCH_CHARS
+ *     chars each). Each batch is sent as a separate GSC request so no single
+ *     request carries a gigantic regex.
+ *  3. For each weekly chunk × each batch, fetch paginated query×page rows
+ *     filtered by both the query regex AND the country (AND-combined).
+ *  4. Aggregate incrementally into the result map without retaining all raw
+ *     weekly arrays.
+ *  5. Fail closed: throws if any chunk-batch request fails OR if the
+ *     total accumulated row count exceeds QUERY_PAGE_RUN_CAP.
+ */
+async function fetchGscQueryPageChunks(opts: {
+  siteId: number;
+  startDate: string;
+  endDate: string;
+  countryFilter?: string;
+  /** Map: normalizedQuery → Set of raw GSC aliases (usually just the canonical form). */
+  queryAliasMap: Map<string, Set<string>>;
+}): Promise<Map<string, Map<string, ClusterGscPageEntry>>> {
+  const chunks = weeklyChunks(opts.startDate, opts.endDate);
+  const batches = buildQueryRegexBatches(opts.queryAliasMap);
+
+  if (batches.length === 0) {
+    return new Map();
+  }
+
+  // Accumulate result inline: normalizedQuery → page → metrics acc.
+  const acc = new Map<
+    string,
+    Map<string, { clicks: number; impressions: number; posSum: number; posWeight: number }>
+  >();
+  let totalRows = 0;
+
+  for (const chunk of chunks) {
+    for (const batch of batches) {
+      const remainingRows = QUERY_PAGE_RUN_CAP - totalRows;
+      if (remainingRows <= 0) {
+        throw new Error(
+          `GSC query+page evidence fetch exceeded the per-run safety cap of ` +
+            `${QUERY_PAGE_RUN_CAP} rows. Reduce the keyword limit or narrow the ` +
+            `date range to proceed.`,
+        );
+      }
+      let rows: GscQueryPageRow[];
+      try {
+        rows = await queryGscQueryPage({
+          siteId: opts.siteId,
+          startDate: chunk.start,
+          endDate: chunk.end,
+          countryFilter: opts.countryFilter,
+          queryRegex: batch.regex,
+          maxRows: remainingRows,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          `GSC query+page fetch failed for chunk ${chunk.start}–${chunk.end}: ${msg}`,
+        );
+      }
+
+      for (const r of rows) {
+        // Only accumulate rows whose query normalizes to a selected query.
+        const normalizedQ = normalizeQuery(r.query);
+        if (!normalizedQ || !batch.queriesInBatch.has(normalizedQ)) continue;
+
+        const canonPage = canonicalizePageUrl(r.page);
+        if (!canonPage) continue;
+
+        let pageMap = acc.get(normalizedQ);
+        if (!pageMap) {
+          pageMap = new Map();
+          acc.set(normalizedQ, pageMap);
+        }
+        const existing = pageMap.get(canonPage);
+        if (existing) {
+          existing.clicks += r.clicks;
+          existing.impressions += r.impressions;
+          existing.posSum += r.position * Math.max(r.impressions, 0);
+          existing.posWeight += Math.max(r.impressions, 0);
+        } else {
+          pageMap.set(canonPage, {
+            clicks: r.clicks,
+            impressions: r.impressions,
+            posSum: r.position * Math.max(r.impressions, 0),
+            posWeight: Math.max(r.impressions, 0),
+          });
+        }
+      }
+
+      totalRows += rows.length;
+      if (totalRows > QUERY_PAGE_RUN_CAP) {
+        throw new Error(
+          `GSC query+page evidence fetch exceeded the per-run safety cap of ` +
+            `${QUERY_PAGE_RUN_CAP} rows. Reduce the keyword limit or narrow the ` +
+            `date range to proceed.`,
+        );
+      }
+    }
+  }
+
+  // Convert accumulators to ClusterGscPageEntry maps.
+  const result = new Map<string, Map<string, ClusterGscPageEntry>>();
+  for (const [q, pageMap] of acc) {
+    const pages = new Map<string, ClusterGscPageEntry>();
+    for (const [page, v] of pageMap) {
+      pages.set(page, {
+        url: page,
+        clicks: Math.round(v.clicks),
+        impressions: Math.round(v.impressions),
+        position: v.posWeight > 0 ? v.posSum / v.posWeight : 0,
+      });
+    }
+    result.set(q, pages);
+  }
+  return result;
 }
 
 export async function runKeywordClustering(site: SiteContext): Promise<void> {
   await reconcileStaleRuns(site.id);
-  const budget = budgetForSite(site);
   // Process queued runs one at a time until the queue is empty.
   for (;;) {
     const [run] = await withDbRetry(
@@ -189,14 +443,14 @@ export async function runKeywordClustering(site: SiteContext): Promise<void> {
     const isRebuild = run.params.reprocess === true;
     try {
       if (isRebuild) await reprocessRun(run, site);
-      else await processRun(run, site, budget);
+      else await processRun(run, site);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       logger.error({ err: e, runId: run.id, isRebuild }, "Clustering run failed");
       if (isRebuild) {
-        // A failed rebuild must never lose the run (its stored SERP data is
-        // paid for): restore it as complete with the old rows intact and
-        // surface the error on the run itself.
+        // A failed rebuild must never lose the run (its stored data is
+        // the source of truth): restore it as complete with the old rows
+        // intact and surface the error on the run itself.
         await updateRun(run.id, {
           status: "complete",
           phase: "done",
@@ -213,9 +467,6 @@ export async function runKeywordClustering(site: SiteContext): Promise<void> {
       }
     }
   }
-  if (budget.anyExhausted()) {
-    logger.warn({ budget: budget.summary() }, "Clustering: spend budget exhausted");
-  }
 }
 
 interface PendingCluster {
@@ -225,11 +476,7 @@ interface PendingCluster {
   totalImpressions: number;
   blendedCtr: number;
   avgPosition: number | null;
-  ownUrls: ClusterUrlEntry[];
-  competitorUrls: ClusterUrlEntry[];
-  // Prior-period cluster aggregates (always non-null in the job since
-  // aggregate() is only called from fresh comparison runs, but typed to match
-  // ClusterPriorStats which allows null for legacy-run compatibility)
+  // Prior-period cluster aggregates
   priorTotalClicks: number | null;
   priorTotalImpressions: number | null;
   priorBlendedCtr: number | null;
@@ -243,7 +490,6 @@ interface PendingCluster {
 
 function aggregate(
   entriesIn: ClusterKeywordEntry[],
-  site: string,
 ): PendingCluster {
   const entries = [...entriesIn].sort((a, b) => b.impressions - a.impressions);
   const totalClicks = entries.reduce((s, e) => s + e.clicks, 0);
@@ -257,42 +503,7 @@ function aggregate(
     0,
   );
 
-  // Own vs competitor URL aggregation across the cluster's SERPs.
-  const urlAgg = new Map<string, { count: number; best: number; sum: number }>();
-  for (const e of entries) {
-    for (const su of e.serpUrls) {
-      const norm = normalizeSerpUrl(su.url);
-      const agg = urlAgg.get(norm) ?? { count: 0, best: Infinity, sum: 0 };
-      agg.count++;
-      agg.best = Math.min(agg.best, su.position);
-      agg.sum += su.position;
-      urlAgg.set(norm, agg);
-    }
-  }
-  const own: ClusterUrlEntry[] = [];
-  const comp: ClusterUrlEntry[] = [];
-  for (const [url, agg] of urlAgg) {
-    const host = hostOf(url);
-    const entry: ClusterUrlEntry = {
-      url,
-      domain: host,
-      keywordCount: agg.count,
-      bestPosition: Number.isFinite(agg.best) ? agg.best : null,
-      avgPosition: agg.count > 0 ? Number((agg.sum / agg.count).toFixed(1)) : null,
-    };
-    if (isOwnHost(host, site)) own.push(entry);
-    else comp.push(entry);
-  }
-  const byCoverage = (a: ClusterUrlEntry, b: ClusterUrlEntry) =>
-    b.keywordCount - a.keywordCount ||
-    (a.bestPosition ?? 999) - (b.bestPosition ?? 999);
-  own.sort(byCoverage);
-  comp.sort(byCoverage);
-
-  // Prior-period cluster stats. This function is called from the job only for
-  // fresh comparison runs (prior GSC data was just fetched), so isComparisonRun
-  // is always true here. The route re-derives this from params.window when
-  // serving the stored data.
+  // Prior-period cluster stats.
   const priorStats = aggregateClusterPrior(entries, totalClicks, totalImpressions, true);
 
   return {
@@ -302,8 +513,6 @@ function aggregate(
     totalImpressions,
     blendedCtr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
     avgPosition: posWeight > 0 ? Number((posSum / posWeight).toFixed(1)) : null,
-    ownUrls: own,
-    competitorUrls: comp.slice(0, MAX_COMPETITOR_URLS),
     priorTotalClicks: priorStats.priorTotalClicks,
     priorTotalImpressions: priorStats.priorTotalImpressions,
     priorBlendedCtr: priorStats.priorBlendedCtr,
@@ -317,37 +526,37 @@ function aggregate(
 }
 
 /**
- * Shared tail of both run types: cluster the entries by SERP overlap, label
+ * Shared tail of GSC-page runs: cluster entries by GSC page evidence, label
  * clusters with AI (fail-soft to the TF-IDF keyword), assign quadrants, and
- * persist atomically (delete + insert in one transaction so a failed rebuild
- * never destroys the previously stored — and paid-for — SERP data).
+ * persist atomically.
+ *
+ * @param effectiveParams  The fully-resolved params to write on the final run
+ *   row (reprocess cleared).  Fresh runs pass their updated params
+ *   (window/evidenceSource/algorithmVersion already set); rebuilds pass the
+ *   stored run.params unchanged so they never overwrite what was stored.
  */
 async function clusterLabelAndPersist(
   run: ClusterRun,
   entries: ClusterKeywordEntry[],
   baseStats: Record<string, number>,
   site: SiteContext,
+  queryPageEvidence: Map<string, Map<string, ClusterGscPageEntry>>,
+  effectiveParams: ClusterRunParams,
 ): Promise<void> {
   await updateRun(run.id, { phase: "clustering" });
 
-  const clusterable = entries.filter((e) => e.serpUrls.length > 0);
-  const urlSets = clusterable.map(
-    (e) => new Set(e.serpUrls.map((u) => normalizeSerpUrl(u.url))),
-  );
-  const components = buildClusters(urlSets);
+  // Use gscPages from entries as clustering evidence (populated earlier).
+  const eligibleQueries = entries.map((e) => e.query);
+  const components = buildGscPageClusters(eligibleQueries, queryPageEvidence);
 
   const clusteredQueries = new Set<string>();
   for (const comp of components) {
-    for (const idx of comp) clusteredQueries.add(clusterable[idx]!.query);
+    for (const idx of comp) clusteredQueries.add(eligibleQueries[idx]!);
   }
   const unclustered = entries.filter((e) => !clusteredQueries.has(e.query));
 
-  const host = site.host;
   const clusters = components.map((comp) =>
-    aggregate(
-      comp.map((idx) => clusterable[idx]!),
-      host,
-    ),
+    aggregate(comp.map((idx) => entries[idx]!)),
   );
 
   // ---- AI topic labels (fail-soft: keeps pickTopic fallback) ----
@@ -386,14 +595,15 @@ async function clusterLabelAndPersist(
       blendedCtr: Number(c.blendedCtr.toFixed(2)),
       avgPosition: c.avgPosition,
       keywords: c.keywords,
-      ownUrls: c.ownUrls,
-      competitorUrls: c.competitorUrls,
+      // GSC-page runs: no SERP-based URL aggregates.
+      ownUrls: [],
+      competitorUrls: [],
     }))
     .sort((a, b) => b.totalImpressions - a.totalImpressions)
     .map((row, i) => ({ ...row, clusterKey: i }));
 
   if (unclustered.length > 0) {
-    const u = aggregate(unclustered, host);
+    const u = aggregate(unclustered);
     rows.push({
       runId: run.id,
       siteId: site.id,
@@ -428,13 +638,13 @@ async function clusterLabelAndPersist(
   await updateRun(run.id, {
     status: "complete",
     phase: "done",
-    params: { ...run.params, reprocess: false },
+    params: { ...effectiveParams, reprocess: false },
     progressDone: run.progressTotal > 0 ? run.progressTotal : entries.length,
     finishedAt: new Date(),
     error: null,
     stats: {
       ...baseStats,
-      keywords: entries.length,
+      gscQueriesFetched: entries.length,
       clusters: clusters.length,
       unclustered: unclustered.length,
     },
@@ -442,17 +652,30 @@ async function clusterLabelAndPersist(
   logger.info(
     {
       runId: run.id,
-      keywords: entries.length,
+      gscQueriesFetched: entries.length,
       clusters: clusters.length,
       unclustered: unclustered.length,
       operatorFiltered: baseStats["operatorFiltered"] ?? 0,
     },
-    "Clustering run complete",
+    "GSC-page clustering run complete",
   );
 }
 
-/** Rebuild an existing run from its stored SERP data — no GSC or DataForSEO calls. */
+/**
+ * Rebuild an existing GSC-page run from its stored gscPages evidence.
+ *
+ * Guards:
+ *  - Legacy SERP runs (no evidenceSource='gsc_page') → throw with a clear
+ *    message directing the user to start a new GSC-page run.
+ *  - Re-applies normalization, dedupe, brand exclusion, operator filtering,
+ *    and the same threshold logic as processRun.
+ */
 async function reprocessRun(run: ClusterRun, site: SiteContext): Promise<void> {
+  // Guard: refuse to reprocess legacy SERP runs.
+  if (run.params.evidenceSource !== "gsc_page") {
+    throw new Error(LEGACY_SERP_REBUILD_MESSAGE);
+  }
+
   await updateRun(run.id, {
     status: "running",
     phase: "clustering",
@@ -473,40 +696,84 @@ async function reprocessRun(run: ClusterRun, site: SiteContext): Promise<void> {
         ),
     { label: `cluster_rows_load:${run.id}` },
   );
+
+  // Reconstruct a de-duplicated map of stored keyword entries, keyed by
+  // normalized query (first-seen wins when the same normalized form appears
+  // in multiple cluster rows).
   const byQuery = new Map<string, ClusterKeywordEntry>();
   for (const row of rows) {
     for (const k of row.keywords) {
-      if (!byQuery.has(k.query)) byQuery.set(k.query, k);
+      const normalized = normalizeQuery(k.query);
+      if (!normalized) continue;
+      if (!byQuery.has(normalized)) {
+        byQuery.set(normalized, { ...k, query: normalized });
+      }
     }
   }
   if (byQuery.size === 0) {
     throw new Error("This run has no stored keyword data to rebuild from.");
   }
 
-  let operatorFiltered = 0;
-  const entries: ClusterKeywordEntry[] = [];
-  for (const e of byQuery.values()) {
-    if (isOperatorQuery(e.query)) operatorFiltered++;
-    else entries.push(e);
-  }
-  if (entries.length < 2) {
+  // Run the shared eligibility pipeline: normalize/dedupe/brand/operator.
+  // No limit on rebuild — use all stored queries that pass the filters.
+  const brandToken = run.params.excludeBrand
+    ? normalizeQuery(site.host.split(".")[0] ?? "")
+    : "";
+  const eligible = selectEligibleQueries(
+    // byQuery values are already normalized; selectEligibleQueries will re-normalize
+    // (idempotent) and perform dedup, brand, and operator checks.
+    byQuery.values(),
+    brandToken,
+  );
+  const {
+    queries: eligibleKeys,
+    duplicatesRemoved,
+    brandFiltered,
+    operatorFiltered,
+  } = eligible;
+
+  if (eligibleKeys.length < 2) {
     throw new Error(
       "Not enough usable keywords left to rebuild after filtering search-operator queries.",
     );
   }
 
-  const serpsFetched = entries.filter((e) => e.serpUrls.length > 0).length;
-  await clusterLabelAndPersist(run, entries, {
-    serpsFetched,
-    serpsFailed: run.stats?.["serpsFailed"] ?? 0,
-    operatorFiltered,
-  }, site);
+  // Reconstruct entry array in the order returned by the pipeline.
+  const entries: ClusterKeywordEntry[] = eligibleKeys.map(
+    (q) => byQuery.get(q)!,
+  );
+
+  // Rebuild queryPageEvidence from stored gscPages.
+  const queryPageEvidence = new Map<string, Map<string, ClusterGscPageEntry>>();
+  for (const e of entries) {
+    if (!e.gscPages || e.gscPages.length === 0) continue;
+    const pageMap = new Map<string, ClusterGscPageEntry>();
+    for (const p of e.gscPages) {
+      const canonUrl = canonicalizePageUrl(p.url);
+      if (p.impressions > 0) {
+        pageMap.set(canonUrl, { ...p, url: canonUrl });
+      }
+    }
+    if (pageMap.size > 0) {
+      queryPageEvidence.set(e.query, pageMap);
+    }
+  }
+
+  await clusterLabelAndPersist(
+    run,
+    entries,
+    { duplicatesRemoved, brandFiltered, operatorFiltered },
+    site,
+    queryPageEvidence,
+    // Rebuild retains exactly the stored params (window/evidenceSource/
+    // algorithmVersion already written on the original run).
+    run.params,
+  );
 }
 
 async function processRun(
   run: ClusterRun,
   site: SiteContext,
-  budget: JobBudget,
 ): Promise<void> {
   const p = run.params;
   await updateRun(run.id, {
@@ -520,157 +787,115 @@ async function processRun(
   const weeks = resolveWeeks(p);
   const window = computeRunWindow(weeks);
 
-  // Store exact date windows in params so rebuilds and the UI can display them.
-  await updateRun(run.id, {
-    params: {
-      ...p,
-      weeks,
-      window,
-    },
-  });
+  // Build the effective params object once so every subsequent DB write
+  // (intermediate heartbeats AND the final complete row) uses the same object.
+  // This prevents clusterLabelAndPersist from re-reading run.params and
+  // writing a stale copy that erases window/evidenceSource/algorithmVersion.
+  const effectiveParams: ClusterRunParams = {
+    ...p,
+    weeks,
+    window,
+    evidenceSource: "gsc_page",
+    algorithmVersion: GSC_PAGE_ALGORITHM_VERSION,
+  };
 
-  // ---- 2. Fetch current period as weekly GSC chunks ----
-  // queryGscDimension uses default dataState (finalized). Our 3-day lag on
-  // currentEnd ensures all data in both windows is finalized; no dataState
-  // parameter is needed.
-  const rowLimit = Math.min(5000, p.keywordLimit * 3);
-  let currentMetrics: Map<string, GscPeriodMetrics>;
+  // Store exact date windows in params, set evidenceSource and algorithmVersion.
+  await updateRun(run.id, { params: effectiveParams });
+
+  // ---- 2. Fetch current period as weekly GSC query-only chunks ----
+  // Uses paginated fetch-to-exhaustion (25 000 rows/call) with a global cap
+  // to avoid silently truncating large sites.
+  let currentPeriod: GscPeriodResult;
   try {
-    currentMetrics = await fetchGscPeriodChunks({
+    currentPeriod = await fetchGscPeriodChunks({
       siteId: run.siteId,
       startDate: window.currentStart,
       endDate: window.currentEnd,
       countryFilter: p.country ?? undefined,
-      rowLimit,
+      collectAliases: true,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    // Distinguish GSC not connected vs chunk fetch failure
     if (msg.toLowerCase().includes("not connected") || msg.toLowerCase().includes("no gsc")) {
       throw new Error(`Google Search Console is not connected. Connect GSC in Integrations and try again.`);
     }
     throw new Error(`GSC data fetch failed for current period: ${msg}`);
   }
+  const currentMetrics = currentPeriod.metrics;
 
-  // ---- 3. Fetch prior period as weekly GSC chunks ----
-  let priorMetrics: Map<string, GscPeriodMetrics>;
+  // ---- 3. Fetch prior period as weekly GSC query-only chunks ----
+  let priorPeriod: GscPeriodResult;
   try {
-    priorMetrics = await fetchGscPeriodChunks({
+    priorPeriod = await fetchGscPeriodChunks({
       siteId: run.siteId,
       startDate: window.priorStart,
       endDate: window.priorEnd,
       countryFilter: p.country ?? undefined,
-      rowLimit,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`GSC comparison fetch failed for prior period: ${msg}`);
   }
+  const priorMetrics = priorPeriod.metrics;
 
-  // ---- 4. Select top queries from current period ----
-  const brandToken = p.excludeBrand ? site.host.split(".")[0] ?? "" : "";
+  // ---- 4. Select top queries from current period via the shared eligibility pipeline ----
+  const brandToken = p.excludeBrand
+    ? normalizeQuery(site.host.split(".")[0] ?? "")
+    : "";
+  // Sort by impressions descending before passing to the pipeline so the limit
+  // picks the most-visible queries. Keys from fetchGscPeriodChunks are already
+  // normalized, but selectEligibleQueries re-normalizes for safety.
   const byImpressions = [...currentMetrics.entries()]
     .map(([q, m]) => ({ query: q, ...m }))
     .sort((a, b) => b.impressions - a.impressions);
 
-  const seen = new Set<string>();
-  const selected: Array<{ query: string } & GscPeriodMetrics> = [];
-  let operatorFiltered = 0;
-  for (const row of byImpressions) {
-    const q = row.query.trim().toLowerCase();
-    if (!q || seen.has(q)) continue;
-    seen.add(q);
-    if (brandToken && q.includes(brandToken)) continue;
-    if (isOperatorQuery(q)) {
-      operatorFiltered++;
-      continue;
-    }
-    selected.push(row);
-    if (selected.length >= p.keywordLimit) break;
-  }
-  if (selected.length < 2) {
+  const eligible = selectEligibleQueries(byImpressions, brandToken, p.keywordLimit);
+  const { queries, duplicatesRemoved, brandFiltered, operatorFiltered } = eligible;
+
+  if (queries.length < 2) {
     throw new Error(
-      `Only ${selected.length} usable queries found in Search Console for this range — nothing to cluster.`,
+      `Only ${queries.length} usable queries found in Search Console for this range — nothing to cluster.`,
     );
   }
 
-  // Spend cap: one paid DataForSEO SERP task per query.
-  let capApplied = false;
-  if (!budget.take("serpQueries", selected.length)) {
-    const allowed = budget.remaining("serpQueries");
-    if (allowed < 2) {
-      throw new Error(
-        `SERP quota cap reached — only ${allowed} of the per-run SERP budget remains; a clustering run needs at least 2 queries.`,
-      );
-    }
-    logger.warn(
-      { runId: run.id, requested: selected.length, allowed },
-      "Clustering: SERP quota cap — trimming keyword set to budget",
-    );
-    selected.length = allowed;
-    budget.take("serpQueries", allowed);
-    capApplied = true;
-  }
-
-  const queries = selected.map((r) => r.query);
-
-  // ---- 5. Post SERP scrape tasks to DataForSEO ----
   await updateRun(run.id, {
-    phase: "posting_serp_tasks",
+    phase: "fetching_pages",
     progressTotal: queries.length,
     progressDone: 0,
   });
-  const taskIds = await postSerpTasks(queries, p.locationCode);
-  if (taskIds.length === 0) {
-    throw new Error("DataForSEO accepted none of the SERP tasks.");
-  }
 
-  // ---- 6. Poll for SERP results ----
-  await updateRun(run.id, { phase: "fetching_serps" });
-  await sleep(SERP_INITIAL_WAIT_MS);
-
-  const serpByKeyword = new Map<string, Array<{ url: string; position: number }>>();
-  let failed = 0;
-  const pending = new Set(taskIds);
-  const deadline = Date.now() + SERP_TIMEOUT_MS;
-
-  while (pending.size > 0 && Date.now() < deadline) {
-    for (const tid of [...pending]) {
-      let result;
-      try {
-        result = await fetchSerpTaskResult(tid);
-      } catch (e) {
-        logger.warn({ err: e, taskId: tid }, "SERP task fetch error; will retry");
-        continue;
-      }
-      if (result.status === "pending") continue;
-      pending.delete(tid);
-      if (result.status === "failed") {
-        failed++;
-        logger.warn({ taskId: tid, message: result.message }, "SERP task failed");
-        continue;
-      }
-      const kw = result.keyword.trim().toLowerCase();
-      if (kw) {
-        serpByKeyword.set(kw, result.urls.slice(0, SERP_URLS_KEPT));
-      }
-    }
-    await updateRun(run.id, {
-      progressDone: serpByKeyword.size + failed,
-    });
-    if (pending.size > 0) await sleep(SERP_SWEEP_INTERVAL_MS);
-  }
-  // Timed-out tasks count as failures; keywords without SERPs become unclustered.
-  failed += pending.size;
-  if (serpByKeyword.size === 0) {
-    throw new Error(
-      "No SERP results came back from DataForSEO within the time limit. The tasks may still be processing — try again in a few minutes.",
+  // ---- 5. Build queryAliasMap from selected queries ----
+  // Preserve every raw GSC form that collapsed into each selected normalized
+  // query. Exact regex filtering must use the raw forms (case, whitespace and
+  // compatibility characters included), while post-fetch matching uses the
+  // normalized key.
+  const queryAliasMap = new Map<string, Set<string>>();
+  for (const q of queries) {
+    const rawAliases = currentPeriod.aliases.get(q);
+    queryAliasMap.set(
+      q,
+      rawAliases && rawAliases.size > 0 ? new Set(rawAliases) : new Set([q]),
     );
+  }
+
+  // ---- 6. Fetch current-window query+page evidence (weekly, batched, scoped) ----
+  let queryPageEvidence: Map<string, Map<string, ClusterGscPageEntry>>;
+  try {
+    queryPageEvidence = await fetchGscQueryPageChunks({
+      siteId: run.siteId,
+      startDate: window.currentStart,
+      endDate: window.currentEnd,
+      countryFilter: p.country ?? undefined,
+      queryAliasMap,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`GSC query+page evidence fetch failed: ${msg}`);
   }
 
   await updateRun(run.id, { progressDone: queries.length });
 
-  // ---- 7. Build ClusterKeywordEntry list with prior comparison ----
+  // ---- 6. Build ClusterKeywordEntry list with gscPages evidence ----
   const entries: ClusterKeywordEntry[] = queries.map((q) => {
     const cur = currentMetrics.get(q);
     const prior = priorMetrics.get(q) ?? null;
@@ -684,13 +909,26 @@ async function processRun(
 
     const classification = classifyKeyword(curMetrics, prior);
 
+    // Build gscPages from the evidence map for this query.
+    const pageMap = queryPageEvidence.get(q);
+    const gscPages: ClusterGscPageEntry[] = pageMap
+      ? [...pageMap.values()]
+          .filter((p) => p.impressions > 0)
+          .sort(
+            (a, b) =>
+              b.impressions - a.impressions ||
+              b.clicks - a.clicks ||
+              a.url.localeCompare(b.url),
+          )
+      : [];
+
     return {
       query: q,
       clicks: curMetrics.clicks,
       impressions: curMetrics.impressions,
       ctr: curMetrics.ctr,
       position: curMetrics.position,
-      serpUrls: serpByKeyword.get(q) ?? [],
+      gscPages,
       // Prior fields
       priorClicks: prior?.clicks ?? null,
       priorImpressions: prior?.impressions ?? null,
@@ -705,10 +943,23 @@ async function processRun(
     };
   });
 
-  await clusterLabelAndPersist(run, entries, {
-    serpsFetched: serpByKeyword.size,
-    serpsFailed: failed,
-    operatorFiltered,
-    serpCapApplied: capApplied ? 1 : 0,
-  }, site);
+  await clusterLabelAndPersist(
+    run,
+    entries,
+    {
+      duplicatesRemoved,
+      brandFiltered,
+      operatorFiltered,
+      gscPagesFetched: [...queryPageEvidence.values()].reduce(
+        (s, m) => s + m.size,
+        0,
+      ),
+    },
+    site,
+    queryPageEvidence,
+    // Pass the effectiveParams built in step 1 so the final DB row always
+    // carries the resolved window/evidenceSource/algorithmVersion, never the
+    // stale run.params snapshot that predates step 1's updateRun().
+    effectiveParams,
+  );
 }

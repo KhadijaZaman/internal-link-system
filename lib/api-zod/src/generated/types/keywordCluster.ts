@@ -7,7 +7,6 @@
  */
 import type { ClusterKeyword } from './clusterKeyword';
 import type { ClusterStateCounts } from './clusterStateCounts';
-import type { ClusterUrl } from './clusterUrl';
 import type { KeywordClusterCoreTag } from './keywordClusterCoreTag';
 import type { KeywordClusterQuadrant } from './keywordClusterQuadrant';
 
@@ -79,6 +78,4 @@ export interface KeywordCluster {
   /** Count of keywords per state; null for old runs without state data */
   stateCounts?: ClusterStateCounts | null;
   keywords: ClusterKeyword[];
-  ownUrls: ClusterUrl[];
-  competitorUrls: ClusterUrl[];
 }

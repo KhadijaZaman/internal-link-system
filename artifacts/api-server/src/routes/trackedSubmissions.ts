@@ -629,17 +629,25 @@ router.get(
     };
 
     // ----- SERP competitors: reuse stored SERP rows from the latest complete
-    // cluster run (paid at cluster time — free to read here) -----
+    // *legacy* cluster run (evidenceSource absent or not "gsc_page").
+    // GSC-page runs never populate serpUrls, so they must be excluded here.
+    // Filter in SQL so a legacy report remains available even after many newer
+    // GSC-only runs. -----
     const loadSerpCompetitors = async () => {
       if (!keyword) return null;
       const kw = normKeyword(keyword);
-      const runs = await db
+      const [run] = await db
         .select()
         .from(clusterRunsTable)
-        .where(and(eq(clusterRunsTable.siteId, site.id), eq(clusterRunsTable.status, "complete")))
+        .where(
+          and(
+            eq(clusterRunsTable.siteId, site.id),
+            eq(clusterRunsTable.status, "complete"),
+            sql`${clusterRunsTable.params}->>'evidenceSource' is distinct from 'gsc_page'`,
+          ),
+        )
         .orderBy(desc(clusterRunsTable.finishedAt))
         .limit(1);
-      const run = runs[0];
       if (!run) return null;
       const clusters = await db
         .select({ keywords: clusterRunClustersTable.keywords })
@@ -648,11 +656,11 @@ router.get(
       const ownHost = normalizeHost(site.host);
       for (const cluster of clusters) {
         const entry = cluster.keywords.find((k) => normKeyword(k.query) === kw);
-        if (entry && entry.serpUrls.length > 0) {
+        if (entry && (entry.serpUrls?.length ?? 0) > 0) {
           return {
             keyword: entry.query,
             runDate: (run.finishedAt ?? run.createdAt).toISOString(),
-            competitors: entry.serpUrls.map((s) => {
+            competitors: (entry.serpUrls ?? []).map((s) => {
               let isOwn = false;
               try {
                 isOwn = normalizeHost(new URL(s.url).hostname) === ownHost;

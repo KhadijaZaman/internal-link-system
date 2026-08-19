@@ -8,11 +8,7 @@ import {
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
 import { requireSite, getSite } from "../lib/site";
-import {
-  GetClusterSerpEstimateQueryParams,
-  GetClusterSerpEstimateResponse,
-  StartClusterRunBody,
-} from "@workspace/api-zod";
+import { StartClusterRunBody } from "@workspace/api-zod";
 import { runJob } from "../jobs/runner";
 import { withCache } from "../integrations/gsc";
 import {
@@ -21,11 +17,7 @@ import {
   DEFAULT_CORE_THRESHOLD,
 } from "../services/authoritySnapshot";
 import { cosineSim } from "../lib/semanticScorer";
-import {
-  aggregateClusterPrior,
-  estimateClusterSerpCostCents,
-  resolveRunWeeks,
-} from "../services/clustering";
+import { aggregateClusterPrior, resolveRunWeeks } from "../services/clustering";
 
 const router: IRouter = Router();
 
@@ -93,25 +85,6 @@ const STALE_MS = 3 * 60_000;
 const STALE_QUEUED_MS = 10 * 60_000;
 const INTERRUPTED_MESSAGE =
   "The server restarted while this clustering run was in progress. Start a new run to try again.";
-
-router.get("/clustering/estimate", requireAuth, requireSite, async (req, res): Promise<void> => {
-  const params = GetClusterSerpEstimateQueryParams.safeParse(req.query);
-  if (!params.success || !Number.isInteger(params.data.keywordCount)) {
-    res.status(400).json({
-      error: params.success
-        ? "Invalid keyword count"
-        : params.error.issues[0]?.message ?? "Invalid keyword count",
-    });
-    return;
-  }
-
-  res.json(
-    GetClusterSerpEstimateResponse.parse({
-      keywordCount: params.data.keywordCount,
-      estimatedCostCents: estimateClusterSerpCostCents(params.data.keywordCount),
-    }),
-  );
-});
 
 function serializeRun(run: ClusterRun) {
   return {
@@ -196,12 +169,6 @@ router.post("/clustering/runs", requireAuth, requireSite, async (req, res) => {
     res.status(400).json({ error: "Invalid input: keywordLimit must be an integer." });
     return;
   }
-  if (body.paidRunConfirmed !== true) {
-    res.status(400).json({
-      error: "Confirm the estimated SERP cost before starting a clustering run.",
-    });
-    return;
-  }
 
   await reconcileStaleRuns(site.id);
 
@@ -235,8 +202,9 @@ router.post("/clustering/runs", requireAuth, requireSite, async (req, res) => {
         ...(daysLegacy !== undefined ? { days: daysLegacy } : {}),
         country: body.country?.toLowerCase() ?? null,
         keywordLimit: body.keywordLimit ?? 250,
-        locationCode: body.locationCode ?? 2840,
         excludeBrand: body.excludeBrand ?? true,
+        evidenceSource: "gsc_page" as const,
+        algorithmVersion: 1,
       },
     })
     .returning();
@@ -259,10 +227,11 @@ router.post("/clustering/runs", requireAuth, requireSite, async (req, res) => {
 });
 
 /**
- * Rebuild a run's clusters from its stored SERP data — re-filters junk
- * queries, re-clusters, and re-labels with AI. Free: no GSC or DataForSEO
- * calls. Allowed on complete runs (and interrupted ones that still have
- * stored rows, e.g. a rebuild cut short by a server restart).
+ * Rebuild a run's clusters from its stored GSC page evidence — re-filters junk
+ * queries, re-clusters, and re-labels with AI without collecting fresh GSC data.
+ * GSC-only runs only (evidenceSource=gsc_page); legacy SERP runs are rejected.
+ * Allowed on complete runs (and interrupted ones that still have stored rows,
+ * e.g. a rebuild cut short by a server restart).
  */
 router.post("/clustering/runs/:runId/rebuild", requireAuth, requireSite, async (req, res) => {
   const site = getSite(req);
@@ -285,6 +254,17 @@ router.post("/clustering/runs/:runId/rebuild", requireAuth, requireSite, async (
   }
   if (run.status !== "complete" && run.status !== "interrupted") {
     res.status(409).json({ error: "Only finished runs can be rebuilt." });
+    return;
+  }
+
+  // Reject legacy runs that were collected via SERP scraping (no evidenceSource
+  // or evidenceSource !== 'gsc_page'). Those runs cannot be rebuilt with the
+  // current GSC-only algorithm — start a new GSC-only run instead.
+  if ((run.params as unknown as Record<string, unknown>)?.evidenceSource !== "gsc_page") {
+    res.status(409).json({
+      error:
+        "This run was created before the GSC-only algorithm and cannot be rebuilt. Please start a new GSC-only run.",
+    });
     return;
   }
 
@@ -335,7 +315,7 @@ router.post("/clustering/runs/:runId/rebuild", requireAuth, requireSite, async (
 
   const result = await runJob("keyword_clustering", site);
   if (!result.started) {
-    // Never delete the run — restore it so its stored (paid) data stays usable.
+    // Never delete the run — restore it so its stored evidence stays usable.
     await db
       .update(clusterRunsTable)
       .set({
@@ -477,9 +457,26 @@ router.get("/clustering/runs/:runId/clusters", requireAuth, requireSite, async (
         clickDeltaRatio: priorStats.clickDeltaRatio,
         impressionDeltaRatio: priorStats.impressionDeltaRatio,
         stateCounts: priorStats.stateCounts,
-        keywords: r.keywords,
-        ownUrls: r.ownUrls,
-        competitorUrls: r.competitorUrls,
+        // Explicitly serialize keyword fields so legacy serpUrls are not
+        // returned as undeclared extra JSON on old SERP-based run rows.
+        keywords: r.keywords.map((k) => ({
+          query: k.query,
+          clicks: k.clicks,
+          impressions: k.impressions,
+          ctr: k.ctr,
+          position: k.position,
+          ...(k.gscPages !== undefined ? { gscPages: k.gscPages } : {}),
+          priorClicks: k.priorClicks ?? null,
+          priorImpressions: k.priorImpressions ?? null,
+          priorCtr: k.priorCtr ?? null,
+          priorPosition: k.priorPosition ?? null,
+          clickDelta: k.clickDelta ?? null,
+          impressionDelta: k.impressionDelta ?? null,
+          clickDeltaAbs: k.clickDeltaAbs ?? null,
+          impressionDeltaAbs: k.impressionDeltaAbs ?? null,
+          state: k.state ?? null,
+        })),
+        // ownUrls and competitorUrls are no longer part of the contract.
       };
     }),
   );
