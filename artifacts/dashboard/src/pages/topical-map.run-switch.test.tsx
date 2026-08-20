@@ -136,6 +136,7 @@ vi.mock("@workspace/api-client-react", async () => {
     useGenerateTopicalMap: () => ({ mutation: stubMutation() }),
     useUpdateTopicalMapNode: () => ({ mutation: stubMutation() }),
     useAnalyzeTopicalMapCompetitors: () => ({ mutation: stubMutation() }),
+    useRefreshTopicalMapDemand: () => ({ mutation: stubMutation() }),
 
     getListTopicalMapRunsQueryKey: () => ["topical-map-runs"],
     getGetTopicalMapRunQueryKey: (id: number) => ["topical-map-run", id],

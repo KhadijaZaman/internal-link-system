@@ -23,6 +23,7 @@ import { runSyncOptimizationRoadmapSheet } from "./syncOptimizationRoadmapSheet"
 import { runGenerateTopicalMap } from "./generateTopicalMap";
 import { runAuditLinkQuality } from "./auditLinkQuality";
 import { runAnalyzeTopicalMapCompetitors } from "./analyzeTopicalMapCompetitors";
+import { runEnrichTopicalMapDemand } from "./enrichTopicalMapDemand";
 import { runCheckSpamTldFreshness } from "./checkSpamTldFreshness";
 import { listSchedulableSites, type SiteContext } from "../lib/site";
 import { logger } from "../lib/logger";
@@ -78,6 +79,9 @@ export function setupJobs(): void {
   // Competitor SERP scan for topical-map topics — triggered by POST
   // /topical-map/runs/:mapId/analyze-competitors, never on a cron (paid DataForSEO spend).
   registerJob("analyze_topical_map_competitors", runAnalyzeTopicalMapCompetitors);
+  // US + worldwide search-volume enrichment for topical-map gap topics —
+  // triggered after generation or by an explicit refresh, never on a cron.
+  registerJob("enrich_topical_map_demand", runEnrichTopicalMapDemand);
 }
 
 /**

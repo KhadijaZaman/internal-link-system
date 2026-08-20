@@ -1319,6 +1319,29 @@ paths:
           description: A scan is already in progress, or the map is not complete yet
         "422":
           description: DataForSEO credentials are not configured
+  /topical-map/runs/{mapId}/refresh-demand:
+    post:
+      operationId: refreshTopicalMapDemand
+      tags: [topicalMap]
+      summary: Refresh US and worldwide search volume for new map topics (DataForSEO — paid)
+      parameters:
+        - in: path
+          name: mapId
+          required: true
+          schema: { type: integer }
+      responses:
+        "202":
+          description: Demand enrichment queued; returns the updated map summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopicalMapSummary"
+        "404":
+          description: Map not found
+        "409":
+          description: Enrichment is already running, or the map is not complete yet
+        "422":
+          description: DataForSEO credentials are not configured
   /topical-map/runs/{mapId}:
     get:
       operationId: getTopicalMapRun
@@ -5902,7 +5925,7 @@ components:
           items: { type: string, maxLength: 300 }
     TopicalMapSummary:
       type: object
-      required: [id, status, phase, progressDone, progressTotal, error, sourceContext, centralEntity, entitySynonyms, centralSearchIntent, bordersWill, bordersWillNot, stats, createdAt, startedAt, finishedAt]
+      required: [id, status, phase, progressDone, progressTotal, error, sourceContext, centralEntity, entitySynonyms, centralSearchIntent, bordersWill, bordersWillNot, stats, createdAt, startedAt, finishedAt, demandStatus, demandError, demandStartedAt, demandFetchedAt]
       properties:
         id: { type: integer }
         status:
@@ -5936,9 +5959,17 @@ components:
         competitorScanError:
           type: ["string", "null"]
           description: Last error from the competitor scan (includes out-of-funds notice)
+        demandStatus:
+          type: ["string", "null"]
+          description: "null | queued | running | complete | partial | failed — US and worldwide market-demand enrichment state"
+        demandError:
+          type: ["string", "null"]
+          description: Last demand-enrichment error or partial-completion explanation
+        demandStartedAt: { type: ["string", "null"] }
+        demandFetchedAt: { type: ["string", "null"] }
     TopicalMapNode:
       type: object
-      required: [id, mapId, parentId, level, section, title, canonicalQuery, attributeOwned, intent, predicate, funnelStage, pageType, suggestedSlug, suggestedTitle, informationGain, borderNote, priority, status, matchedPagePath, matchSource, matchConfidence, sortOrder, pageTitle, gscClicks, gscImpressions, gscPosition]
+      required: [id, mapId, parentId, level, section, title, canonicalQuery, attributeOwned, intent, predicate, funnelStage, pageType, suggestedSlug, suggestedTitle, informationGain, borderNote, priority, status, matchedPagePath, matchSource, matchConfidence, sortOrder, pageTitle, gscClicks, gscImpressions, gscPosition, usSearchVolume, globalSearchVolume, estimatedUsTraffic, estimatedUsTrafficCtr, usVolumeFetchedAt, globalVolumeFetchedAt, demandFetchedAt]
       properties:
         id: { type: integer }
         mapId: { type: integer }
@@ -5980,6 +6011,29 @@ components:
         gscClicks: { type: ["integer", "null"] }
         gscImpressions: { type: ["integer", "null"] }
         gscPosition: { type: ["number", "null"] }
+        usSearchVolume:
+          type: ["integer", "null"]
+          description: Monthly United States Google Ads search volume for a new gap topic
+        globalSearchVolume:
+          type: ["integer", "null"]
+          description: Monthly worldwide Google Ads search volume for a new gap topic
+        estimatedUsTraffic:
+          type: ["integer", "null"]
+          description: Planning estimate of monthly US visits at the target CTR; null when US volume is unavailable
+        estimatedUsTrafficCtr:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: CTR assumption used for estimatedUsTraffic (currently 0.20)
+        usVolumeFetchedAt:
+          type: ["string", "null"]
+          description: Last successful US-volume lookup, including successful no-measurable-volume responses
+        globalVolumeFetchedAt:
+          type: ["string", "null"]
+          description: Last successful worldwide-volume lookup, including successful no-measurable-volume responses
+        demandFetchedAt:
+          type: ["string", "null"]
+          description: Newest successful US/global volume fetch timestamp when both geographies are available
         competitors:
           type: array
           description: Competitor domains already ranking for this topic, from stored SERP data (latest legacy SERP keyword-clustering run; absent for GSC-page-only deployments)

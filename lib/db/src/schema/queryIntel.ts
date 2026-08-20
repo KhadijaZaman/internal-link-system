@@ -26,9 +26,9 @@ const vector = customType<{ data: number[]; driverData: string }>({
  *   - `embedding` from OpenAI text-embedding-3-small (1536d) so we can compute
  *     cosine similarity between the query and the page's existing embedding to
  *     decide whether the query is on-intent for that page.
- *   - `searchVolume` from DataForSEO Keywords Data (Google Ads) so we can
- *     distinguish "no clicks because no demand" from "no clicks despite real
- *     demand".
+ *   - US and worldwide search volume from DataForSEO Keywords Data (Google
+ *     Ads) so we can distinguish "no clicks because no demand" from "no clicks
+ *     despite real demand" without conflating geographies.
  *
  * Keyed by (site, query) — the raw GSC query text is lower-cased and trimmed
  * at the write site so every URL ranking for the same query reuses the same
@@ -40,9 +40,17 @@ export const queryIntelTable = pgTable(
     query: text("query").notNull(),
     embedding: vector("embedding"),
     embeddedAt: timestamp("embedded_at", { withTimezone: true }),
+    /** United States monthly search volume (legacy column name retained). */
     searchVolume: integer("search_volume"),
     volumeFetchedAt: timestamp("volume_fetched_at", { withTimezone: true }),
     volumeSource: text("volume_source"), // e.g. "dataforseo"
+    volumeClaimedAt: timestamp("volume_claimed_at", { withTimezone: true }),
+    volumeClaimToken: text("volume_claim_token"),
+    globalSearchVolume: integer("global_search_volume"),
+    globalVolumeFetchedAt: timestamp("global_volume_fetched_at", { withTimezone: true }),
+    globalVolumeSource: text("global_volume_source"),
+    globalVolumeClaimedAt: timestamp("global_volume_claimed_at", { withTimezone: true }),
+    globalVolumeClaimToken: text("global_volume_claim_token"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     siteId: integer("site_id")
       .notNull()
@@ -54,6 +62,9 @@ export const queryIntelTable = pgTable(
     embeddedAtIdx: index("query_intel_embedded_at_idx").on(t.embeddedAt),
     volumeFetchedAtIdx: index("query_intel_volume_fetched_at_idx").on(
       t.volumeFetchedAt,
+    ),
+    globalVolumeFetchedAtIdx: index("query_intel_global_volume_fetched_at_idx").on(
+      t.globalVolumeFetchedAt,
     ),
   }),
 );

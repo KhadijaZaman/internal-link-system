@@ -1,8 +1,13 @@
-import { and, eq, inArray, isNull, or, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, queryIntelTable, type QueryIntel } from "@workspace/db";
 import { embedBatch } from "../integrations/openaiEmbed";
-import { fetchSearchVolumes } from "../integrations/dataforseo";
+import {
+  fetchSearchVolumes,
+  isDataForSeoOutOfFunds,
+  type SearchVolumeMarket,
+} from "../integrations/dataforseo";
 import { logger } from "../lib/logger";
+import { randomUUID } from "node:crypto";
 
 /**
  * Cap on how many *new* embeddings or volume lookups we do per request,
@@ -13,10 +18,189 @@ const MAX_NEW_EMBEDDINGS_PER_RUN = 200;
 const MAX_NEW_VOLUMES_PER_RUN = 500;
 
 /** Volume cache TTL: refresh once a month. */
-const VOLUME_TTL_DAYS = 30;
+export const QUERY_VOLUME_TTL_DAYS = 30;
+const VOLUME_CLAIM_TTL_MS = 10 * 60_000;
 
 function normaliseQuery(q: string): string {
   return q.trim().toLowerCase();
+}
+
+async function ensureRows(
+  rawQueries: string[],
+  siteId: number,
+): Promise<{ queries: string[]; byQuery: Map<string, QueryIntel> }> {
+  const queries = Array.from(
+    new Set(rawQueries.map(normaliseQuery).filter((q) => q.length > 0)),
+  );
+  if (queries.length === 0) return { queries, byQuery: new Map() };
+
+  await db
+    .insert(queryIntelTable)
+    .values(queries.map((query) => ({ query, siteId })))
+    .onConflictDoNothing();
+
+  const existing = await db
+    .select()
+    .from(queryIntelTable)
+    .where(and(inArray(queryIntelTable.query, queries), eq(queryIntelTable.siteId, siteId)));
+
+  return {
+    queries,
+    byQuery: new Map(existing.map((row) => [row.query, row])),
+  };
+}
+
+export async function refreshMarketVolumes(
+  queries: string[],
+  siteId: number,
+  market: SearchVolumeMarket,
+  byQuery: Map<string, QueryIntel>,
+  throwOnFailure = false,
+): Promise<void> {
+  if (queries.length === 0) return;
+
+  const ttlCutoff = new Date(Date.now() - QUERY_VOLUME_TTL_DAYS * 86_400_000);
+  const claimCutoff = new Date(Date.now() - VOLUME_CLAIM_TTL_MS);
+  const claimToken = randomUUID();
+  const queryValues = sql.join(queries.map((query) => sql`${query}`), sql`, `);
+  const claimResult =
+    market === "us"
+      ? await db.execute<{ query: string }>(sql`
+          WITH claimable AS (
+            SELECT query
+            FROM query_intel
+            WHERE site_id = ${siteId}
+              AND query IN (${queryValues})
+              AND (volume_fetched_at IS NULL OR volume_fetched_at < ${ttlCutoff})
+              AND (volume_claimed_at IS NULL OR volume_claimed_at < ${claimCutoff})
+            ORDER BY query
+            LIMIT ${MAX_NEW_VOLUMES_PER_RUN}
+            FOR UPDATE SKIP LOCKED
+          )
+          UPDATE query_intel AS qi
+          SET volume_claimed_at = NOW(), volume_claim_token = ${claimToken}
+          FROM claimable
+          WHERE qi.site_id = ${siteId}
+            AND qi.query = claimable.query
+          RETURNING qi.query
+        `)
+      : await db.execute<{ query: string }>(sql`
+          WITH claimable AS (
+            SELECT query
+            FROM query_intel
+            WHERE site_id = ${siteId}
+              AND query IN (${queryValues})
+              AND (global_volume_fetched_at IS NULL OR global_volume_fetched_at < ${ttlCutoff})
+              AND (global_volume_claimed_at IS NULL OR global_volume_claimed_at < ${claimCutoff})
+            ORDER BY query
+            LIMIT ${MAX_NEW_VOLUMES_PER_RUN}
+            FOR UPDATE SKIP LOCKED
+          )
+          UPDATE query_intel AS qi
+          SET global_volume_claimed_at = NOW(), global_volume_claim_token = ${claimToken}
+          FROM claimable
+          WHERE qi.site_id = ${siteId}
+            AND qi.query = claimable.query
+          RETURNING qi.query
+        `);
+  const needVolume = claimResult.rows;
+
+  if (needVolume.length === 0) return;
+
+  let preserveClaimUntilExpiry = false;
+  try {
+    const volumes = await fetchSearchVolumes(
+      needVolume.map((row) => row.query),
+      market,
+    );
+    const now = new Date();
+    for (const volume of volumes) {
+      const norm = normaliseQuery(volume.query);
+      const values =
+        market === "us"
+          ? {
+              searchVolume: volume.searchVolume,
+              volumeFetchedAt: now,
+              volumeSource: "dataforseo",
+            }
+          : {
+              globalSearchVolume: volume.searchVolume,
+              globalVolumeFetchedAt: now,
+              globalVolumeSource: "dataforseo",
+            };
+
+      const updated = await db
+        .update(queryIntelTable)
+        .set(values)
+        .where(
+          and(
+            eq(queryIntelTable.query, norm),
+            eq(queryIntelTable.siteId, siteId),
+            eq(
+              market === "us"
+                ? queryIntelTable.volumeClaimToken
+                : queryIntelTable.globalVolumeClaimToken,
+              claimToken,
+            ),
+          ),
+        )
+        .returning({ query: queryIntelTable.query });
+      if (updated.length > 0) {
+        const previous = byQuery.get(norm);
+        if (previous) byQuery.set(norm, { ...previous, ...values });
+      }
+    }
+
+    logger.info(
+      {
+        market,
+        answered: volumes.length,
+        requested: needVolume.length,
+        skipped: needVolume.length - volumes.length,
+      },
+      "queryIntel: market volumes refreshed (skipped = API didn't answer, will retry)",
+    );
+  } catch (error) {
+    // A timeout, transport/parse failure, or local cache-write failure can
+    // happen after the provider accepted and charged the request. Retain the
+    // claim so a normal retry cannot immediately buy the same lookup again.
+    // A provider-confirmed out-of-funds response is known not to have run.
+    preserveClaimUntilExpiry = !isDataForSeoOutOfFunds(error);
+    logger.warn({ err: error, market }, "queryIntel: market volume batch failed");
+    if (throwOnFailure) throw error;
+  } finally {
+    if (!preserveClaimUntilExpiry) {
+      const claimedQueries = needVolume.map((row) => row.query);
+      try {
+        await db
+          .update(queryIntelTable)
+          .set(
+            market === "us"
+              ? { volumeClaimedAt: null, volumeClaimToken: null }
+              : { globalVolumeClaimedAt: null, globalVolumeClaimToken: null },
+          )
+          .where(
+            and(
+              eq(queryIntelTable.siteId, siteId),
+              inArray(queryIntelTable.query, claimedQueries),
+              eq(
+                market === "us"
+                  ? queryIntelTable.volumeClaimToken
+                  : queryIntelTable.globalVolumeClaimToken,
+                claimToken,
+              ),
+            ),
+          );
+      } catch (error) {
+        // Leave the durable claim in place until its TTL expires. That is safer
+        // than risking a second paid lookup after a transient release failure.
+        logger.warn(
+          { err: error, market, siteId, claimed: claimedQueries.length },
+          "queryIntel: failed to release market-volume claims",
+        );
+      }
+    }
+  }
 }
 
 /**
@@ -31,26 +215,11 @@ export async function ensureQueryIntel(
   rawQueries: string[],
   siteId: number,
 ): Promise<Map<string, QueryIntel>> {
-  const queries = Array.from(
-    new Set(rawQueries.map(normaliseQuery).filter((q) => q.length > 0)),
-  );
-  if (queries.length === 0) return new Map();
+  const { queries, byQuery } = await ensureRows(rawQueries, siteId);
+  if (queries.length === 0) return byQuery;
 
-  // 1. Insert any rows we've never seen so we can update them below.
-  await db
-    .insert(queryIntelTable)
-    .values(queries.map((q) => ({ query: q, siteId })))
-    .onConflictDoNothing();
-
-  // 2. Load current state.
-  const existing = await db
-    .select()
-    .from(queryIntelTable)
-    .where(and(inArray(queryIntelTable.query, queries), eq(queryIntelTable.siteId, siteId)));
-  const byQuery = new Map(existing.map((r) => [r.query, r]));
-
-  // 3. Embeddings — only for rows still missing one, capped per run.
-  const needEmbedding = existing
+  // Embeddings — only for rows still missing one, capped per run.
+  const needEmbedding = [...byQuery.values()]
     .filter((r) => r.embedding === null)
     .slice(0, MAX_NEW_EMBEDDINGS_PER_RUN);
 
@@ -82,63 +251,37 @@ export async function ensureQueryIntel(
     }
   }
 
-  // 4. Search volumes — missing OR older than VOLUME_TTL_DAYS, capped per run.
-  const ttlCutoff = new Date(Date.now() - VOLUME_TTL_DAYS * 86_400_000);
-  const needVolume = await db
-    .select({ query: queryIntelTable.query })
-    .from(queryIntelTable)
-    .where(
-      sql`${inArray(queryIntelTable.query, queries)} AND ${eq(
-        queryIntelTable.siteId,
-        siteId,
-      )} AND (${or(
-        isNull(queryIntelTable.volumeFetchedAt),
-        lt(queryIntelTable.volumeFetchedAt, ttlCutoff),
-      )})`,
-    )
-    .limit(MAX_NEW_VOLUMES_PER_RUN);
+  await refreshMarketVolumes(queries, siteId, "us", byQuery);
 
-  if (needVolume.length > 0) {
+  return byQuery;
+}
+
+/**
+ * Refresh both US and worldwide volume caches without creating embeddings.
+ * Used by topical-map demand enrichment after page coverage is known.
+ */
+export async function ensureQueryMarketVolumes(
+  rawQueries: string[],
+  siteId: number,
+): Promise<Map<string, QueryIntel>> {
+  const { queries, byQuery } = await ensureRows(rawQueries, siteId);
+  if (queries.length === 0) return byQuery;
+
+  // Keep calls sequential: the paid Google Ads live endpoint is account-rate
+  // limited, and this also makes US/worldwide failures independently retryable.
+  const errors: unknown[] = [];
+  for (const market of ["us", "global"] as const) {
     try {
-      // fetchSearchVolumes returns ONLY queries the API actually answered
-      // (volume may legitimately be null = "no measurable demand"). Skipped
-      // queries are not in the result, so their volumeFetchedAt stays null
-      // and they'll be retried on the next recompute instead of being
-      // stamped as "done" for 30 days against a transient API outage.
-      const volumes = await fetchSearchVolumes(needVolume.map((r) => r.query));
-      const now = new Date();
-      for (const v of volumes) {
-        const norm = normaliseQuery(v.query);
-        await db
-          .update(queryIntelTable)
-          .set({
-            searchVolume: v.searchVolume,
-            volumeFetchedAt: now,
-            volumeSource: "dataforseo",
-          })
-          .where(sql`${queryIntelTable.query} = ${norm}`);
-        const prev = byQuery.get(norm);
-        if (prev) {
-          byQuery.set(norm, {
-            ...prev,
-            searchVolume: v.searchVolume,
-            volumeFetchedAt: now,
-            volumeSource: "dataforseo",
-          });
-        }
-      }
-      logger.info(
-        {
-          answered: volumes.length,
-          requested: needVolume.length,
-          skipped: needVolume.length - volumes.length,
-        },
-        "queryIntel: volumes refreshed (skipped = API didn't answer, will retry)",
-      );
-    } catch (e) {
-      logger.warn({ err: e }, "queryIntel: volume batch failed");
+      await refreshMarketVolumes(queries, siteId, market, byQuery, true);
+    } catch (error) {
+      errors.push(error);
     }
   }
-
+  if (errors.length === 2) {
+    const first = errors[0];
+    throw first instanceof Error
+      ? first
+      : new Error("Both US and worldwide search-volume lookups failed.");
+  }
   return byQuery;
 }

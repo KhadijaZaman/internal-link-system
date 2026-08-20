@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import {
   db,
   topicalMapsTable,
@@ -9,6 +9,7 @@ import {
   wpPostsTable,
   clusterRunsTable,
   clusterRunClustersTable,
+  queryIntelTable,
   type TopicalMap,
   type TopicalMapNode,
   type ClusterKeywordEntry,
@@ -17,6 +18,10 @@ import { requireAuth } from "../lib/auth";
 import { requireSite, getSite } from "../lib/site";
 import { GenerateTopicalMapBody, UpdateTopicalMapNodeBody } from "@workspace/api-zod";
 import { runJob } from "../jobs/runner";
+import {
+  estimateUsTrafficPotential,
+  TOPICAL_MAP_TRAFFIC_CTR,
+} from "../jobs/enrichTopicalMapDemand";
 import { reconcileStaleTopicalMaps } from "../jobs/generateTopicalMap";
 import { canonicalPath } from "../lib/urlCanon";
 import {
@@ -57,6 +62,10 @@ function serializeMap(map: TopicalMap) {
     competitorScanStatus: map.competitorScanStatus ?? null,
     competitorScanError: map.competitorScanError ?? null,
     competitorScanStartedAt: map.competitorScanStartedAt?.toISOString() ?? null,
+    demandStatus: map.demandStatus ?? null,
+    demandError: map.demandError ?? null,
+    demandStartedAt: map.demandStartedAt?.toISOString() ?? null,
+    demandFetchedAt: map.demandFetchedAt?.toISOString() ?? null,
   };
 }
 
@@ -65,10 +74,24 @@ interface JoinedNode extends TopicalMapNode {
   gscClicks: number | null;
   gscImpressions: number | null;
   gscPosition: number | null;
+  usSearchVolume: number | null;
+  globalSearchVolume: number | null;
+  usVolumeFetchedAt: Date | null;
+  globalVolumeFetchedAt: Date | null;
   // competitors is already on TopicalMapNode (from DB schema), re-declared here for clarity
 }
 
 function serializeNode(n: JoinedNode) {
+  const isNewOpportunity = n.status === "gap";
+  const demandFetchedAt =
+    isNewOpportunity && n.usVolumeFetchedAt !== null && n.globalVolumeFetchedAt !== null
+      ? new Date(
+          Math.max(
+            n.usVolumeFetchedAt.getTime(),
+            n.globalVolumeFetchedAt.getTime(),
+          ),
+        ).toISOString()
+      : null;
   return {
     id: n.id,
     mapId: n.mapId,
@@ -96,6 +119,20 @@ function serializeNode(n: JoinedNode) {
     gscClicks: n.gscClicks,
     gscImpressions: n.gscImpressions,
     gscPosition: n.gscPosition,
+    usSearchVolume: isNewOpportunity ? n.usSearchVolume : null,
+    globalSearchVolume: isNewOpportunity ? n.globalSearchVolume : null,
+    estimatedUsTraffic: isNewOpportunity
+      ? estimateUsTrafficPotential(
+          n.usSearchVolume,
+          n.usVolumeFetchedAt !== null,
+        )
+      : null,
+    estimatedUsTrafficCtr: TOPICAL_MAP_TRAFFIC_CTR,
+    usVolumeFetchedAt:
+      isNewOpportunity ? n.usVolumeFetchedAt?.toISOString() ?? null : null,
+    globalVolumeFetchedAt:
+      isNewOpportunity ? n.globalVolumeFetchedAt?.toISOString() ?? null : null,
+    demandFetchedAt,
   };
 }
 
@@ -107,6 +144,10 @@ async function fetchJoinedNodes(mapId: number, siteId: number): Promise<JoinedNo
       gscClicks: pagesTable.clicks,
       gscImpressions: pagesTable.impressions,
       gscPosition: pagesTable.position,
+      usSearchVolume: queryIntelTable.searchVolume,
+      globalSearchVolume: queryIntelTable.globalSearchVolume,
+      usVolumeFetchedAt: queryIntelTable.volumeFetchedAt,
+      globalVolumeFetchedAt: queryIntelTable.globalVolumeFetchedAt,
     })
     .from(topicalMapNodesTable)
     .leftJoin(
@@ -114,6 +155,13 @@ async function fetchJoinedNodes(mapId: number, siteId: number): Promise<JoinedNo
       and(
         eq(topicalMapNodesTable.matchedPagePath, pagesTable.path),
         eq(pagesTable.siteId, siteId),
+      ),
+    )
+    .leftJoin(
+      queryIntelTable,
+      and(
+        eq(queryIntelTable.siteId, siteId),
+        sql`${queryIntelTable.query} = lower(trim(${topicalMapNodesTable.canonicalQuery}))`,
       ),
     )
     .where(
@@ -126,6 +174,10 @@ async function fetchJoinedNodes(mapId: number, siteId: number): Promise<JoinedNo
     gscClicks: r.gscClicks ?? null,
     gscImpressions: r.gscImpressions ?? null,
     gscPosition: r.gscPosition ?? null,
+    usSearchVolume: r.usSearchVolume ?? null,
+    globalSearchVolume: r.globalSearchVolume ?? null,
+    usVolumeFetchedAt: r.usVolumeFetchedAt ?? null,
+    globalVolumeFetchedAt: r.globalVolumeFetchedAt ?? null,
   }));
 }
 
@@ -641,6 +693,94 @@ router.post("/topical-map/runs/:mapId/analyze-competitors", requireAuth, require
   res.status(202).json(serializeMap(updated));
 });
 
+router.post("/topical-map/runs/:mapId/refresh-demand", requireAuth, requireSite, async (req, res) => {
+  const site = getSite(req);
+  const mapId = Number(req.params.mapId);
+  if (!Number.isInteger(mapId)) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+
+  const [map] = await db
+    .select()
+    .from(topicalMapsTable)
+    .where(and(eq(topicalMapsTable.siteId, site.id), eq(topicalMapsTable.id, mapId)))
+    .limit(1);
+  if (!map) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (map.status !== "complete") {
+    res.status(409).json({ error: "Demand refresh requires a complete map." });
+    return;
+  }
+  const DEMAND_STALE_MS = 15 * 60_000;
+  if (map.demandStatus === "running") {
+    const isStale =
+      !map.demandStartedAt ||
+      Date.now() - map.demandStartedAt.getTime() > DEMAND_STALE_MS;
+    if (!isStale) {
+      res.status(409).json({ error: "Demand data is already refreshing for this map." });
+      return;
+    }
+    const [reset] = await db
+      .update(topicalMapsTable)
+      .set({
+        demandStatus: "failed",
+        demandError:
+          "The server restarted while demand data was refreshing. Refresh demand to retry.",
+      })
+      .where(
+        and(
+          eq(topicalMapsTable.siteId, site.id),
+          eq(topicalMapsTable.id, mapId),
+          eq(topicalMapsTable.demandStatus, "running"),
+        ),
+      )
+      .returning();
+    if (reset) Object.assign(map, reset);
+  }
+  if (!process.env["DATAFORSEO_LOGIN"] || !process.env["DATAFORSEO_PASSWORD"]) {
+    res.status(422).json({ error: "DataForSEO credentials are not configured." });
+    return;
+  }
+
+  const [updated] = await db
+    .update(topicalMapsTable)
+    .set({ demandStatus: "queued", demandError: null })
+    .where(
+      and(
+        eq(topicalMapsTable.siteId, site.id),
+        eq(topicalMapsTable.id, mapId),
+        or(
+          isNull(topicalMapsTable.demandStatus),
+          inArray(topicalMapsTable.demandStatus, [
+            "queued",
+            "complete",
+            "partial",
+            "failed",
+          ]),
+        ),
+      ),
+    )
+    .returning();
+  if (!updated) {
+    res.status(409).json({ error: "Demand data is already refreshing for this map." });
+    return;
+  }
+
+  const result = await runJob("enrich_topical_map_demand", site);
+  if (!result.started && result.reason !== "Already running") {
+    await db
+      .update(topicalMapsTable)
+      .set({ demandStatus: map.demandStatus })
+      .where(and(eq(topicalMapsTable.siteId, site.id), eq(topicalMapsTable.id, mapId)));
+    res.status(409).json({ error: `Could not start demand refresh: ${result.reason}` });
+    return;
+  }
+  res.status(202).json(serializeMap(updated));
+});
+
 router.get("/topical-map/runs/:mapId", requireAuth, requireSite, async (req, res) => {
   const site = getSite(req);
   const mapId = Number(req.params.mapId);
@@ -712,6 +852,10 @@ router.patch("/topical-map/nodes/:nodeId", requireAuth, requireSite, async (req,
       gscClicks: pagesTable.clicks,
       gscImpressions: pagesTable.impressions,
       gscPosition: pagesTable.position,
+      usSearchVolume: queryIntelTable.searchVolume,
+      globalSearchVolume: queryIntelTable.globalSearchVolume,
+      usVolumeFetchedAt: queryIntelTable.volumeFetchedAt,
+      globalVolumeFetchedAt: queryIntelTable.globalVolumeFetchedAt,
     })
     .from(topicalMapNodesTable)
     .leftJoin(
@@ -719,6 +863,13 @@ router.patch("/topical-map/nodes/:nodeId", requireAuth, requireSite, async (req,
       and(
         eq(topicalMapNodesTable.matchedPagePath, pagesTable.path),
         eq(pagesTable.siteId, site.id),
+      ),
+    )
+    .leftJoin(
+      queryIntelTable,
+      and(
+        eq(queryIntelTable.siteId, site.id),
+        sql`${queryIntelTable.query} = lower(trim(${topicalMapNodesTable.canonicalQuery}))`,
       ),
     )
     .where(and(eq(topicalMapNodesTable.siteId, site.id), eq(topicalMapNodesTable.id, nodeId)))
@@ -730,6 +881,10 @@ router.patch("/topical-map/nodes/:nodeId", requireAuth, requireSite, async (req,
       gscClicks: row!.gscClicks ?? null,
       gscImpressions: row!.gscImpressions ?? null,
       gscPosition: row!.gscPosition ?? null,
+      usSearchVolume: row!.usSearchVolume ?? null,
+      globalSearchVolume: row!.globalSearchVolume ?? null,
+      usVolumeFetchedAt: row!.usVolumeFetchedAt ?? null,
+      globalVolumeFetchedAt: row!.globalVolumeFetchedAt ?? null,
     }),
   );
 });

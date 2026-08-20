@@ -25,6 +25,8 @@ import { budgetForSite, type JobBudget } from "../lib/jobBudget";
 import { cosineSim } from "../lib/semanticScorer";
 import { withDbRetry } from "../lib/dbRetry";
 import { logger } from "../lib/logger";
+import { runEnrichTopicalMapDemand } from "./enrichTopicalMapDemand";
+import { balanceOpportunityFunnelStages } from "../services/topicalMapFunnelBalance";
 
 const STALE_MS = 5 * 60_000;
 const INTERRUPTED_MESSAGE =
@@ -150,6 +152,29 @@ export async function runGenerateTopicalMap(site: SiteContext): Promise<void> {
         finishedAt: new Date(),
       });
       logger.info({ mapId: map.id, ...stats }, "Topical map generation complete");
+      const [queuedDemand] = await db
+        .update(topicalMapsTable)
+        .set({ demandStatus: "queued", demandError: null })
+        .where(
+          and(
+            eq(topicalMapsTable.id, map.id),
+            eq(topicalMapsTable.siteId, site.id),
+            isNull(topicalMapsTable.demandStatus),
+          ),
+        )
+        .returning({ id: topicalMapsTable.id });
+      if (queuedDemand) {
+        // Uses the same atomic queued → running claim as explicit refreshes.
+        // If a user refresh races this handoff, exactly one worker gets the map.
+        try {
+          await runEnrichTopicalMapDemand(site);
+        } catch (error) {
+          logger.warn(
+            { err: error, mapId: map.id, siteId: site.id },
+            "Topical map completed but automatic demand worker could not start",
+          );
+        }
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       logger.error({ mapId: map.id, err: e }, "Topical map generation failed");
@@ -339,6 +364,26 @@ async function processMap(
   // ---- Matching: existing coverage ----------------------------------------
   await updateMap(map.id, { phase: "matching" });
   await matchNodes(nodes, site, budget);
+  const gapNodes = nodes
+    .map((node, index) => ({ node, index }))
+    .filter(({ node }) => node.matchedPagePath === null);
+  const balancedStages = balanceOpportunityFunnelStages(
+    gapNodes.map(({ node, index }) => ({
+      id: index,
+      intent: node.meta.intent,
+      predicate: node.meta.predicate,
+      pageType: node.meta.page_type,
+      funnelStage: node.meta.funnel_stage,
+    })),
+  );
+  let funnelReassigned = 0;
+  for (const { node, index } of gapNodes) {
+    const balanced = balancedStages.get(index);
+    if (balanced && node.meta.funnel_stage !== balanced) {
+      node.meta.funnel_stage = balanced;
+      funnelReassigned++;
+    }
+  }
   await updateMap(map.id, { progressDone: done + 1 });
 
   // ---- Persist (transactional) ---------------------------------------------
@@ -414,6 +459,7 @@ async function processMap(
     matchedBySlug: nodes.filter((n) => n.matchSource === "exact_slug").length,
     matchedByQuery: nodes.filter((n) => n.matchSource === "top_query").length,
     matchedByEmbedding: nodes.filter((n) => n.matchSource === "embedding").length,
+    funnelReassigned,
   };
 }
 

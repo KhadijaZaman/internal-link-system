@@ -367,19 +367,58 @@ export interface SearchVolumeResult {
   searchVolume: number | null;
 }
 
+export type SearchVolumeMarket = "us" | "global";
+const SEARCH_VOLUME_TIMEOUT_MS = 2 * 60_000;
+export const DATAFORSEO_WORLDWIDE_VOLUME_CONTRACT_URL =
+  "https://docs.dataforseo.com/v3/keywords_data/google_ads/search_volume/live/";
+
+export class DataForSeoIndeterminateVolumeError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "DataForSeoIndeterminateVolumeError";
+  }
+}
+
+export interface SearchVolumeTask {
+  keywords: string[];
+  language_code: "en";
+  search_partners: false;
+  location_code?: number;
+}
+
+/**
+ * DataForSEO's documented worldwide contract is intentionally location-free:
+ * omitting location_name, location_code, and location_coordinate returns
+ * results "for all available locations." There is no worldwide location code.
+ * See DATAFORSEO_WORLDWIDE_VOLUME_CONTRACT_URL.
+ */
+export function buildSearchVolumeTask(
+  keywords: string[],
+  market: SearchVolumeMarket,
+): SearchVolumeTask {
+  return {
+    keywords,
+    language_code: "en",
+    ...(market === "us" ? { location_code: 2840 } : {}),
+    search_partners: false,
+  };
+}
+
 /**
  * Fetch monthly Google Ads search volume for up to 1000 queries in a single
  * DataForSEO call. Returns one entry per **successfully answered** query;
- * queries the API didn't answer (transport error, missing creds, task-level
- * failure, batch-level HTTP error) are omitted so the caller can leave the
- * cache stale and retry next run. A query that DataForSEO actively answered
- * with "no measurable volume" is returned with `searchVolume: null` — that
- * IS a successful answer and should be cached.
+ * Queries omitted by a provider-confirmed task failure remain stale. Ambiguous
+ * outcomes (timeout, transport/HTTP/parse failure, or missing task) throw so
+ * the caller can retain its paid-request claim rather than immediately retry.
+ * A query that DataForSEO actively answered with "no measurable volume" is
+ * returned with `searchVolume: null` — that IS a successful answer and should
+ * be cached.
  *
  * Endpoint: keywords_data/google_ads/search_volume/live (paid).
  */
 export async function fetchSearchVolumes(
   queries: string[],
+  market: SearchVolumeMarket = "us",
 ): Promise<SearchVolumeResult[]> {
   const login = process.env["DATAFORSEO_LOGIN"];
   const password = process.env["DATAFORSEO_PASSWORD"];
@@ -398,17 +437,16 @@ export async function fetchSearchVolumes(
             Authorization: `Basic ${auth}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify([
-            {
-              keywords: batch,
-              language_code: "en",
-              location_code: 2840,
-              search_partners: false,
-            },
-          ]),
+          signal: AbortSignal.timeout(SEARCH_VOLUME_TIMEOUT_MS),
+          body: JSON.stringify([buildSearchVolumeTask(batch, market)]),
         },
       );
-      if (!res.ok) continue; // transport failure — skip batch so it retries
+      if (res.status === 402) throw new DataForSeoOutOfFundsError();
+      if (!res.ok) {
+        throw new DataForSeoIndeterminateVolumeError(
+          `DataForSEO search-volume HTTP ${res.status}; request outcome is indeterminate`,
+        );
+      }
       const data = (await res.json()) as {
         tasks?: Array<{
           status_code?: number;
@@ -419,9 +457,17 @@ export async function fetchSearchVolumes(
         }>;
       };
       const task = data.tasks?.[0];
+      if (task?.status_code === 40200 || task?.status_code === 40201) {
+        throw new DataForSeoOutOfFundsError();
+      }
       // Task-level failure — DataForSEO returns 4xxxx/5xxxx status codes on
       // the task itself. Don't pretend we got answers we didn't.
-      if (!task || (task.status_code ?? 20000) >= 40000) continue;
+      if (!task) {
+        throw new DataForSeoIndeterminateVolumeError(
+          "DataForSEO search-volume response contained no task",
+        );
+      }
+      if ((task.status_code ?? 20000) >= 40000) continue;
       for (const r of task.result ?? []) {
         if (typeof r.keyword === "string") {
           out.push({
@@ -430,9 +476,13 @@ export async function fetchSearchVolumes(
           });
         }
       }
-    } catch {
-      // network/parse error — skip batch
-      continue;
+    } catch (error) {
+      if (error instanceof DataForSeoOutOfFundsError) throw error;
+      if (error instanceof DataForSeoIndeterminateVolumeError) throw error;
+      throw new DataForSeoIndeterminateVolumeError(
+        "DataForSEO search-volume request failed with an indeterminate outcome",
+        { cause: error },
+      );
     }
   }
   return out;

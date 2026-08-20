@@ -43,7 +43,7 @@ const NodeMetaSchema = z.object({
   attribute_owned: z.string().min(2).max(200),
   intent: z.enum(["informational", "commercial", "transactional", "navigational"]),
   predicate: z.string().min(2).max(80),
-  funnel_stage: z.enum(["tofu", "mofu", "bofu", "retention"]),
+  funnel_stage: z.enum(["tofu", "mofu", "bofu"]),
   page_type: z.string().min(2).max(60),
   suggested_slug: z
     .string()
@@ -91,7 +91,8 @@ const SYSTEM = `You are a semantic SEO strategist applying Koray Tugberk Gubur's
 Non-negotiable framework rules:
 - Every node owns exactly ONE entity-attribute pair (its macro context) and exactly ONE canonical query. No "10 tips" nodes without an owned attribute.
 - CORE section = main attributes of the central entity tied to the central search intent (monetization side); predicates bias to compare/use/buy; funnel mofu/bofu.
-- OUTER section = connected query networks that build historical data; predicate almost entirely "know"; funnel tofu/retention. Never omit the outer section.
+- OUTER section = connected query networks that build historical data; predicate mostly "know"; funnel tofu/mofu. Never omit the outer section.
+- Use only tofu, mofu, or bofu for new topics. Across the complete map, aim for an even-as-possible split while keeping every stage semantically honest: awareness/education = tofu, evaluation/solution comparison = mofu, action/vendor/pricing = bofu.
 - URL slugs mirror hierarchy: root → seed → node, 1-2 words per segment, lowercase, hyphens, no stop words unless meaningful (e.g. /budgeting/zero-based/irregular-income).
 - Deliberately repeat the central entity's key vocabulary across core-section titles.
 - Respect the topical borders: WILL items are in scope, WILL NOT items are out of scope. When a node sits near a border, add a border_note ("covers X, defers Y to <sibling>").
@@ -148,7 +149,7 @@ const NODE_JSON_FIELDS = `"title": "short node name",
   "attribute_owned": "entity-attribute pair, e.g. 'AI visibility — measurement'",
   "intent": "informational|commercial|transactional|navigational",
   "predicate": "know|learn|compare|use|buy|fix|go (comma-join if several)",
-  "funnel_stage": "tofu|mofu|bofu|retention",
+  "funnel_stage": "tofu|mofu|bofu",
   "page_type": "guide|how_to|comparison|listicle|definition|landing|tool|case_study|glossary",
   "suggested_slug": "/seed/node lowercase path mirroring hierarchy",
   "suggested_title": "title tag (repeat core vocabulary in core section)",
@@ -218,6 +219,7 @@ TASK — Phase A of the map: propose the PILLAR layer only.
 - At least one pillar in section "core" AND at least one in section "outer" (outer builds historical data that bridges back to core).
 - Ground pillar choices in the real search demand above when it exists; do not invent demand the data contradicts.
 - Pillars must sit inside the WILL borders and stay clear of WILL NOT.
+- Use only tofu, mofu, or bofu and keep the pillar set as evenly distributed across those stages as its small size allows.
 
 Return strict JSON:
 {
@@ -256,10 +258,11 @@ PILLAR: [${pillar.section}] ${pillar.title}
 Rules:
 - 3 to 8 core topics (main attributes / facets of the pillar), each with up to 5 supporting topics, each supporting with up to 4 subtopics. Go deep only where demand or the source context justifies it.
 - Every node: ONE canonical query, ONE attribute, slug nested under the pillar slug.
+- Across this expansion, keep tofu, mofu, and bofu counts as even as possible without assigning a stage that contradicts the node's intent, predicate, or page type.
 - Section "${pillar.section}" defaults: ${
     pillar.section === "core"
       ? "compare/use/buy predicates, mofu/bofu funnel"
-      : '"know" predicate, tofu funnel'
+      : '"know" and solution-aware predicates, tofu/mofu funnel'
   } — deviate only when the node genuinely differs.
 - No overlap with the other pillars listed above; when a node borders one, add a border_note deferring to it.
 - bridges: up to 10 contextual cross-links justified by a shared sub-concept. ${

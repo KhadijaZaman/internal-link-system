@@ -25,6 +25,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import TopicalMapPage from "./topical-map";
 
+const apiMocks = vi.hoisted(() => ({
+  refreshDemandMutate: vi.fn(),
+}));
+
 // ---------------------------------------------------------------------------
 // Canvas 2D context stub
 // Patches HTMLCanvasElement.prototype.getContext so the D3 canvas effect
@@ -97,6 +101,13 @@ const baseNode = {
   matchConfidence: null as null, pageTitle: null as null,
   suggestedSlug: "/suggested-slug",
   gscClicks: null as null, gscImpressions: null as null, gscPosition: null as null,
+  usSearchVolume: null as number | null,
+  globalSearchVolume: null as number | null,
+  estimatedUsTraffic: null as number | null,
+  estimatedUsTrafficCtr: 0.2,
+  usVolumeFetchedAt: null as string | null,
+  globalVolumeFetchedAt: null as string | null,
+  demandFetchedAt: null as string | null,
   competitors: [] as never[],
 };
 
@@ -104,6 +115,9 @@ const MOCK_NODES = [
   {
     ...baseNode, id: 1, sortOrder: 1, status: "gap" as const,
     title: "Alpha Topic", canonicalQuery: "alpha query",
+    usSearchVolume: 500, globalSearchVolume: 900, estimatedUsTraffic: 100,
+    usVolumeFetchedAt: new Date().toISOString(),
+    globalVolumeFetchedAt: new Date().toISOString(),
   },
   {
     // published + matched page to exercise the gscPosition branch
@@ -120,6 +134,9 @@ const MOCK_NODES = [
     parentId: 2, level: "subtopic" as const, section: "outer", priority: "low",
     title: "Gamma Topic", canonicalQuery: "gamma query",
     informationGain: "High info gain",
+    usSearchVolume: 1500, globalSearchVolume: 2500, estimatedUsTraffic: 300,
+    usVolumeFetchedAt: new Date().toISOString(),
+    globalVolumeFetchedAt: new Date().toISOString(),
   },
 ];
 
@@ -138,6 +155,10 @@ const MOCK_RUN = {
   createdAt: new Date().toISOString(),
   competitorScanStatus: null,
   competitorScanError: null,
+  demandStatus: "complete",
+  demandError: null,
+  demandStartedAt: null,
+  demandFetchedAt: new Date().toISOString(),
 };
 
 const MOCK_DETAIL = {
@@ -175,6 +196,10 @@ vi.mock("@workspace/api-client-react", () => ({
   useAnalyzeTopicalMapCompetitors: () => noopMutation(),
   useUpdateTopicalMapNode: () => noopMutation(),
   useRunJob: () => noopMutation(),
+  useRefreshTopicalMapDemand: () => ({
+    ...noopMutation(),
+    mutate: apiMocks.refreshDemandMutate,
+  }),
   // Query key factories
   getListTopicalMapRunsQueryKey: () => ["listTopicalMapRuns"],
   getGetTopicalMapRunQueryKey: (id: number) => ["getTopicalMapRun", id],
@@ -318,5 +343,68 @@ describe("TopicalMapPage — dedicated map views", () => {
     fireEvent.click(mapButton);
     expect(mapButton.getAttribute("aria-pressed")).toBe("true");
     expect(canvas().parentElement?.getAttribute("aria-hidden")).toBe("false");
+  });
+});
+
+describe("TopicalMapPage — demand-led opportunities", () => {
+  afterEach(() => {
+    cleanup();
+    apiMocks.refreshDemandMutate.mockClear();
+  });
+
+  it("renders demand metrics in the table and selected gap detail", async () => {
+    const { q } = renderPage();
+    fireEvent.click(q.getByTestId("button-view-table"));
+    fireEvent.click(await q.findByTestId("row-topic-1"));
+
+    const table = q.getByTestId("table-topical-map");
+    expect(table.textContent).toContain("Est. Traffic");
+    expect(table.textContent).toContain("US Vol");
+    expect(table.textContent).toContain("Global Vol");
+
+    const metrics = await q.findByTestId("node-demand-metrics");
+    expect(metrics.textContent).toContain("100");
+    expect(metrics.textContent).toContain("500");
+    expect(metrics.textContent).toContain("900");
+  });
+
+  it("orders same-stage opportunities by estimated traffic with unknowns last", () => {
+    const { q } = renderPage();
+    const rows = Array.from(
+      q.getByTestId("card-gap-list").querySelectorAll('[data-testid^="gap-row-"]'),
+    );
+    expect(rows.map((row) => row.getAttribute("data-testid"))).toEqual([
+      "gap-row-3",
+      "gap-row-1",
+    ]);
+  });
+
+  it("queues an explicit demand refresh for the selected map", () => {
+    const { q } = renderPage();
+    fireEvent.click(q.getByTestId("button-refresh-demand"));
+    expect(apiMocks.refreshDemandMutate).toHaveBeenCalledWith({ mapId: 1 });
+  });
+
+  it("copies all demand columns for spreadsheet export", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    Object.defineProperty(window, "isSecureContext", {
+      value: true,
+      configurable: true,
+    });
+    const { q } = renderPage();
+
+    fireEvent.click(q.getByTestId("button-view-table"));
+    fireEvent.click(q.getByTestId("button-copy-table-sheets"));
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    const copied = String(writeText.mock.calls[0]?.[0] ?? "");
+    expect(copied).toContain("Estimated US Traffic");
+    expect(copied).toContain("US Search Volume");
+    expect(copied).toContain("Global Search Volume");
+    expect(copied).toContain("Alpha Topic");
+    expect(copied).toContain("\t100\t500\t900\t");
   });
 });

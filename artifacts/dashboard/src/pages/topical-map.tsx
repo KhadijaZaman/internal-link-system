@@ -7,6 +7,7 @@ import {
   useGenerateTopicalMap,
   useUpdateTopicalMapNode,
   useAnalyzeTopicalMapCompetitors,
+  useRefreshTopicalMapDemand,
   type TopicalMapSummary,
   type TopicalMapNode,
 } from "@workspace/api-client-react";
@@ -39,7 +40,11 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
-import { rowsToTsv, tsvToCsv, copyToClipboard, type Cell } from "@/lib/clipboard";
+import { copyToClipboard } from "@/lib/clipboard";
+import {
+  downloadTopicalMapCsv,
+  topicalMapExportTsv,
+} from "@/lib/topical-map-export";
 import { useLocation } from "wouter";
 import {
   AlertTriangle,
@@ -126,7 +131,49 @@ function writerNotesFor(node: TopicalMapNode): string {
   lines.push(
     `Search intent: ${node.intent} (${node.predicate}) · funnel stage: ${node.funnelStage} · page type: ${node.pageType}`,
   );
+  if (node.estimatedUsTraffic !== null) lines.push(`Estimated US Traffic: ${node.estimatedUsTraffic}`);
+  if (node.usSearchVolume !== null) {
+    lines.push(`US Search Volume: ${node.usSearchVolume}`);
+  } else if (node.usVolumeFetchedAt) {
+    lines.push("US Search Volume: No measurable volume");
+  }
+  if (node.globalSearchVolume !== null) {
+    lines.push(`Global Search Volume: ${node.globalSearchVolume}`);
+  } else if (node.globalVolumeFetchedAt) {
+    lines.push("Global Search Volume: No measurable volume");
+  }
   return lines.join("\n");
+}
+
+function formatCompactNumber(num: number | null | undefined): string {
+  if (num === null || num === undefined) return "—";
+  return Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(num);
+}
+
+function formatFullNumber(num: number | null | undefined): string {
+  if (num === null || num === undefined) return "Unknown";
+  return Intl.NumberFormat("en-US").format(num);
+}
+
+function formatDemandNumber(
+  value: number | null | undefined,
+  fetchedAt: string | null | undefined,
+): string {
+  if (value !== null && value !== undefined) return formatCompactNumber(value);
+  return fetchedAt ? "No volume" : "—";
+}
+
+function formatDemandTitle(
+  value: number | null | undefined,
+  fetchedAt: string | null | undefined,
+  market: string,
+): string {
+  if (value !== null && value !== undefined) {
+    return `${formatFullNumber(value)} monthly ${market} searches`;
+  }
+  return fetchedAt
+    ? `No measurable monthly ${market} search volume`
+    : `Monthly ${market} search volume is unknown`;
 }
 
 export default function TopicalMapPage() {
@@ -156,49 +203,23 @@ export default function TopicalMapPage() {
     navigate(`/content/writer?${params.toString()}`);
   };
 
-  const EXPORT_HEADERS = [
-    "Topic",
-    "Level",
-    "Section",
-    "Status",
-    "Priority",
-    "Funnel",
-    "Canonical Query",
-    "Matched Page",
-    "GSC Clicks",
-    "Competitor Domains",
-  ];
-
-  function buildExportRows(): Cell[][] {
-    return orderedRows.filter(({ node }) => statusFilter[node.status] && priorityFilter[node.priority as "high" | "medium" | "low"]).map(({ node }) => [
-      node.title,
-      node.level.replace("_", " "),
-      node.section,
-      node.status === "published" ? "covered" : node.status === "gap" ? "gap" : "dismissed",
-      node.priority,
-      node.funnelStage,
-      node.canonicalQuery,
-      node.matchedPagePath ?? "",
-      node.gscClicks ?? "",
-      (node.competitors ?? []).map((c) => c.domain).join(", "),
-    ]);
-  }
-
   function downloadTableCsv() {
     if (!detail) return;
-    const tsv = rowsToTsv(EXPORT_HEADERS, buildExportRows());
-    const csv = tsvToCsv(tsv);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `topical-map-${detail.map.centralEntity.replace(/\s+/g, "-").toLowerCase()}.csv`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    downloadTopicalMapCsv(
+      detail.map.centralEntity,
+      detail.nodes,
+      statusFilter,
+      priorityFilter,
+    );
   }
 
   async function copyTableForSheets() {
     if (!detail) return;
-    const tsv = rowsToTsv(EXPORT_HEADERS, buildExportRows());
+    const tsv = topicalMapExportTsv(
+      detail.nodes,
+      statusFilter,
+      priorityFilter,
+    );
     const ok = await copyToClipboard(tsv);
     if (ok) {
       setCopiedExport(true);
@@ -224,7 +245,10 @@ export default function TopicalMapPage() {
         const scanRunning = rows.some(
           (r) => r.competitorScanStatus === "queued" || r.competitorScanStatus === "running",
         );
-        return mapGenerating || scanRunning ? 3000 : false;
+        const demandRunning = rows.some(
+          (r) => r.demandStatus === "queued" || r.demandStatus === "running",
+        );
+        return mapGenerating || scanRunning || demandRunning ? 3000 : false;
       },
     },
   });
@@ -330,25 +354,65 @@ export default function TopicalMapPage() {
     },
   });
 
+  const refreshDemandMutation = useRefreshTopicalMapDemand({
+    mutation: {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: getListTopicalMapRunsQueryKey() });
+        if (selectedRun) {
+          void queryClient.invalidateQueries({
+            queryKey: getGetTopicalMapRunQueryKey(selectedRun.id),
+          });
+        }
+        toast({
+          title: "Demand refresh started",
+          description: "Fetching latest search volumes — this will run in the background.",
+        });
+      },
+      onError: (err: unknown) => {
+        const message =
+          err && typeof err === "object" && "error" in err && typeof err.error === "string"
+            ? err.error
+            : "Could not start demand refresh.";
+        toast({ title: "Refresh not started", description: message, variant: "destructive" });
+      },
+    },
+  });
+
   // When the scan finishes (status transitions out of running/queued), refresh
   // the detail so competitor chips populate immediately.
   const prevScanStatus = useRef<string | null | undefined>(undefined);
+  const prevDemandStatus = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    const current = selectedRun?.competitorScanStatus ?? null;
-    const prev = prevScanStatus.current;
+    const currentScan = selectedRun?.competitorScanStatus ?? null;
+    const prevScan = prevScanStatus.current;
     if (
-      prev !== undefined &&
-      (prev === "running" || prev === "queued") &&
-      current !== "running" &&
-      current !== "queued" &&
+      prevScan !== undefined &&
+      (prevScan === "running" || prevScan === "queued") &&
+      currentScan !== "running" &&
+      currentScan !== "queued" &&
       selectedRun
     ) {
       void queryClient.invalidateQueries({
         queryKey: getGetTopicalMapRunQueryKey(selectedRun.id),
       });
     }
-    prevScanStatus.current = current;
-  }, [selectedRun?.competitorScanStatus, selectedRun, queryClient]);
+    prevScanStatus.current = currentScan;
+
+    const currentDemand = selectedRun?.demandStatus ?? null;
+    const prevDemand = prevDemandStatus.current;
+    if (
+      prevDemand !== undefined &&
+      (prevDemand === "running" || prevDemand === "queued") &&
+      currentDemand !== "running" &&
+      currentDemand !== "queued" &&
+      selectedRun
+    ) {
+      void queryClient.invalidateQueries({
+        queryKey: getGetTopicalMapRunQueryKey(selectedRun.id),
+      });
+    }
+    prevDemandStatus.current = currentDemand;
+  }, [selectedRun?.competitorScanStatus, selectedRun?.demandStatus, selectedRun, queryClient]);
 
   const updateNodeMutation = useUpdateTopicalMapNode({
     mutation: {
@@ -553,7 +617,7 @@ export default function TopicalMapPage() {
         const isHov = !hidden && n.id === hov;
         ctx.beginPath();
         ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-        ctx.globalAlpha = hidden ? 0.08 : n.status === "ignored" ? 0.55 : 1;
+        ctx.globalAlpha = hidden ? 0.08 : (n.status === "ignored" || n.status === "published") ? 0.35 : 1;
         ctx.fillStyle = STATUS_COLOR[n.status];
         ctx.fill();
         ctx.globalAlpha = 1;
@@ -1071,9 +1135,8 @@ export default function TopicalMapPage() {
                       </button>
                     ))}
                   </div>
-                  {viewMode === "table" && (
-                    <>
-                      <Button
+                  <>
+                    <Button
                         variant="outline"
                         size="sm"
                         className="h-6 px-2 text-xs gap-1"
@@ -1087,8 +1150,8 @@ export default function TopicalMapPage() {
                           <Copy className="h-3 w-3" />
                         )}
                         {copiedExport ? "Copied!" : "Copy for Sheets"}
-                      </Button>
-                      <Button
+                    </Button>
+                    <Button
                         variant="outline"
                         size="sm"
                         className="h-6 px-2 text-xs gap-1"
@@ -1098,9 +1161,8 @@ export default function TopicalMapPage() {
                       >
                         <Download className="h-3 w-3" />
                         Export CSV
-                      </Button>
-                    </>
-                  )}
+                    </Button>
+                  </>
                   {(
                     [
                       { key: "published" as const, label: "Covered", dot: "bg-emerald-500" },
@@ -1269,6 +1331,9 @@ export default function TopicalMapPage() {
                         <TableHead>Status</TableHead>
                         <TableHead>Priority</TableHead>
                         <TableHead>Funnel</TableHead>
+                        <TableHead className="text-right">Est. Traffic</TableHead>
+                        <TableHead className="text-right">US Vol</TableHead>
+                        <TableHead className="text-right">Global Vol</TableHead>
                         <TableHead className="min-w-[180px]">Your page</TableHead>
                         <TableHead className="text-right">Clicks</TableHead>
                         <TableHead className="min-w-[280px]">
@@ -1324,7 +1389,7 @@ export default function TopicalMapPage() {
                         .map(({ node, depth }) => (
                           <TableRow
                             key={node.id}
-                            className={`cursor-pointer ${selectedNodeId === node.id ? "bg-muted/60" : ""}`}
+                            className={`cursor-pointer ${selectedNodeId === node.id ? "bg-muted/60" : ""} ${node.status !== "gap" ? "opacity-60 grayscale-[0.2]" : ""}`}
                             onClick={() => setSelectedNodeId(node.id)}
                             data-testid={`row-topic-${node.id}`}
                           >
@@ -1356,6 +1421,38 @@ export default function TopicalMapPage() {
                             </TableCell>
                             <TableCell className="py-2 text-xs capitalize">{node.priority}</TableCell>
                             <TableCell className="py-2 text-xs uppercase">{node.funnelStage}</TableCell>
+                            <TableCell
+                              className="py-2 text-right text-xs text-muted-foreground"
+                              title={`${formatFullNumber(node.estimatedUsTraffic)} estimated monthly US visits`}
+                            >
+                              {formatCompactNumber(node.estimatedUsTraffic)}
+                            </TableCell>
+                            <TableCell
+                              className="py-2 text-right text-xs text-muted-foreground"
+                              title={formatDemandTitle(
+                                node.usSearchVolume,
+                                node.usVolumeFetchedAt,
+                                "US",
+                              )}
+                            >
+                              {formatDemandNumber(
+                                node.usSearchVolume,
+                                node.usVolumeFetchedAt,
+                              )}
+                            </TableCell>
+                            <TableCell
+                              className="py-2 text-right text-xs text-muted-foreground"
+                              title={formatDemandTitle(
+                                node.globalSearchVolume,
+                                node.globalVolumeFetchedAt,
+                                "worldwide",
+                              )}
+                            >
+                              {formatDemandNumber(
+                                node.globalSearchVolume,
+                                node.globalVolumeFetchedAt,
+                              )}
+                            </TableCell>
                             <TableCell className="py-2 text-xs">
                               {node.matchedPagePath ? (
                                 <span className="text-emerald-700 break-all">{node.matchedPagePath}</span>
@@ -1468,6 +1565,68 @@ export default function TopicalMapPage() {
                     <p className="text-xs font-medium text-muted-foreground">Page type</p>
                     <p>{selectedNode.pageType}</p>
                   </div>
+                  {selectedNode.status === "gap" && (
+                    <div
+                      className="rounded-md border bg-amber-50/50 p-2.5 space-y-2"
+                      data-testid="node-demand-metrics"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-medium text-amber-900">Demand potential</p>
+                        <InfoTip>
+                          Estimated US traffic is planning potential, calculated as monthly
+                          US search volume × 20% target CTR. It is not observed GSC traffic.
+                        </InfoTip>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <p
+                            className="font-semibold tabular-nums"
+                            title={formatFullNumber(selectedNode.estimatedUsTraffic)}
+                          >
+                            {formatCompactNumber(selectedNode.estimatedUsTraffic)}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">Est. US traffic</p>
+                        </div>
+                        <div>
+                          <p
+                            className="font-semibold tabular-nums"
+                            title={formatDemandTitle(
+                              selectedNode.usSearchVolume,
+                              selectedNode.usVolumeFetchedAt,
+                              "US",
+                            )}
+                          >
+                            {formatDemandNumber(
+                              selectedNode.usSearchVolume,
+                              selectedNode.usVolumeFetchedAt,
+                            )}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">US volume</p>
+                        </div>
+                        <div>
+                          <p
+                            className="font-semibold tabular-nums"
+                            title={formatDemandTitle(
+                              selectedNode.globalSearchVolume,
+                              selectedNode.globalVolumeFetchedAt,
+                              "worldwide",
+                            )}
+                          >
+                            {formatDemandNumber(
+                              selectedNode.globalSearchVolume,
+                              selectedNode.globalVolumeFetchedAt,
+                            )}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">Global volume</p>
+                        </div>
+                      </div>
+                      {selectedNode.demandFetchedAt && (
+                        <p className="text-[10px] text-muted-foreground">
+                          Updated {new Date(selectedNode.demandFetchedAt).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                  )}
                   {selectedNode.informationGain && (
                     <div>
                       <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
@@ -1609,6 +1768,82 @@ export default function TopicalMapPage() {
                 </CardContent>
               </Card>
             )}
+
+            {selectedRun && (
+              <Card data-testid="card-demand-status">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      Demand data
+                      <InfoTip>
+                        Monthly search volume and estimated traffic for gap topics.
+                        Estimated traffic assumes a 20% CTR on US volume.
+                      </InfoTip>
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs px-2"
+                      disabled={
+                        refreshDemandMutation.isPending ||
+                        selectedRun.demandStatus === "queued" ||
+                        selectedRun.demandStatus === "running"
+                      }
+                      onClick={() => refreshDemandMutation.mutate({ mapId: selectedRun.id })}
+                      data-testid="button-refresh-demand"
+                    >
+                      {(selectedRun.demandStatus === "queued" ||
+                        selectedRun.demandStatus === "running") ? (
+                        <>
+                          <Spinner className="h-3 w-3 mr-1.5" />
+                          Refreshing...
+                        </>
+                      ) : (
+                        <>
+                          <RotateCcw className="h-3 w-3 mr-1.5" />
+                          Refresh
+                        </>
+                      )}
+                    </Button>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Status</span>
+                      <span className="font-medium">
+                        {selectedRun.demandStatus === "complete"
+                          ? "Complete"
+                          : selectedRun.demandStatus === "partial"
+                          ? "Partial"
+                          : selectedRun.demandStatus === "failed"
+                          ? "Failed"
+                          : selectedRun.demandStatus === "running"
+                          ? "Running"
+                          : selectedRun.demandStatus === "queued"
+                          ? "Queued"
+                          : "Not started"}
+                      </span>
+                    </div>
+                    {selectedRun.demandFetchedAt && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Last fetched</span>
+                        <span className="font-medium">
+                          {new Date(selectedRun.demandFetchedAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
+                    {(selectedRun.demandStatus === "failed" ||
+                      selectedRun.demandStatus === "partial") &&
+                      selectedRun.demandError && (
+                      <p className="text-xs text-destructive mt-1">
+                        {selectedRun.demandError}
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       )}
@@ -1619,12 +1854,12 @@ export default function TopicalMapPage() {
             <CardTitle className="text-base flex items-center gap-1.5">
               Content gaps ({detail.nodes.filter((n) => n.status === "gap").length})
               <InfoTip>
-                Mapped topics with no page yet, ordered by priority. Write these — starting at
-                the top — to grow your coverage. Click any row to see its brief.
+                Mapped topics with no page yet, balanced across funnel stages and ordered by estimated traffic and priority.
+                Write these — starting at the top — to grow your coverage. Click any row to see its brief.
               </InfoTip>
             </CardTitle>
             <p className="text-xs text-muted-foreground">
-              Topics in the map with no matching page yet — sorted by priority.
+              Topics in the map with no matching page yet.
             </p>
           </CardHeader>
           <CardContent>
@@ -1634,13 +1869,47 @@ export default function TopicalMapPage() {
               </p>
             ) : (
               <div className="space-y-1.5">
-                {detail.nodes
-                  .filter((n) => n.status === "gap")
-                  .sort((a, b) => {
+                {(() => {
+                  const gaps = detail.nodes.filter((n) => n.status === "gap");
+                  const sortedGaps = [...gaps].sort((a, b) => {
+                    const estimatedA = a.estimatedUsTraffic ?? -1;
+                    const estimatedB = b.estimatedUsTraffic ?? -1;
+                    if (estimatedA !== estimatedB) return estimatedB - estimatedA;
+
+                    const volA = a.usSearchVolume ?? -1;
+                    const volB = b.usSearchVolume ?? -1;
+                    if (volA !== volB) return volB - volA;
+
                     const rank = { high: 0, medium: 1, low: 2 } as const;
                     return rank[a.priority] - rank[b.priority] || a.sortOrder - b.sortOrder;
-                  })
-                  .map((n) => (
+                  });
+
+                  // Round-robin distribution by funnel stage
+                  const buckets: Record<string, TopicalMapNode[]> = { tofu: [], mofu: [], bofu: [], other: [] };
+                  for (const n of sortedGaps) {
+                    const stage = n.funnelStage.toLowerCase();
+                    if (stage === "tofu") buckets.tofu.push(n);
+                    else if (stage === "mofu") buckets.mofu.push(n);
+                    else if (stage === "bofu") buckets.bofu.push(n);
+                    else buckets.other.push(n); // legacy retention
+                  }
+
+                  const interleaved: TopicalMapNode[] = [];
+                  const activeStages = ["tofu", "mofu", "bofu"];
+                  let stageIdx = 0;
+
+                  // Pop items one by one from active buckets
+                  while (activeStages.some(s => buckets[s].length > 0)) {
+                    const stage = activeStages[stageIdx % activeStages.length];
+                    const item = buckets[stage].shift();
+                    if (item) interleaved.push(item);
+                    stageIdx++;
+                  }
+
+                  // Append remaining non-standard items
+                  interleaved.push(...buckets.other);
+
+                  return interleaved.map((n) => (
                     <div
                       key={n.id}
                       role="button"
@@ -1668,9 +1937,49 @@ export default function TopicalMapPage() {
                         {n.priority}
                       </Badge>
                       <span className="text-sm truncate flex-1">{n.title}</span>
-                      <span className="text-xs text-muted-foreground font-mono truncate hidden md:block max-w-[280px]">
+                      <span className="text-xs text-muted-foreground font-mono truncate hidden md:block max-w-[180px]">
                         {n.suggestedSlug}
                       </span>
+                      <div className="flex gap-4 items-center shrink-0 mx-4 hidden lg:flex text-right">
+                         <div className="flex flex-col">
+                           <span
+                             className="text-xs font-medium"
+                             title={`${formatFullNumber(n.estimatedUsTraffic)} estimated monthly US visits`}
+                           >
+                             {formatCompactNumber(n.estimatedUsTraffic)}
+                           </span>
+                           <span className="text-[10px] text-muted-foreground">Est. Traffic</span>
+                         </div>
+                         <div className="flex flex-col">
+                           <span
+                             className="text-xs"
+                             title={formatDemandTitle(
+                               n.usSearchVolume,
+                               n.usVolumeFetchedAt,
+                               "US",
+                             )}
+                           >
+                             {formatDemandNumber(n.usSearchVolume, n.usVolumeFetchedAt)}
+                           </span>
+                           <span className="text-[10px] text-muted-foreground">US Vol</span>
+                         </div>
+                         <div className="flex flex-col">
+                           <span
+                             className="text-xs"
+                             title={formatDemandTitle(
+                               n.globalSearchVolume,
+                               n.globalVolumeFetchedAt,
+                               "worldwide",
+                             )}
+                           >
+                             {formatDemandNumber(
+                               n.globalSearchVolume,
+                               n.globalVolumeFetchedAt,
+                             )}
+                           </span>
+                           <span className="text-[10px] text-muted-foreground">Global Vol</span>
+                         </div>
+                      </div>
                       <Badge variant="secondary" className="text-xs font-normal shrink-0">
                         {n.funnelStage}
                       </Badge>
@@ -1688,7 +1997,8 @@ export default function TopicalMapPage() {
                         Write
                       </Button>
                     </div>
-                  ))}
+                  ));
+                })()}
               </div>
             )}
           </CardContent>

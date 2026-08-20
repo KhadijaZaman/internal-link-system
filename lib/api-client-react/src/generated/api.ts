@@ -5338,6 +5338,76 @@ export const useAnalyzeTopicalMapCompetitors = <TError = ErrorType<void>,
       return useMutation(getAnalyzeTopicalMapCompetitorsMutationOptions(options));
     }
 
+export const getRefreshTopicalMapDemandUrl = (mapId: number,) => {
+
+
+
+
+  return `/api/topical-map/runs/${mapId}/refresh-demand`
+}
+
+/**
+ * @summary Refresh US and worldwide search volume for new map topics (DataForSEO — paid)
+ */
+export const refreshTopicalMapDemand = async (mapId: number, options?: RequestInit): Promise<TopicalMapSummary> => {
+
+  return customFetch<TopicalMapSummary>(getRefreshTopicalMapDemandUrl(mapId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRefreshTopicalMapDemandMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshTopicalMapDemand>>, TError,{mapId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof refreshTopicalMapDemand>>, TError,{mapId: number}, TContext> => {
+
+const mutationKey = ['refreshTopicalMapDemand'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof refreshTopicalMapDemand>>, {mapId: number}> = (props) => {
+          const {mapId} = props ?? {};
+
+          return  refreshTopicalMapDemand(mapId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RefreshTopicalMapDemandMutationResult = NonNullable<Awaited<ReturnType<typeof refreshTopicalMapDemand>>>
+
+    export type RefreshTopicalMapDemandMutationError = ErrorType<void>
+
+    /**
+ * @summary Refresh US and worldwide search volume for new map topics (DataForSEO — paid)
+ */
+export const useRefreshTopicalMapDemand = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshTopicalMapDemand>>, TError,{mapId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof refreshTopicalMapDemand>>,
+        TError,
+        {mapId: number},
+        TContext
+      > => {
+      return useMutation(getRefreshTopicalMapDemandMutationOptions(options));
+    }
+
 export const getGetTopicalMapRunUrl = (mapId: number,) => {
 
 

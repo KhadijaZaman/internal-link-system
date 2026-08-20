@@ -47,6 +47,11 @@ export const topicalMapsTable = pgTable("topical_maps", {
   competitorScanError: text("competitor_scan_error"),
   /** When the competitor scan last transitioned to 'running' — used to detect stale running scans. */
   competitorScanStartedAt: timestamp("competitor_scan_started_at", { withTimezone: true }),
+  /** null | queued | running | complete | partial | failed */
+  demandStatus: text("demand_status"),
+  demandError: text("demand_error"),
+  demandStartedAt: timestamp("demand_started_at", { withTimezone: true }),
+  demandFetchedAt: timestamp("demand_fetched_at", { withTimezone: true }),
 });
 
 export const topicalMapNodesTable = pgTable(

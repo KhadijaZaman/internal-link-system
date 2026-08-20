@@ -3592,6 +3592,20 @@ export interface TopicalMapSummary {
      * @nullable
      */
   competitorScanError?: string | null;
+  /**
+     * null | queued | running | complete | partial | failed — US and worldwide market-demand enrichment state
+     * @nullable
+     */
+  demandStatus: string | null;
+  /**
+     * Last demand-enrichment error or partial-completion explanation
+     * @nullable
+     */
+  demandError: string | null;
+  /** @nullable */
+  demandStartedAt: string | null;
+  /** @nullable */
+  demandFetchedAt: string | null;
 }
 
 export type TopicalMapNodeLevel = typeof TopicalMapNodeLevel[keyof typeof TopicalMapNodeLevel];
@@ -3700,6 +3714,42 @@ export interface TopicalMapNode {
   gscImpressions: number | null;
   /** @nullable */
   gscPosition: number | null;
+  /**
+     * Monthly United States Google Ads search volume for a new gap topic
+     * @nullable
+     */
+  usSearchVolume: number | null;
+  /**
+     * Monthly worldwide Google Ads search volume for a new gap topic
+     * @nullable
+     */
+  globalSearchVolume: number | null;
+  /**
+     * Planning estimate of monthly US visits at the target CTR; null when US volume is unavailable
+     * @nullable
+     */
+  estimatedUsTraffic: number | null;
+  /**
+     * CTR assumption used for estimatedUsTraffic (currently 0.20)
+     * @minimum 0
+     * @maximum 1
+     */
+  estimatedUsTrafficCtr: number;
+  /**
+     * Last successful US-volume lookup, including successful no-measurable-volume responses
+     * @nullable
+     */
+  usVolumeFetchedAt: string | null;
+  /**
+     * Last successful worldwide-volume lookup, including successful no-measurable-volume responses
+     * @nullable
+     */
+  globalVolumeFetchedAt: string | null;
+  /**
+     * Newest successful US/global volume fetch timestamp when both geographies are available
+     * @nullable
+     */
+  demandFetchedAt: string | null;
   /** Competitor domains already ranking for this topic, from stored SERP data (latest legacy SERP keyword-clustering run; absent for GSC-page-only deployments) */
   competitors?: TopicalMapNodeCompetitor[];
 }

@@ -39,4 +39,18 @@ export interface TopicalMapSummary {
      * @nullable
      */
   competitorScanError?: string | null;
+  /**
+     * null | queued | running | complete | partial | failed — US and worldwide market-demand enrichment state
+     * @nullable
+     */
+  demandStatus: string | null;
+  /**
+     * Last demand-enrichment error or partial-completion explanation
+     * @nullable
+     */
+  demandError: string | null;
+  /** @nullable */
+  demandStartedAt: string | null;
+  /** @nullable */
+  demandFetchedAt: string | null;
 }

@@ -7,8 +7,10 @@ import {
   useGetTopicalMapRun,
   useListTopicalMapRuns,
 } from "@workspace/api-client-react";
-import { Boxes, Search } from "lucide-react";
+import { Boxes, Download, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/copy-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,6 +24,10 @@ import { Spinner } from "@/components/ui/spinner";
 import { TopicClusterMap } from "@/components/topic-cluster-map";
 import { TopicalMapOverview } from "@/components/topical-map-overview";
 import { useSiteContext } from "@/lib/site-context";
+import {
+  downloadTopicalMapCsv,
+  topicalMapExportTsv,
+} from "@/lib/topical-map-export";
 
 type StatusFilter = Record<TopicalMapNode["status"], boolean>;
 type PriorityFilter = Record<"high" | "medium" | "low", boolean>;
@@ -81,6 +87,24 @@ export default function TopicClustersPage() {
   const detail = detailQuery.data ?? null;
   const selectedNode =
     detail?.nodes.find((node) => node.id === selectedNodeId) ?? null;
+  const exportTsv = useMemo(
+    () =>
+      detail
+        ? topicalMapExportTsv(detail.nodes, statusFilter, priorityFilter)
+        : "",
+    [detail, priorityFilter, statusFilter],
+  );
+
+  const downloadClustersCsv = () => {
+    if (!detail) return;
+    downloadTopicalMapCsv(
+      detail.map.centralEntity,
+      detail.nodes,
+      statusFilter,
+      priorityFilter,
+      "topic-clusters",
+    );
+  };
 
   const topicMatches = useMemo(() => {
     const needle = topicSearch.trim().toLowerCase();
@@ -139,26 +163,49 @@ export default function TopicClustersPage() {
             <CardHeader className="pb-3">
               <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
                 <CardTitle className="text-base">Cluster controls</CardTitle>
-                {completeRuns.length > 1 && (
-                  <Select
-                    value={String(selectedRun?.id ?? "")}
-                    onValueChange={(value) => resetSelection(Number(value))}
-                  >
-                    <SelectTrigger
-                      className="w-full lg:w-[340px]"
-                      data-testid="select-cluster-run"
+                <div className="flex flex-wrap items-center gap-2">
+                  {completeRuns.length > 1 && (
+                    <Select
+                      value={String(selectedRun?.id ?? "")}
+                      onValueChange={(value) => resetSelection(Number(value))}
                     >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {completeRuns.map((run) => (
-                        <SelectItem key={run.id} value={String(run.id)}>
-                          {runLabel(run)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                      <SelectTrigger
+                        className="w-full lg:w-[340px]"
+                        data-testid="select-cluster-run"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {completeRuns.map((run) => (
+                          <SelectItem key={run.id} value={String(run.id)}>
+                            {runLabel(run)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <CopyButton
+                    getText={() => exportTsv}
+                    label="Copy for Sheets"
+                    size="sm"
+                    className="gap-1 text-xs"
+                    toastTitle="Topic clusters copied for Sheets"
+                    disabled={!detail}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 text-xs"
+                    onClick={downloadClustersCsv}
+                    disabled={!detail}
+                    title="Download the currently filtered topic clusters as CSV"
+                    data-testid="button-download-clusters-csv"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Download CSV
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">

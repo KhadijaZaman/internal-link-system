@@ -1873,7 +1873,11 @@ export const ListTopicalMapRunsResponseItem = zod.object({
   "startedAt": zod.string().nullable(),
   "finishedAt": zod.string().nullable(),
   "competitorScanStatus": zod.string().nullish().describe('null | queued | running | complete | partial | failed — current state of the per-map SERP competitor scan. \'partial\' means the scan ran but some topics were not covered (budget cap, timeouts, or task failures); re-run to make more progress.'),
-  "competitorScanError": zod.string().nullish().describe('Last error from the competitor scan (includes out-of-funds notice)')
+  "competitorScanError": zod.string().nullish().describe('Last error from the competitor scan (includes out-of-funds notice)'),
+  "demandStatus": zod.string().nullable().describe('null | queued | running | complete | partial | failed — US and worldwide market-demand enrichment state'),
+  "demandError": zod.string().nullable().describe('Last demand-enrichment error or partial-completion explanation'),
+  "demandStartedAt": zod.string().nullable(),
+  "demandFetchedAt": zod.string().nullable()
 })
 export const ListTopicalMapRunsResponse = zod.array(ListTopicalMapRunsResponseItem)
 
@@ -1887,11 +1891,22 @@ export const AnalyzeTopicalMapCompetitorsParams = zod.object({
 
 
 /**
+ * @summary Refresh US and worldwide search volume for new map topics (DataForSEO — paid)
+ */
+export const RefreshTopicalMapDemandParams = zod.object({
+  "mapId": zod.coerce.number()
+})
+
+
+/**
  * @summary Get one topical map run with its full node tree, bridges, and coverage rollup
  */
 export const GetTopicalMapRunParams = zod.object({
   "mapId": zod.coerce.number()
 })
+
+export const getTopicalMapRunResponseNodesItemEstimatedUsTrafficCtrMin = 0;
+export const getTopicalMapRunResponseNodesItemEstimatedUsTrafficCtrMax = 1;
 
 export const getTopicalMapRunResponseCoveragePerPillarItemSimilarPagesItemSimilarityMin = 0;
 export const getTopicalMapRunResponseCoveragePerPillarItemSimilarPagesItemSimilarityMax = 1;
@@ -1917,7 +1932,11 @@ export const GetTopicalMapRunResponse = zod.object({
   "startedAt": zod.string().nullable(),
   "finishedAt": zod.string().nullable(),
   "competitorScanStatus": zod.string().nullish().describe('null | queued | running | complete | partial | failed — current state of the per-map SERP competitor scan. \'partial\' means the scan ran but some topics were not covered (budget cap, timeouts, or task failures); re-run to make more progress.'),
-  "competitorScanError": zod.string().nullish().describe('Last error from the competitor scan (includes out-of-funds notice)')
+  "competitorScanError": zod.string().nullish().describe('Last error from the competitor scan (includes out-of-funds notice)'),
+  "demandStatus": zod.string().nullable().describe('null | queued | running | complete | partial | failed — US and worldwide market-demand enrichment state'),
+  "demandError": zod.string().nullable().describe('Last demand-enrichment error or partial-completion explanation'),
+  "demandStartedAt": zod.string().nullable(),
+  "demandFetchedAt": zod.string().nullable()
 }),
   "nodes": zod.array(zod.object({
   "id": zod.number(),
@@ -1946,6 +1965,13 @@ export const GetTopicalMapRunResponse = zod.object({
   "gscClicks": zod.number().nullable(),
   "gscImpressions": zod.number().nullable(),
   "gscPosition": zod.number().nullable(),
+  "usSearchVolume": zod.number().nullable().describe('Monthly United States Google Ads search volume for a new gap topic'),
+  "globalSearchVolume": zod.number().nullable().describe('Monthly worldwide Google Ads search volume for a new gap topic'),
+  "estimatedUsTraffic": zod.number().nullable().describe('Planning estimate of monthly US visits at the target CTR; null when US volume is unavailable'),
+  "estimatedUsTrafficCtr": zod.number().min(getTopicalMapRunResponseNodesItemEstimatedUsTrafficCtrMin).max(getTopicalMapRunResponseNodesItemEstimatedUsTrafficCtrMax).describe('CTR assumption used for estimatedUsTraffic (currently 0.20)'),
+  "usVolumeFetchedAt": zod.string().nullable().describe('Last successful US-volume lookup, including successful no-measurable-volume responses'),
+  "globalVolumeFetchedAt": zod.string().nullable().describe('Last successful worldwide-volume lookup, including successful no-measurable-volume responses'),
+  "demandFetchedAt": zod.string().nullable().describe('Newest successful US\/global volume fetch timestamp when both geographies are available'),
   "competitors": zod.array(zod.object({
   "domain": zod.string(),
   "url": zod.string(),
@@ -1985,6 +2011,9 @@ export const GetTopicalMapRunResponse = zod.object({
 /**
  * @summary Get the newest complete topical map with nodes, bridges, and coverage
  */
+export const getLatestTopicalMapResponseNodesItemEstimatedUsTrafficCtrMin = 0;
+export const getLatestTopicalMapResponseNodesItemEstimatedUsTrafficCtrMax = 1;
+
 export const getLatestTopicalMapResponseCoveragePerPillarItemSimilarPagesItemSimilarityMin = 0;
 export const getLatestTopicalMapResponseCoveragePerPillarItemSimilarPagesItemSimilarityMax = 1;
 
@@ -2009,7 +2038,11 @@ export const GetLatestTopicalMapResponse = zod.object({
   "startedAt": zod.string().nullable(),
   "finishedAt": zod.string().nullable(),
   "competitorScanStatus": zod.string().nullish().describe('null | queued | running | complete | partial | failed — current state of the per-map SERP competitor scan. \'partial\' means the scan ran but some topics were not covered (budget cap, timeouts, or task failures); re-run to make more progress.'),
-  "competitorScanError": zod.string().nullish().describe('Last error from the competitor scan (includes out-of-funds notice)')
+  "competitorScanError": zod.string().nullish().describe('Last error from the competitor scan (includes out-of-funds notice)'),
+  "demandStatus": zod.string().nullable().describe('null | queued | running | complete | partial | failed — US and worldwide market-demand enrichment state'),
+  "demandError": zod.string().nullable().describe('Last demand-enrichment error or partial-completion explanation'),
+  "demandStartedAt": zod.string().nullable(),
+  "demandFetchedAt": zod.string().nullable()
 }),
   "nodes": zod.array(zod.object({
   "id": zod.number(),
@@ -2038,6 +2071,13 @@ export const GetLatestTopicalMapResponse = zod.object({
   "gscClicks": zod.number().nullable(),
   "gscImpressions": zod.number().nullable(),
   "gscPosition": zod.number().nullable(),
+  "usSearchVolume": zod.number().nullable().describe('Monthly United States Google Ads search volume for a new gap topic'),
+  "globalSearchVolume": zod.number().nullable().describe('Monthly worldwide Google Ads search volume for a new gap topic'),
+  "estimatedUsTraffic": zod.number().nullable().describe('Planning estimate of monthly US visits at the target CTR; null when US volume is unavailable'),
+  "estimatedUsTrafficCtr": zod.number().min(getLatestTopicalMapResponseNodesItemEstimatedUsTrafficCtrMin).max(getLatestTopicalMapResponseNodesItemEstimatedUsTrafficCtrMax).describe('CTR assumption used for estimatedUsTraffic (currently 0.20)'),
+  "usVolumeFetchedAt": zod.string().nullable().describe('Last successful US-volume lookup, including successful no-measurable-volume responses'),
+  "globalVolumeFetchedAt": zod.string().nullable().describe('Last successful worldwide-volume lookup, including successful no-measurable-volume responses'),
+  "demandFetchedAt": zod.string().nullable().describe('Newest successful US\/global volume fetch timestamp when both geographies are available'),
   "competitors": zod.array(zod.object({
   "domain": zod.string(),
   "url": zod.string(),
@@ -2085,6 +2125,11 @@ export const UpdateTopicalMapNodeBody = zod.object({
   "status": zod.enum(['gap', 'ignored'])
 })
 
+export const updateTopicalMapNodeResponseEstimatedUsTrafficCtrMin = 0;
+export const updateTopicalMapNodeResponseEstimatedUsTrafficCtrMax = 1;
+
+
+
 export const UpdateTopicalMapNodeResponse = zod.object({
   "id": zod.number(),
   "mapId": zod.number(),
@@ -2112,6 +2157,13 @@ export const UpdateTopicalMapNodeResponse = zod.object({
   "gscClicks": zod.number().nullable(),
   "gscImpressions": zod.number().nullable(),
   "gscPosition": zod.number().nullable(),
+  "usSearchVolume": zod.number().nullable().describe('Monthly United States Google Ads search volume for a new gap topic'),
+  "globalSearchVolume": zod.number().nullable().describe('Monthly worldwide Google Ads search volume for a new gap topic'),
+  "estimatedUsTraffic": zod.number().nullable().describe('Planning estimate of monthly US visits at the target CTR; null when US volume is unavailable'),
+  "estimatedUsTrafficCtr": zod.number().min(updateTopicalMapNodeResponseEstimatedUsTrafficCtrMin).max(updateTopicalMapNodeResponseEstimatedUsTrafficCtrMax).describe('CTR assumption used for estimatedUsTraffic (currently 0.20)'),
+  "usVolumeFetchedAt": zod.string().nullable().describe('Last successful US-volume lookup, including successful no-measurable-volume responses'),
+  "globalVolumeFetchedAt": zod.string().nullable().describe('Last successful worldwide-volume lookup, including successful no-measurable-volume responses'),
+  "demandFetchedAt": zod.string().nullable().describe('Newest successful US\/global volume fetch timestamp when both geographies are available'),
   "competitors": zod.array(zod.object({
   "domain": zod.string(),
   "url": zod.string(),

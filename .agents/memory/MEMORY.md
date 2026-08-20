@@ -38,3 +38,4 @@
 - [Content opportunity scoring](content-opportunity-scoring.md) — AI Visibility core role gates recommendations; adjacent/outside pages retain evidence but cannot outrank the core.
 - [Topical-map view switching](topical-map-view-switching.md) — default non-canvas views must keep the canvas measurable without resetting its pan/zoom state.
 - [Shared external-sheet refresh locking](external-sheet-refresh-locking.md) — durable tenant claims and cross-process read→write locks are required; in-memory locks are only an optimization.
+- [Paid API request claims](paid-api-request-claims.md) — token-own paid-call leases; retain claims after ambiguous outcomes so retries cannot quietly double-charge.

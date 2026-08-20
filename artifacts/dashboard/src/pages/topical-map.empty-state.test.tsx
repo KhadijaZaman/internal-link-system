@@ -82,6 +82,7 @@ vi.mock("@workspace/api-client-react", async () => {
     useGenerateTopicalMap: () => ({ mutation: stubMutation() }),
     useUpdateTopicalMapNode: () => ({ mutation: stubMutation() }),
     useAnalyzeTopicalMapCompetitors: () => ({ mutation: stubMutation() }),
+    useRefreshTopicalMapDemand: () => ({ mutation: stubMutation() }),
 
     // Query-key helpers — return stable arrays so hooks can be called.
     getListTopicalMapRunsQueryKey: () => ["topical-map-runs"],
@@ -166,9 +167,12 @@ describe("TopicalMapPage — table view (zero nodes)", () => {
   it("renders the full set of column headers in table view with zero nodes", () => {
     renderPage();
     fireEvent.click(screen.getByTestId("button-view-table"));
-    expect(screen.getByText("Status")).toBeTruthy();
+    expect(screen.getAllByText("Status").length).toBeGreaterThan(0);
     expect(screen.getByText("Priority")).toBeTruthy();
     expect(screen.getByText("Funnel")).toBeTruthy();
+    expect(screen.getByText("Est. Traffic")).toBeTruthy();
+    expect(screen.getByText("US Vol")).toBeTruthy();
+    expect(screen.getByText("Global Vol")).toBeTruthy();
     expect(screen.getByText("Your page")).toBeTruthy();
     expect(screen.getByText("Clicks")).toBeTruthy();
   });
