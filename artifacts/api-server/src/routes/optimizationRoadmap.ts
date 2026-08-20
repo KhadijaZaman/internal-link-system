@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { requireAdmin, requireAuth } from "../lib/auth";
-import { getSite, requireSite } from "../lib/site";
+import { getSite, requireAdminSite, requireSite } from "../lib/site";
 import {
   getOptimizationRoadmapSheetInfo,
   refreshOptimizationRoadmapSheet,
@@ -22,7 +22,7 @@ router.post(
   "/optimization-roadmap/refresh-sheet",
   requireAuth,
   requireAdmin,
-  requireSite,
+  requireAdminSite,
   async (req, res) => {
     const site = getSite(req);
     const body = (req.body ?? {}) as { spreadsheetId?: unknown; tabTitle?: unknown };

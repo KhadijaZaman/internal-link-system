@@ -129,6 +129,35 @@ export function requireSite(
 }
 
 /**
+ * Loads a site selected by X-Site-Id for an endpoint that is already guarded
+ * by requireAdmin. Keep this separate from requireSite: ordinary signed-in
+ * users must continue to be limited to sites they own.
+ */
+export function requireAdminSite(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
+  const raw = req.header("x-site-id");
+  const siteId = raw ? Number(raw) : NaN;
+  if (!Number.isInteger(siteId) || siteId <= 0) {
+    res.status(400).json({ error: "Missing or invalid X-Site-Id header" });
+    return;
+  }
+
+  fetchSite(siteId)
+    .then((site) => {
+      if (site === undefined) {
+        res.status(404).json({ error: "Site not found" });
+        return;
+      }
+      (req as SiteScopedRequest).site = site;
+      next();
+    })
+    .catch((err) => next(err));
+}
+
+/**
  * Legacy-bound surfaces (manual job triggers, GSC bulk queries, the content
  * writer) operate on the legacy site's data and paid integrations regardless
  * of any X-Site-Id header. Gate them to the user who owns the legacy site —
