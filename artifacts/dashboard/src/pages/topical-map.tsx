@@ -62,7 +62,6 @@ import { InfoTip } from "@/components/info-tip";
 import { DataNarrative, Num } from "@/components/data-narrative";
 import * as d3 from "d3";
 import { hitTestNodes, resolveClickSelection, resolveHoverTransition } from "@/lib/map-hittest";
-import { TopicalMapOverview } from "@/components/topical-map-overview";
 
 const STATUS_COLOR: Record<TopicalMapNode["status"], string> = {
   published: "#10b981",
@@ -143,7 +142,7 @@ export default function TopicalMapPage() {
     Record<"high" | "medium" | "low", boolean>
   >({ high: true, medium: true, low: true });
   const [showBridges, setShowBridges] = useState(true);
-  const [viewMode, setViewMode] = useState<"overview" | "map" | "table">("overview");
+  const [viewMode, setViewMode] = useState<"map" | "table">("map");
   const [formOpen, setFormOpen] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
   const [topicSearch, setTopicSearch] = useState("");
@@ -1055,7 +1054,7 @@ export default function TopicalMapPage() {
                     role="group"
                     aria-label="Topical map view"
                   >
-                    {(["overview", "map", "table"] as const).map((m) => (
+                    {(["map", "table"] as const).map((m) => (
                       <button
                         key={m}
                         type="button"
@@ -1068,7 +1067,7 @@ export default function TopicalMapPage() {
                         }`}
                         data-testid={`button-view-${m}`}
                       >
-                        {m === "overview" ? "Overview" : m === "map" ? "Map" : "Table"}
+                        {m === "map" ? "Map" : "Table"}
                       </button>
                     ))}
                   </div>
@@ -1190,11 +1189,9 @@ export default function TopicalMapPage() {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                {viewMode === "overview"
-                  ? "Scan the map by pillar, then select any visible topic to open its page match, brief, and actions. Filter chips update this outline too."
-                  : viewMode === "map"
-                    ? "Scroll to zoom, drag to pan, and click a topic for details. Outer-section topics have a dark ring."
-                    : "Scan every topic as an indented outline, then select a row for details or export the filtered list."}
+                {viewMode === "map"
+                  ? "Scroll to zoom, drag to pan, and click a topic for details. Outer-section topics have a dark ring."
+                  : "Scan every topic as an indented outline, then select a row for details or export the filtered list."}
               </p>
               <div className="relative mt-1 w-full sm:max-w-sm">
                 <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
@@ -1242,16 +1239,7 @@ export default function TopicalMapPage() {
               </div>
             </CardHeader>
             <CardContent className="min-w-0">
-              {viewMode === "overview" && (
-                <TopicalMapOverview
-                  detail={detail}
-                  statusFilter={statusFilter}
-                  priorityFilter={priorityFilter}
-                  selectedNodeId={selectedNodeId}
-                  onSelectNode={jumpToNode}
-                />
-              )}
-              {/* Keep the canvas mounted (hidden) so pan/zoom state survives view switches. */}
+              {/* Keep the canvas mounted while Table is active so pan/zoom state survives view switches. */}
               <div
                 ref={containerRef}
                 aria-hidden={viewMode !== "map"}

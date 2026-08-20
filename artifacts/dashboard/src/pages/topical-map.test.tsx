@@ -295,67 +295,28 @@ describe("TopicalMapPage — hub click clears stale node selection", () => {
   });
 });
 
-describe("TopicalMapPage — readable overview", () => {
+describe("TopicalMapPage — dedicated map views", () => {
   afterEach(() => cleanup());
 
-  it("opens on the overview and shows the central entity with pillar coverage cues", () => {
-    const { q } = renderPage();
-
-    expect(q.getByTestId("topical-map-overview")).toBeTruthy();
-    expect(q.getByTestId("text-overview-central-entity").textContent).toContain(
-      "Test Entity",
-    );
-    expect(q.getByTestId("card-overview-pillar-1")).toBeTruthy();
-    expect(q.getByTestId("text-overview-covered-1").textContent).toContain(
-      "1 covered",
-    );
-    expect(q.getByTestId("text-overview-gaps-1").textContent).toContain("2 gaps");
-    expect(q.getByTestId("text-overview-priority-1").textContent).toContain(
-      "1 high priority",
-    );
-    expect(q.getByTestId("tree-overview-node-2")).toBeTruthy();
-    expect(q.getByTestId("tree-overview-node-3")).toBeTruthy();
-    expect(q.getByTestId("text-overview-page-2").textContent).toContain("/beta");
-  });
-
-  it("opens the existing detail panel when a topic is selected from the overview", async () => {
-    const { q } = renderPage();
-
-    fireEvent.click(q.getByTestId("button-overview-node-2"));
-
-    const panel = await q.findByTestId("card-node-detail");
-    expect(panel.textContent).toContain("Beta Topic");
-  });
-
-  it("applies the existing status filters to the overview", () => {
-    const { q } = renderPage();
-
-    expect(q.getByTestId("card-overview-pillar-1")).toBeTruthy();
-    fireEvent.click(q.getByTestId("button-filter-gap"));
-
-    expect(q.getByTestId("card-overview-pillar-1")).toBeTruthy();
-    expect(
-      (q.getByTestId("button-overview-pillar-1") as HTMLButtonElement).disabled,
-    ).toBe(true);
-    expect(q.getByTestId("tree-overview-node-2")).toBeTruthy();
-    expect(q.queryByTestId("tree-overview-node-3")).toBeNull();
-  });
-
-  it("keeps a usable canvas when switching from the default overview to the map", () => {
+  it("opens on the map and no longer includes the cluster overview tab", () => {
     const { q, canvas } = renderPage();
     const mapButton = q.getByTestId("button-view-map");
 
-    expect(q.getByTestId("button-view-overview").getAttribute("aria-pressed")).toBe(
-      "true",
-    );
+    expect(mapButton.getAttribute("aria-pressed")).toBe("true");
+    expect(q.queryByTestId("button-view-overview")).toBeNull();
+    expect(q.queryByTestId("topical-map-overview")).toBeNull();
     expect(canvas().parentElement?.className.split(/\s+/)).not.toContain("hidden");
     expect(canvas().style.width).toBe("900px");
-    fireEvent.click(mapButton);
+  });
 
+  it("keeps a usable canvas after switching from table back to map", () => {
+    const { q, canvas } = renderPage();
+    const mapButton = q.getByTestId("button-view-map");
+
+    fireEvent.click(q.getByTestId("button-view-table"));
+    expect(canvas().parentElement?.getAttribute("aria-hidden")).toBe("true");
+    fireEvent.click(mapButton);
     expect(mapButton.getAttribute("aria-pressed")).toBe("true");
-    expect(q.getByTestId("button-view-overview").getAttribute("aria-pressed")).toBe(
-      "false",
-    );
     expect(canvas().parentElement?.getAttribute("aria-hidden")).toBe("false");
   });
 });
