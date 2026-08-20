@@ -108,6 +108,11 @@ const JOB_LABELS: Record<string, JobLabel> = {
     route: "/bing",
     routeLabel: "Open Bing & AI Citations",
   },
+  sync_optimization_roadmap_sheet: {
+    title: "Refresh Optimization Roadmap Sheet",
+    description:
+      "Updates the bound sitemap roadmap in place with current 30-day search, engagement, citation, and content-link signals. Runs daily at 05:30 UTC.",
+  },
   generate_topical_map: {
     title: "Generate Topical Authority Map",
     description: "Builds a Koray-framework topical authority map from your source-context charter: pillars, core/outer sections, topic tree, contextual bridges, and coverage vs existing pages. Starts from the Topical Map page; uses Claude + embedding spend.",

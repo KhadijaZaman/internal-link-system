@@ -99,6 +99,15 @@ export async function deleteSiteData(siteId: number): Promise<void> {
     await tx
       .delete(appStateTable)
       .where(eq(appStateTable.key, `gsc_window_end:${siteId}`));
+    await tx
+      .delete(appStateTable)
+      .where(eq(appStateTable.key, `optimization_roadmap_sheet:${siteId}:id`));
+    await tx
+      .delete(appStateTable)
+      .where(eq(appStateTable.key, `optimization_roadmap_sheet:${siteId}:tab`));
+    await tx
+      .delete(appStateTable)
+      .where(eq(appStateTable.key, `optimization_roadmap_sheet:${siteId}:synced_at`));
     await tx.delete(sitesTable).where(eq(sitesTable.id, siteId));
   });
   invalidateSiteCache(siteId);

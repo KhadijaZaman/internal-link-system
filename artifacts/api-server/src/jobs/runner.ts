@@ -29,7 +29,8 @@ export type JobName =
   | "generate_topical_map"
   | "audit_link_quality"
   | "analyze_topical_map_competitors"
-  | "sync_link_map_sheet";
+  | "sync_link_map_sheet"
+  | "sync_optimization_roadmap_sheet";
 
 export const ALL_JOBS: JobName[] = [
   "crawl_link_map",
@@ -55,6 +56,7 @@ export const ALL_JOBS: JobName[] = [
   "audit_link_quality",
   "analyze_topical_map_competitors",
   "sync_link_map_sheet",
+  "sync_optimization_roadmap_sheet",
 ];
 
 /** Every job function receives the site it must operate on. */

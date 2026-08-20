@@ -19,6 +19,7 @@ import { runSyncKeywordSheet } from "./syncKeywordSheet";
 import { runAnalyzeSimilarity } from "./analyzeSimilarity";
 import { runSyncBingPages } from "./syncBingPages";
 import { runSyncLinkMapSheet } from "./syncLinkMapSheet";
+import { runSyncOptimizationRoadmapSheet } from "./syncOptimizationRoadmapSheet";
 import { runGenerateTopicalMap } from "./generateTopicalMap";
 import { runAuditLinkQuality } from "./auditLinkQuality";
 import { runAnalyzeTopicalMapCompetitors } from "./analyzeTopicalMapCompetitors";
@@ -60,6 +61,9 @@ export function setupJobs(): void {
   // Daily refresh of the persistent Link Map Google Sheet — Sheets only,
   // no crawling, no paid spend. Skips sites with no sheet yet.
   registerJob("sync_link_map_sheet", runSyncLinkMapSheet);
+  // Daily in-place refresh of a previously-bound optimization roadmap. The
+  // sheet service preserves user columns/order and performs no paid calls.
+  registerJob("sync_optimization_roadmap_sheet", runSyncOptimizationRoadmapSheet);
   // Content Similarity Explorer runs — triggered by POST /similarity/runs,
   // never on a cron (fetches arbitrary user-supplied URLs + OpenAI spend).
   registerJob("analyze_similarity", runAnalyzeSimilarity);
@@ -153,6 +157,7 @@ const CATCHUP_JOBS: Array<{
   { name: "sync_keyword_sheet", maxAgeMs: DAILY_MAX_AGE_MS },
   { name: "sync_bing_pages", maxAgeMs: DAILY_MAX_AGE_MS },
   { name: "sync_link_map_sheet", maxAgeMs: DAILY_MAX_AGE_MS },
+  { name: "sync_optimization_roadmap_sheet", maxAgeMs: DAILY_MAX_AGE_MS },
   // Weekly — GSC inventory MUST come before GA4 (ordering dependency)
   { name: "crawl_wordpress", maxAgeMs: WEEKLY_MAX_AGE_MS, requirePriorRun: true },
   { name: "gsc_inventory_and_losers", maxAgeMs: WEEKLY_MAX_AGE_MS, requirePriorRun: true },
@@ -354,6 +359,12 @@ export function startScheduler(): void {
   // Daily 05:00 UTC — refresh the persistent Link Map Google Sheet for sites
   // that have already exported one. Pure Sheets write, no crawling or paid API.
   cron.schedule("0 5 * * *", all("sync_link_map_sheet"), { timezone: "UTC" });
+  // Daily 05:30 UTC — refresh the persistent sitemap optimization roadmap
+  // after Bing and link-map sheet jobs. Unbound sites skip without creating a
+  // duplicate workbook.
+  cron.schedule("30 5 * * *", all("sync_optimization_roadmap_sheet"), {
+    timezone: "UTC",
+  });
   // Hourly catch-up sweep: reruns any scheduled job whose last run exceeds
   // its cadence threshold (daily >26h, weekly >8d, monthly >33d), covering
   // servers that were asleep/recycled at the scheduled minute. Also fired

@@ -56,7 +56,12 @@ const SPEND_ONLY_JOBS = [
   "generate_topical_map",
 ];
 
-const DAILY_JOBS = ["sync_keyword_sheet", "sync_bing_pages"];
+const DAILY_JOBS = [
+  "sync_keyword_sheet",
+  "sync_bing_pages",
+  "sync_link_map_sheet",
+  "sync_optimization_roadmap_sheet",
+];
 const WEEKLY_JOBS = [
   "crawl_wordpress",
   "gsc_inventory_and_losers",
