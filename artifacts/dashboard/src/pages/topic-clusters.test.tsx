@@ -135,6 +135,12 @@ describe("TopicClustersPage", () => {
         .getByTestId("cluster-url-1-/blog/search-engine-visibility/")
         .getAttribute("href"),
     ).toBe("https://example.com/blog/search-engine-visibility/");
+    const mapPageLink = screen.getByTestId("cluster-map-open-page-1");
+    expect(mapPageLink.getAttribute("href")).toBe(
+      "https://example.com/blog/search-engine-visibility/",
+    );
+    expect(mapPageLink.getAttribute("target")).toBe("_blank");
+    expect(mapPageLink.getAttribute("rel")).toBe("noopener noreferrer");
     expect(screen.getByTestId("topical-map-overview")).toBeTruthy();
     expect(screen.getAllByText("AI Search Visibility").length).toBeGreaterThan(0);
     expect(

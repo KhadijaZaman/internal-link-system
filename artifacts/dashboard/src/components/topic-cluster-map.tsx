@@ -112,9 +112,23 @@ export function TopicClusterMap({
           if (node.matchedPagePath) urls.add(node.matchedPagePath);
           stack.push(...(childrenOf.get(node.id) ?? []));
         }
-        return { pillar, urls: [...urls].sort() };
+         const sortedUrls = [...urls].sort();
+         return {
+           pillar,
+           urls: sortedUrls,
+           representativeUrl: pillar.matchedPagePath ?? sortedUrls[0],
+         };
       }),
     [childrenOf, pillars],
+  );
+  const representativeUrlByPillar = useMemo(
+    () =>
+      new Map(
+        urlsByCluster
+          .filter(({ representativeUrl }) => representativeUrl)
+          .map(({ pillar, representativeUrl }) => [pillar.id, representativeUrl]),
+      ),
+    [urlsByCluster],
   );
 
   if (pillars.length === 0) {
@@ -220,61 +234,85 @@ export function TopicClusterMap({
             const isSelected = selectedNodeId === pillar.id;
             const color = clusterColor(coveragePct);
             const labelY = y + 58;
+            const representativeUrl = representativeUrlByPillar.get(pillar.id);
             return (
-              <g
-                key={pillar.id}
-                role="button"
-                tabIndex={0}
-                aria-label={`Open ${pillar.title} cluster details, ${coveragePct}% covered`}
-                aria-pressed={isSelected}
-                className="cursor-pointer outline-none"
-                onClick={() => select(pillar.id)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    select(pillar.id);
-                  }
-                }}
-                data-testid={`button-cluster-map-node-${pillar.id}`}
-              >
-                <circle
-                  cx={x}
-                  cy={y}
-                  r={isSelected ? 48 : 42}
-                  fill="white"
-                  stroke={color}
-                  strokeWidth={isSelected ? 7 : 4}
-                />
-                <circle cx={x} cy={y} r="30" fill={color} opacity="0.13" />
-                <text
-                  x={x}
-                  y={y + 5}
-                  textAnchor="middle"
-                  fill={color}
-                  fontSize="16"
-                  fontWeight="700"
+              <g key={pillar.id}>
+                <g
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open ${pillar.title} cluster details, ${coveragePct}% covered`}
+                  aria-pressed={isSelected}
+                  className="cursor-pointer outline-none"
+                  onClick={() => select(pillar.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      select(pillar.id);
+                    }
+                  }}
+                  data-testid={`button-cluster-map-node-${pillar.id}`}
                 >
-                  {coveragePct}%
-                </text>
-                <text
-                  x={x}
-                  y={labelY}
-                  textAnchor="middle"
-                  fill="hsl(var(--foreground))"
-                  fontSize="14"
-                  fontWeight={isSelected ? "700" : "600"}
-                >
-                  {shortLabel(pillar.title)}
-                </text>
-                <text
-                  x={x}
-                  y={labelY + 18}
-                  textAnchor="middle"
-                  fill="hsl(var(--muted-foreground))"
-                  fontSize="12"
-                >
-                  topic cluster
-                </text>
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r={isSelected ? 48 : 42}
+                    fill="white"
+                    stroke={color}
+                    strokeWidth={isSelected ? 7 : 4}
+                  />
+                  <circle cx={x} cy={y} r="30" fill={color} opacity="0.13" />
+                  <text
+                    x={x}
+                    y={y + 5}
+                    textAnchor="middle"
+                    fill={color}
+                    fontSize="16"
+                    fontWeight="700"
+                  >
+                    {coveragePct}%
+                  </text>
+                  <text
+                    x={x}
+                    y={labelY}
+                    textAnchor="middle"
+                    fill="hsl(var(--foreground))"
+                    fontSize="14"
+                    fontWeight={isSelected ? "700" : "600"}
+                  >
+                    {shortLabel(pillar.title)}
+                  </text>
+                  <text
+                    x={x}
+                    y={labelY + 18}
+                    textAnchor="middle"
+                    fill="hsl(var(--muted-foreground))"
+                    fontSize="12"
+                  >
+                    topic cluster
+                  </text>
+                </g>
+                {representativeUrl && (
+                  <a
+                    href={pageHref(siteHost, representativeUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`Open a matched ${pillar.title} page in a new tab`}
+                    className="cursor-pointer"
+                    data-testid={`cluster-map-open-page-${pillar.id}`}
+                  >
+                    <text
+                      x={x}
+                      y={labelY + 36}
+                      textAnchor="middle"
+                      fill="hsl(var(--primary))"
+                      fontSize="12"
+                      fontWeight="600"
+                      textDecoration="underline"
+                    >
+                      Open page ↗
+                    </text>
+                  </a>
+                )}
               </g>
             );
           })}
