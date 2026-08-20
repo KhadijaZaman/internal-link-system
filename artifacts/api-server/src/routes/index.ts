@@ -45,6 +45,7 @@ import researchRouter from "./research";
 import backlinksRouter from "./backlinks";
 import linkMapAiRouter from "./linkMapAi";
 import optimizationRoadmapRouter from "./optimizationRoadmap";
+import testingTopicClusterFixtureRouter from "./testingTopicClusterFixture";
 
 const router: IRouter = Router();
 
@@ -88,6 +89,7 @@ router.use(clusteringRouter);
 router.use(similarityRouter);
 router.use(bingRouter);
 router.use(topicalMapRouter);
+router.use(testingTopicClusterFixtureRouter);
 router.use(insightsRouter);
 router.use(insightsReportRouter);
 router.use(researchRouter);

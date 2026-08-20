@@ -38,9 +38,12 @@ export const INTEGRATION_TEST_OWNER_PREFIX = "test-";
  * temporary test sites while route tests still exercise normal ownership.
  */
 export function isIntegrationTestSite(
-  site: Pick<SiteContext, "ownerUserId">,
+  site: Pick<SiteContext, "ownerUserId" | "host">,
 ): boolean {
-  return site.ownerUserId?.startsWith(INTEGRATION_TEST_OWNER_PREFIX) ?? false;
+  return (
+    site.ownerUserId?.startsWith(INTEGRATION_TEST_OWNER_PREFIX) ||
+    site.host.endsWith(".e2e-fixture.test")
+  );
 }
 
 const SITE_CACHE_TTL_MS = 30_000;
