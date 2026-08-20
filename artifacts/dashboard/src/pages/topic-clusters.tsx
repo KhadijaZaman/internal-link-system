@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { TopicClusterMap } from "@/components/topic-cluster-map";
 import { TopicalMapOverview } from "@/components/topical-map-overview";
 
 type StatusFilter = Record<TopicalMapNode["status"], boolean>;
@@ -107,8 +108,8 @@ export default function TopicClustersPage() {
           Topic Clusters
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Review your pillar, core, supporting, and outer topics as a readable
-          hierarchy. The interactive network remains in Topical Map.
+          Explore your topic clusters visually, then review their core,
+          supporting, and outer topics in the hierarchy below.
         </p>
       </div>
 
@@ -320,6 +321,14 @@ export default function TopicClustersPage() {
                   </CardContent>
                 </Card>
               )}
+
+              <TopicClusterMap
+                detail={detail}
+                statusFilter={statusFilter}
+                priorityFilter={priorityFilter}
+                selectedNodeId={selectedNodeId}
+                onSelectNode={setSelectedNodeId}
+              />
 
               <TopicalMapOverview
                 detail={detail}

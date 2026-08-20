@@ -121,19 +121,21 @@ describe("TopicClustersPage", () => {
 
     expect(screen.getByTestId("page-topic-clusters")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Topic Clusters" })).toBeTruthy();
+    expect(screen.getByTestId("topic-cluster-map")).toBeTruthy();
+    expect(screen.getByTestId("button-cluster-map-node-1")).toBeTruthy();
     expect(screen.getByTestId("topical-map-overview")).toBeTruthy();
-    expect(screen.getByText("AI Search Visibility")).toBeTruthy();
+    expect(screen.getAllByText("AI Search Visibility").length).toBeGreaterThan(0);
     expect(screen.getByText("/blog/search-engine-visibility/")).toBeTruthy();
   });
 
   it("selects a topic and shows its cluster detail", () => {
     renderPage();
 
-    fireEvent.click(screen.getByTestId("button-overview-node-2"));
+    fireEvent.click(screen.getByTestId("button-cluster-map-node-1"));
 
     const detail = screen.getByTestId("card-cluster-topic-detail");
-    expect(detail.textContent).toContain("Search Engine Visibility");
-    expect(detail.textContent).toContain("/blog/search-engine-visibility/");
+    expect(detail.textContent).toContain("AI Search Visibility");
+    expect(detail.textContent).toContain("No matching page yet");
   });
 
   it("filters gaps without hiding covered descendant context", () => {
