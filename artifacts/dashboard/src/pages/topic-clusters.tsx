@@ -21,6 +21,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { TopicClusterMap } from "@/components/topic-cluster-map";
 import { TopicalMapOverview } from "@/components/topical-map-overview";
+import { useSiteContext } from "@/lib/site-context";
 
 type StatusFilter = Record<TopicalMapNode["status"], boolean>;
 type PriorityFilter = Record<"high" | "medium" | "low", boolean>;
@@ -48,6 +49,7 @@ function runLabel(run: TopicalMapSummary): string {
 }
 
 export default function TopicClustersPage() {
+  const { activeSite } = useSiteContext();
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] =
@@ -328,6 +330,7 @@ export default function TopicClustersPage() {
                 priorityFilter={priorityFilter}
                 selectedNodeId={selectedNodeId}
                 onSelectNode={setSelectedNodeId}
+                siteHost={activeSite?.host}
               />
 
               <TopicalMapOverview

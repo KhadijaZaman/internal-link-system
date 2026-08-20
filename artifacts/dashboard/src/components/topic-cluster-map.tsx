@@ -22,22 +22,31 @@ function clusterColor(coveragePct: number): string {
   return "#f59e0b";
 }
 
+function pageHref(siteHost: string | null | undefined, path: string): string {
+  if (/^https?:\/\//i.test(path)) return path;
+  if (!siteHost) return path;
+  const host = siteHost.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+  return `https://${host}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
 export function TopicClusterMap({
   detail,
   statusFilter,
   priorityFilter,
   selectedNodeId,
   onSelectNode,
+  siteHost,
 }: {
   detail: TopicalMapDetail;
   statusFilter: StatusFilter;
   priorityFilter: PriorityFilter;
   selectedNodeId: number | null;
   onSelectNode: (id: number) => void;
+  siteHost?: string | null;
 }) {
   const { map, nodes, coverage } = detail;
 
-  const pillars = useMemo(() => {
+  const childrenOf = useMemo(() => {
     const childrenOf = new Map<number, TopicalMapNode[]>();
     for (const node of nodes) {
       if (node.parentId === null) continue;
@@ -45,7 +54,10 @@ export function TopicClusterMap({
       children.push(node);
       childrenOf.set(node.parentId, children);
     }
+    return childrenOf;
+  }, [nodes]);
 
+  const pillars = useMemo(() => {
     const visibleCache = new Map<number, boolean>();
     const isVisible = (node: TopicalMapNode): boolean => {
       const cached = visibleCache.get(node.id);
@@ -61,7 +73,7 @@ export function TopicClusterMap({
     return nodes
       .filter((node) => node.level === "pillar" && isVisible(node))
       .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
-  }, [nodes, priorityFilter, statusFilter]);
+  }, [childrenOf, nodes, priorityFilter, statusFilter]);
 
   const coverageByPillar = useMemo(
     () => new Map(coverage.perPillar.map((pillar) => [pillar.nodeId, pillar.coveragePct])),
@@ -87,6 +99,22 @@ export function TopicClusterMap({
   const select = useCallback(
     (nodeId: number) => onSelectNode(nodeId),
     [onSelectNode],
+  );
+
+  const urlsByCluster = useMemo(
+    () =>
+      pillars.map((pillar) => {
+        const urls = new Set<string>();
+        const stack = [pillar];
+        while (stack.length > 0) {
+          const node = stack.pop();
+          if (!node) continue;
+          if (node.matchedPagePath) urls.add(node.matchedPagePath);
+          stack.push(...(childrenOf.get(node.id) ?? []));
+        }
+        return { pillar, urls: [...urls].sort() };
+      }),
+    [childrenOf, pillars],
   );
 
   if (pillars.length === 0) {
@@ -251,6 +279,89 @@ export function TopicClusterMap({
             );
           })}
         </svg>
+      </div>
+      <div className="border-t bg-muted/10 p-4 sm:p-5">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold">Linked URLs by cluster</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Pages already matched to each cluster. Select a URL to open the
+              published page.
+            </p>
+          </div>
+          <span className="text-xs text-muted-foreground">
+            {urlsByCluster.reduce((total, cluster) => total + cluster.urls.length, 0)}{" "}
+            matched URLs
+          </span>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+          {urlsByCluster.map(({ pillar, urls }) => {
+            const visibleUrls = urls.slice(0, 3);
+            const remainingUrls = urls.slice(3);
+            return (
+              <article
+                key={`urls-${pillar.id}`}
+                className="rounded-lg border bg-background p-3"
+                data-testid={`cluster-url-group-${pillar.id}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <h4 className="text-sm font-medium">{pillar.title}</h4>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {urls.length} URL{urls.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                {urls.length === 0 ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    No published URLs matched to this cluster yet.
+                  </p>
+                ) : (
+                  <>
+                    <ul className="mt-2 space-y-1.5">
+                      {visibleUrls.map((url) => (
+                        <li key={url} className="min-w-0">
+                          <a
+                            href={pageHref(siteHost, url)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block truncate text-xs text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                            title={pageHref(siteHost, url)}
+                            data-testid={`cluster-url-${pillar.id}-${url}`}
+                          >
+                            {url}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                    {remainingUrls.length > 0 && (
+                      <details className="mt-2 text-xs">
+                        <summary className="cursor-pointer text-primary hover:underline">
+                          Show {remainingUrls.length} more URL
+                          {remainingUrls.length === 1 ? "" : "s"}
+                        </summary>
+                        <ul className="mt-2 space-y-1.5">
+                          {remainingUrls.map((url) => (
+                            <li key={url} className="min-w-0">
+                              <a
+                                href={pageHref(siteHost, url)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block truncate text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                                title={pageHref(siteHost, url)}
+                                data-testid={`cluster-url-${pillar.id}-${url}`}
+                              >
+                                {url}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </>
+                )}
+              </article>
+            );
+          })}
+        </div>
       </div>
     </section>
   );

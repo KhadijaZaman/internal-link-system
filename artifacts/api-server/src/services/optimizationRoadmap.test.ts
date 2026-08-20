@@ -193,6 +193,48 @@ describe("optimization roadmap refresh planning", () => {
     expect(result.reason).toContain("No current performance evidence");
   });
 
+  it("keeps performance-rich adjacent pages out of the AI Visibility priority queue", () => {
+    const adjacent = scoreRoadmapOpportunity(
+      metric({
+        gscImpressions: 250_000,
+        gscPosition: 5.4,
+        aiCitations: 2_500,
+      }),
+      "Adjacent page",
+    );
+    const outsideCore = scoreRoadmapOpportunity(
+      metric({
+        gscImpressions: 250_000,
+        gscPosition: 5.4,
+        aiCitations: 2_500,
+      }),
+      "Outside core cluster",
+    );
+
+    expect(adjacent.score).toBe(49);
+    expect(adjacent.priorityTier).toBe("Tier 3 — Authority building");
+    expect(adjacent.lowHangingFruit).toBe(false);
+    expect(adjacent.reason).toContain("Outside the AI Visibility core");
+    expect(outsideCore.score).toBe(29);
+    expect(outsideCore.priorityTier).toBe("Tier 4 — Maintain / monitor");
+    expect(outsideCore.lowHangingFruit).toBe(false);
+  });
+
+  it("keeps an evidence-backed central entity in the immediate AI Visibility queue", () => {
+    const central = scoreRoadmapOpportunity(
+      metric({
+        gscImpressions: 12_000,
+        gscPosition: 18,
+        aiCitations: 145,
+      }),
+      "Central page",
+    );
+
+    expect(central.score).toBeGreaterThanOrEqual(70);
+    expect(central.priorityTier).toBe("Tier 1 — Immediate win");
+    expect(central.lowHangingFruit).toBe(true);
+  });
+
   it("keeps the AI Search Visibility central-page convention stable", () => {
     expect(classifyRoadmapPage({ path: CENTRAL_PAGE_PATH })).toEqual({
       topicCluster: "AI Search Visibility",

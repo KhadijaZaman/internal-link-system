@@ -100,6 +100,12 @@ vi.mock("@workspace/api-client-react", () => ({
   getGetTopicalMapRunQueryKey: (id: number) => ["topical-map-run", id],
 }));
 
+vi.mock("@/lib/site-context", () => ({
+  useSiteContext: () => ({
+    activeSite: { host: "example.com" },
+  }),
+}));
+
 function renderPage() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -123,9 +129,17 @@ describe("TopicClustersPage", () => {
     expect(screen.getByRole("heading", { name: "Topic Clusters" })).toBeTruthy();
     expect(screen.getByTestId("topic-cluster-map")).toBeTruthy();
     expect(screen.getByTestId("button-cluster-map-node-1")).toBeTruthy();
+    expect(screen.getByTestId("cluster-url-group-1")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("cluster-url-1-/blog/search-engine-visibility/")
+        .getAttribute("href"),
+    ).toBe("https://example.com/blog/search-engine-visibility/");
     expect(screen.getByTestId("topical-map-overview")).toBeTruthy();
     expect(screen.getAllByText("AI Search Visibility").length).toBeGreaterThan(0);
-    expect(screen.getByText("/blog/search-engine-visibility/")).toBeTruthy();
+    expect(
+      screen.getAllByText("/blog/search-engine-visibility/").length,
+    ).toBeGreaterThan(0);
   });
 
   it("selects a topic and shows its cluster detail", () => {

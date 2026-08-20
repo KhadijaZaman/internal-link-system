@@ -333,8 +333,10 @@ function priorityFor(score: number): string {
 }
 
 /**
- * Evidence-weighted 0–100 opportunity score. A cluster label can add only a
- * modest boost; a low-hanging-fruit flag always requires observed performance.
+ * Evidence-weighted 0–100 opportunity score for the AI Visibility roadmap.
+ * Observed performance determines opportunity within the core, while cluster
+ * role is an eligibility gate: adjacent and outside-core pages retain their
+ * evidence but cannot outrank the central entity or direct-support pages.
  */
 export function scoreRoadmapOpportunity(
   metric: RoadmapMetrics,
@@ -452,19 +454,40 @@ export function scoreRoadmapOpportunity(
   const citationGap =
     citationEvidence && ((metric.gscClicks ?? 0) === 0 || (metric.ga4Sessions ?? 0) < 20);
   const linkGap = metric.contentInboundLinks !== null && metric.contentInboundLinks <= 3;
+  const isAiVisibilityCore = role === "Central page" || role === "Supporting page";
   const lowHangingFruit =
-    performanceEvidence && !dominant && (nearPageOne || ctrGap || engagementGap || citationGap || linkGap);
+    isAiVisibilityCore &&
+    performanceEvidence &&
+    !dominant &&
+    (nearPageOne || ctrGap || engagementGap || citationGap || linkGap);
 
-  const finalScore = Math.max(0, Math.min(100, Math.round(score)));
+  const evidenceScore = Math.max(0, Math.min(100, Math.round(score)));
+  const coreAdjustedScore =
+    role === "Central page" && performanceEvidence
+      ? Math.max(evidenceScore, 70)
+      : evidenceScore;
+  const finalScore = isAiVisibilityCore
+    ? coreAdjustedScore
+    : role === "Adjacent page"
+      ? Math.min(evidenceScore, 49)
+      : Math.min(evidenceScore, 29);
+  const evidenceReason =
+    reasons.slice(0, 6).join("; ") ||
+    (performanceEvidence
+      ? "No strong near-term gap; maintain and monitor"
+      : "No current performance evidence; build authority before prioritizing");
+  const relevanceReason =
+    role === "Adjacent page"
+      ? "Outside the AI Visibility core; retain only as a contextual-support opportunity"
+      : role === "Outside core cluster"
+        ? "Outside the AI Visibility core; exclude from the AI Visibility optimization queue"
+        : null;
+
   return {
     score: finalScore,
     priorityTier: priorityFor(finalScore),
     lowHangingFruit,
-    reason:
-      reasons.slice(0, 6).join("; ") ||
-      (performanceEvidence
-        ? "No strong near-term gap; maintain and monitor"
-        : "No current performance evidence; build authority before prioritizing"),
+    reason: relevanceReason ? `${relevanceReason}. ${evidenceReason}` : evidenceReason,
   };
 }
 
