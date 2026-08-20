@@ -66,6 +66,30 @@ const SUPPORTING = {
   sortOrder: 1,
 };
 
+const DEFAULT_SIMILAR_PAGES = [
+  {
+    path: "/blog/ai-search-visibility/",
+    title: "AI Search Visibility Guide",
+    similarity: 0.91,
+  },
+  {
+    path: "/blog/search-engine-visibility/",
+    title: "Search Engine Visibility",
+    similarity: 0.87,
+  },
+  {
+    path: "/blog/visibility-checklist/",
+    title: "Visibility Checklist",
+    similarity: 0.42,
+  },
+  {
+    path: "/blog/ai-search-metrics/",
+    title: "AI Search Metrics",
+    similarity: 0.76,
+  },
+];
+let pillarSimilarPages = [...DEFAULT_SIMILAR_PAGES];
+
 vi.mock("@workspace/api-client-react", () => ({
   useListTopicalMapRuns: () => ({
     data: [RUN],
@@ -90,6 +114,7 @@ vi.mock("@workspace/api-client-react", () => ({
             total: 2,
             published: 1,
             coveragePct: 50,
+            similarPages: pillarSimilarPages,
           },
         ],
       },
@@ -120,7 +145,10 @@ function renderPage() {
 }
 
 describe("TopicClustersPage", () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    pillarSimilarPages = [...DEFAULT_SIMILAR_PAGES];
+  });
 
   it("renders the cluster hierarchy as a separate page", () => {
     renderPage();
@@ -135,9 +163,23 @@ describe("TopicClustersPage", () => {
         .getByTestId("cluster-url-1-/blog/search-engine-visibility/")
         .getAttribute("href"),
     ).toBe("https://example.com/blog/search-engine-visibility/");
+    expect(
+      screen
+        .getByTestId("cluster-url-1-/blog/visibility-checklist/")
+        .getAttribute("href"),
+    ).toBe("https://example.com/blog/visibility-checklist/");
+    expect(
+      screen
+        .getByTestId("cluster-url-1-/blog/visibility-checklist/")
+        .getAttribute("target"),
+    ).toBe("_blank");
+    expect(
+      screen.getByLabelText("42% cosine similarity"),
+    ).toBeTruthy();
+    expect(screen.getByText("Show 1 more page")).toBeTruthy();
     const mapPageLink = screen.getByTestId("cluster-map-open-page-1");
     expect(mapPageLink.getAttribute("href")).toBe(
-      "https://example.com/blog/search-engine-visibility/",
+      "https://example.com/blog/ai-search-visibility/",
     );
     expect(mapPageLink.getAttribute("target")).toBe("_blank");
     expect(mapPageLink.getAttribute("rel")).toBe("noopener noreferrer");
@@ -156,6 +198,19 @@ describe("TopicClustersPage", () => {
     const detail = screen.getByTestId("card-cluster-topic-detail");
     expect(detail.textContent).toContain("AI Search Visibility");
     expect(detail.textContent).toContain("No matching page yet");
+  });
+
+  it("does not fall back to unscored node matches when no page clears the threshold", () => {
+    pillarSimilarPages = [];
+    renderPage();
+
+    expect(
+      screen.queryByTestId("cluster-url-1-/blog/search-engine-visibility/"),
+    ).toBeNull();
+    expect(screen.queryByTestId("cluster-map-open-page-1")).toBeNull();
+    expect(
+      screen.getByText("No embedded pages clear the 42% similarity threshold yet."),
+    ).toBeTruthy();
   });
 
   it("filters gaps without hiding covered descendant context", () => {

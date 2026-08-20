@@ -1,11 +1,12 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import {
   db,
   topicalMapsTable,
   topicalMapNodesTable,
   topicalMapBridgesTable,
   pagesTable,
+  wpPostsTable,
   clusterRunsTable,
   clusterRunClustersTable,
   type TopicalMap,
@@ -17,8 +18,23 @@ import { requireSite, getSite } from "../lib/site";
 import { GenerateTopicalMapBody, UpdateTopicalMapNodeBody } from "@workspace/api-zod";
 import { runJob } from "../jobs/runner";
 import { reconcileStaleTopicalMaps } from "../jobs/generateTopicalMap";
+import { canonicalPath } from "../lib/urlCanon";
+import {
+  matchSimilarPagesByPillar,
+  type EmbeddedSitePage,
+  type PillarAnchorSet,
+  type SimilarClusterPage,
+} from "../services/topicalMapSimilarPages";
 
 const router: IRouter = Router();
+const SIMILAR_PAGES_CACHE_TTL_MS = 5 * 60_000;
+const similarPagesCache = new Map<
+  string,
+  {
+    expiresAt: number;
+    value: Promise<Map<number, SimilarClusterPage[]>>;
+  }
+>();
 
 function serializeMap(map: TopicalMap) {
   return {
@@ -113,13 +129,121 @@ async function fetchJoinedNodes(mapId: number, siteId: number): Promise<JoinedNo
   }));
 }
 
+async function fetchEmbeddedSitePages(
+  siteId: number,
+  siteHost: string,
+): Promise<EmbeddedSitePage[]> {
+  const [posts, pages] = await Promise.all([
+    db
+      .select({
+        url: wpPostsTable.url,
+        title: wpPostsTable.title,
+        embedding: wpPostsTable.embedding,
+      })
+      .from(wpPostsTable)
+      .where(and(eq(wpPostsTable.siteId, siteId), isNotNull(wpPostsTable.embedding))),
+    db
+      .select({ path: pagesTable.path, title: pagesTable.title })
+      .from(pagesTable)
+      .where(eq(pagesTable.siteId, siteId)),
+  ]);
+  const registryByPath = new Map(pages.map((page) => [page.path, page.title]));
+
+  return posts.flatMap((post) => {
+    const path = canonicalPath(post.url, siteHost);
+    if (path === null || post.embedding === null || !registryByPath.has(path)) return [];
+    return [
+      {
+        path,
+        title: registryByPath.get(path) ?? post.title ?? null,
+        embedding: post.embedding,
+      },
+    ];
+  });
+}
+
+function collectPillarAnchorSets(nodes: JoinedNode[]): PillarAnchorSet[] {
+  const childrenOf = new Map<number, JoinedNode[]>();
+  for (const node of nodes) {
+    if (node.parentId === null) continue;
+    const children = childrenOf.get(node.parentId);
+    if (children) children.push(node);
+    else childrenOf.set(node.parentId, [node]);
+  }
+
+  return nodes
+    .filter((node) => node.level === "pillar")
+    .map((pillar) => {
+      const anchorPaths = new Set<string>();
+      const stack: JoinedNode[] = [pillar];
+      while (stack.length > 0) {
+        const node = stack.pop()!;
+        if (node.status === "published" && node.matchedPagePath !== null) {
+          anchorPaths.add(node.matchedPagePath);
+        }
+        const children = childrenOf.get(node.id);
+        if (children) stack.push(...children);
+      }
+      return { nodeId: pillar.id, anchorPaths: [...anchorPaths] };
+    });
+}
+
+async function getSimilarPagesByPillar(
+  mapId: number,
+  siteId: number,
+  siteHost: string,
+  nodes: JoinedNode[],
+): Promise<Map<number, SimilarClusterPage[]>> {
+  const pillars = collectPillarAnchorSets(nodes);
+  const anchorSignature = pillars
+    .map(
+      (pillar) =>
+        `${pillar.nodeId}:${[...pillar.anchorPaths].sort().join(",")}`,
+    )
+    .sort()
+    .join("|");
+  const cacheKey = `${siteId}:${mapId}:${siteHost}:${anchorSignature}`;
+  const now = Date.now();
+  const cached = similarPagesCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) return cached.value;
+
+  for (const [key, entry] of similarPagesCache) {
+    if (entry.expiresAt <= now) similarPagesCache.delete(key);
+  }
+
+  const hasAnchors = pillars.some((pillar) => pillar.anchorPaths.length > 0);
+  const value = hasAnchors
+    ? fetchEmbeddedSitePages(siteId, siteHost).then((pages) =>
+        matchSimilarPagesByPillar(pillars, pages),
+      )
+    : Promise.resolve(
+        new Map(pillars.map((pillar) => [pillar.nodeId, []])),
+      );
+  similarPagesCache.set(cacheKey, {
+    expiresAt: now + SIMILAR_PAGES_CACHE_TTL_MS,
+    value,
+  });
+
+  try {
+    return await value;
+  } catch (error) {
+    if (similarPagesCache.get(cacheKey)?.value === value) {
+      similarPagesCache.delete(cacheKey);
+    }
+    throw error;
+  }
+}
+
 function pct(published: number, gap: number): number {
   const denom = published + gap;
   return denom === 0 ? 0 : Math.round((published / denom) * 1000) / 10;
 }
 
 /** Coverage rollup: totals + per-pillar subtree stats (ignored excluded from %). */
-function buildCoverage(nodes: JoinedNode[]) {
+function buildCoverage(
+  nodes: JoinedNode[],
+  similarPagesByPillar: Map<number, SimilarClusterPage[]> = new Map(),
+) {
   const childrenOf = new Map<number, JoinedNode[]>();
   for (const n of nodes) {
     if (n.parentId === null) continue;
@@ -151,6 +275,7 @@ function buildCoverage(nodes: JoinedNode[]) {
         total,
         published,
         coveragePct: pct(published, gap),
+        similarPages: similarPagesByPillar.get(pillar.id) ?? [],
       };
     });
 
@@ -296,15 +421,25 @@ async function competitorsByNode(
 }
 
 async function buildDetail(map: TopicalMap, siteId: number, siteHost: string) {
-  const nodes = await fetchJoinedNodes(map.id, siteId);
-  const bridges = await db
-    .select()
-    .from(topicalMapBridgesTable)
-    .where(
-      and(eq(topicalMapBridgesTable.siteId, siteId), eq(topicalMapBridgesTable.mapId, map.id)),
-    )
-    .orderBy(topicalMapBridgesTable.id);
-  const competitors = await competitorsByNode(nodes, siteId, siteHost).catch(() => new Map<number, NodeCompetitor[]>());
+  const [nodes, bridges] = await Promise.all([
+    fetchJoinedNodes(map.id, siteId),
+    db
+      .select()
+      .from(topicalMapBridgesTable)
+      .where(
+        and(
+          eq(topicalMapBridgesTable.siteId, siteId),
+          eq(topicalMapBridgesTable.mapId, map.id),
+        ),
+      )
+      .orderBy(topicalMapBridgesTable.id),
+  ]);
+  const [similarPagesByPillar, competitors] = await Promise.all([
+    getSimilarPagesByPillar(map.id, siteId, siteHost, nodes),
+    competitorsByNode(nodes, siteId, siteHost).catch(
+      () => new Map<number, NodeCompetitor[]>(),
+    ),
+  ]);
   return {
     map: serializeMap(map),
     nodes: nodes.map((n) => ({ ...serializeNode(n), competitors: competitors.get(n.id) ?? [] })),
@@ -314,7 +449,7 @@ async function buildDetail(map: TopicalMap, siteId: number, siteHost: string) {
       targetNodeId: b.targetNodeId,
       bridgeConcept: b.bridgeConcept,
     })),
-    coverage: buildCoverage(nodes),
+    coverage: buildCoverage(nodes, similarPagesByPillar),
   };
 }
 

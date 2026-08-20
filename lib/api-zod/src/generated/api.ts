@@ -1893,6 +1893,11 @@ export const GetTopicalMapRunParams = zod.object({
   "mapId": zod.coerce.number()
 })
 
+export const getTopicalMapRunResponseCoveragePerPillarItemSimilarPagesItemSimilarityMin = 0;
+export const getTopicalMapRunResponseCoveragePerPillarItemSimilarPagesItemSimilarityMax = 1;
+
+
+
 export const GetTopicalMapRunResponse = zod.object({
   "map": zod.object({
   "id": zod.number(),
@@ -1966,7 +1971,12 @@ export const GetTopicalMapRunResponse = zod.object({
   "section": zod.enum(['core', 'outer']),
   "total": zod.number().describe('Non-ignored nodes in this pillar\'s subtree (including the pillar)'),
   "published": zod.number(),
-  "coveragePct": zod.number()
+  "coveragePct": zod.number(),
+  "similarPages": zod.array(zod.object({
+  "path": zod.string().describe('Canonical path of an existing site page'),
+  "title": zod.string().nullable().describe('Current page title from the canonical page registry'),
+  "similarity": zod.number().min(getTopicalMapRunResponseCoveragePerPillarItemSimilarPagesItemSimilarityMin).max(getTopicalMapRunResponseCoveragePerPillarItemSimilarPagesItemSimilarityMax).describe('Highest cosine similarity to an existing matched page in this pillar subtree')
+})).describe('Existing site pages scoring at least 0.42 cosine similarity against a matched page in this pillar subtree, ordered strongest first')
 }))
 })
 })
@@ -1975,6 +1985,11 @@ export const GetTopicalMapRunResponse = zod.object({
 /**
  * @summary Get the newest complete topical map with nodes, bridges, and coverage
  */
+export const getLatestTopicalMapResponseCoveragePerPillarItemSimilarPagesItemSimilarityMin = 0;
+export const getLatestTopicalMapResponseCoveragePerPillarItemSimilarPagesItemSimilarityMax = 1;
+
+
+
 export const GetLatestTopicalMapResponse = zod.object({
   "map": zod.object({
   "id": zod.number(),
@@ -2048,7 +2063,12 @@ export const GetLatestTopicalMapResponse = zod.object({
   "section": zod.enum(['core', 'outer']),
   "total": zod.number().describe('Non-ignored nodes in this pillar\'s subtree (including the pillar)'),
   "published": zod.number(),
-  "coveragePct": zod.number()
+  "coveragePct": zod.number(),
+  "similarPages": zod.array(zod.object({
+  "path": zod.string().describe('Canonical path of an existing site page'),
+  "title": zod.string().nullable().describe('Current page title from the canonical page registry'),
+  "similarity": zod.number().min(getLatestTopicalMapResponseCoveragePerPillarItemSimilarPagesItemSimilarityMin).max(getLatestTopicalMapResponseCoveragePerPillarItemSimilarPagesItemSimilarityMax).describe('Highest cosine similarity to an existing matched page in this pillar subtree')
+})).describe('Existing site pages scoring at least 0.42 cosine similarity against a matched page in this pillar subtree, ordered strongest first')
 }))
 })
 })

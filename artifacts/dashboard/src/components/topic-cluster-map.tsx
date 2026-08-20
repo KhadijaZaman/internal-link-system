@@ -2,10 +2,14 @@ import { useCallback, useMemo } from "react";
 import {
   type TopicalMapDetail,
   type TopicalMapNode,
+  type TopicalMapSimilarPage,
 } from "@workspace/api-client-react";
 
 type StatusFilter = Record<TopicalMapNode["status"], boolean>;
 type PriorityFilter = Record<"high" | "medium" | "low", boolean>;
+type ClusterPage = Omit<TopicalMapSimilarPage, "similarity"> & {
+  similarity: number | null;
+};
 
 const MAP_WIDTH = 1000;
 const MAP_HEIGHT = 640;
@@ -76,7 +80,7 @@ export function TopicClusterMap({
   }, [childrenOf, nodes, priorityFilter, statusFilter]);
 
   const coverageByPillar = useMemo(
-    () => new Map(coverage.perPillar.map((pillar) => [pillar.nodeId, pillar.coveragePct])),
+    () => new Map(coverage.perPillar.map((pillar) => [pillar.nodeId, pillar])),
     [coverage.perPillar],
   );
 
@@ -91,7 +95,7 @@ export function TopicClusterMap({
         pillar,
         x: CENTER_X + Math.cos(angle) * radiusX,
         y: CENTER_Y + Math.sin(angle) * radiusY,
-        coveragePct: coverageByPillar.get(pillar.id) ?? 0,
+        coveragePct: coverageByPillar.get(pillar.id)?.coveragePct ?? 0,
       };
     });
   }, [coverageByPillar, pillars]);
@@ -101,34 +105,50 @@ export function TopicClusterMap({
     [onSelectNode],
   );
 
-  const urlsByCluster = useMemo(
+  const pagesByCluster = useMemo(
     () =>
       pillars.map((pillar) => {
-        const urls = new Set<string>();
-        const stack = [pillar];
-        while (stack.length > 0) {
-          const node = stack.pop();
-          if (!node) continue;
-          if (node.matchedPagePath) urls.add(node.matchedPagePath);
-          stack.push(...(childrenOf.get(node.id) ?? []));
+        const similarPages = coverageByPillar.get(pillar.id)?.similarPages;
+        let pages: ClusterPage[];
+        if (similarPages !== undefined) {
+          pages = [...similarPages].sort(
+            (a, b) => b.similarity - a.similarity || a.path.localeCompare(b.path),
+          );
+        } else {
+          const fallbackByPath = new Map<string, ClusterPage>();
+          const stack = [pillar];
+          while (stack.length > 0) {
+            const node = stack.pop();
+            if (!node) continue;
+            if (node.matchedPagePath) {
+              fallbackByPath.set(node.matchedPagePath, {
+                path: node.matchedPagePath,
+                title: node.pageTitle,
+                similarity: node.matchConfidence,
+              });
+            }
+            stack.push(...(childrenOf.get(node.id) ?? []));
+          }
+          pages = [...fallbackByPath.values()].sort((a, b) =>
+            a.path.localeCompare(b.path),
+          );
         }
-         const sortedUrls = [...urls].sort();
-         return {
-           pillar,
-           urls: sortedUrls,
-           representativeUrl: pillar.matchedPagePath ?? sortedUrls[0],
-         };
+        return {
+          pillar,
+          pages,
+          representativeUrl: pages[0]?.path,
+        };
       }),
-    [childrenOf, pillars],
+    [childrenOf, coverageByPillar, pillars],
   );
   const representativeUrlByPillar = useMemo(
     () =>
       new Map(
-        urlsByCluster
+        pagesByCluster
           .filter(({ representativeUrl }) => representativeUrl)
           .map(({ pillar, representativeUrl }) => [pillar.id, representativeUrl]),
       ),
-    [urlsByCluster],
+    [pagesByCluster],
   );
 
   if (pillars.length === 0) {
@@ -161,7 +181,7 @@ export function TopicClusterMap({
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Each connected node is a topic cluster. Select one to inspect its
-            coverage and page match.
+            coverage and related pages.
           </p>
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -323,19 +343,19 @@ export function TopicClusterMap({
           <div>
             <h3 className="text-sm font-semibold">Linked URLs by cluster</h3>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Pages already matched to each cluster. Select a URL to open the
-              published page.
+              Existing pages with at least 42% cosine similarity to each
+              cluster. Select a URL to open the published page.
             </p>
           </div>
           <span className="text-xs text-muted-foreground">
-            {urlsByCluster.reduce((total, cluster) => total + cluster.urls.length, 0)}{" "}
-            matched URLs
+            {pagesByCluster.reduce((total, cluster) => total + cluster.pages.length, 0)}{" "}
+            cluster-page matches
           </span>
         </div>
         <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-          {urlsByCluster.map(({ pillar, urls }) => {
-            const visibleUrls = urls.slice(0, 3);
-            const remainingUrls = urls.slice(3);
+          {pagesByCluster.map(({ pillar, pages }) => {
+            const visiblePages = pages.slice(0, 3);
+            const remainingPages = pages.slice(3);
             return (
               <article
                 key={`urls-${pillar.id}`}
@@ -345,50 +365,90 @@ export function TopicClusterMap({
                 <div className="flex items-start justify-between gap-3">
                   <h4 className="text-sm font-medium">{pillar.title}</h4>
                   <span className="shrink-0 text-xs text-muted-foreground">
-                    {urls.length} URL{urls.length === 1 ? "" : "s"}
+                    {pages.length} page{pages.length === 1 ? "" : "s"}
                   </span>
                 </div>
-                {urls.length === 0 ? (
+                {pages.length === 0 ? (
                   <p className="mt-2 text-xs text-muted-foreground">
-                    No published URLs matched to this cluster yet.
+                    No embedded pages clear the 42% similarity threshold yet.
                   </p>
                 ) : (
                   <>
                     <ul className="mt-2 space-y-1.5">
-                      {visibleUrls.map((url) => (
-                        <li key={url} className="min-w-0">
+                      {visiblePages.map((page) => (
+                        <li
+                          key={page.path}
+                          className="flex min-w-0 items-center gap-2"
+                        >
                           <a
-                            href={pageHref(siteHost, url)}
+                            href={pageHref(siteHost, page.path)}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="block truncate text-xs text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-                            title={pageHref(siteHost, url)}
-                            data-testid={`cluster-url-${pillar.id}-${url}`}
+                            className="min-w-0 flex-1 text-xs text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                            title={
+                              page.title
+                                ? `${page.title} — ${pageHref(siteHost, page.path)}`
+                                : pageHref(siteHost, page.path)
+                            }
+                            data-testid={`cluster-url-${pillar.id}-${page.path}`}
                           >
-                            {url}
+                            {page.title && (
+                              <span className="block truncate font-medium">
+                                {page.title}
+                              </span>
+                            )}
+                            <span className="block truncate">{page.path}</span>
                           </a>
+                          {page.similarity !== null && (
+                            <span
+                              className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+                              aria-label={`${Math.round(page.similarity * 100)}% cosine similarity`}
+                            >
+                              {Math.round(page.similarity * 100)}%
+                            </span>
+                          )}
                         </li>
                       ))}
                     </ul>
-                    {remainingUrls.length > 0 && (
+                    {remainingPages.length > 0 && (
                       <details className="mt-2 text-xs">
                         <summary className="cursor-pointer text-primary hover:underline">
-                          Show {remainingUrls.length} more URL
-                          {remainingUrls.length === 1 ? "" : "s"}
+                          Show {remainingPages.length} more page
+                          {remainingPages.length === 1 ? "" : "s"}
                         </summary>
                         <ul className="mt-2 space-y-1.5">
-                          {remainingUrls.map((url) => (
-                            <li key={url} className="min-w-0">
+                          {remainingPages.map((page) => (
+                            <li
+                              key={page.path}
+                              className="flex min-w-0 items-center gap-2"
+                            >
                               <a
-                                href={pageHref(siteHost, url)}
+                                href={pageHref(siteHost, page.path)}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="block truncate text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-                                title={pageHref(siteHost, url)}
-                                data-testid={`cluster-url-${pillar.id}-${url}`}
+                                className="min-w-0 flex-1 text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                                title={
+                                  page.title
+                                    ? `${page.title} — ${pageHref(siteHost, page.path)}`
+                                    : pageHref(siteHost, page.path)
+                                }
+                                data-testid={`cluster-url-${pillar.id}-${page.path}`}
                               >
-                                {url}
+                                {page.title && (
+                                  <span className="block truncate font-medium">
+                                    {page.title}
+                                  </span>
+                                )}
+                                <span className="block truncate">{page.path}</span>
                               </a>
+                              {page.similarity !== null && (
+                                <span
+                                  className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+                                  aria-label={`${Math.round(page.similarity * 100)}% cosine similarity`}
+                                >
+                                  {Math.round(page.similarity * 100)}%
+                                </span>
+                              )}
                             </li>
                           ))}
                         </ul>

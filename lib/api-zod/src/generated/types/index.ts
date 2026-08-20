@@ -362,6 +362,7 @@ export * from './topicalMapNodeSection';
 export * from './topicalMapNodeStatus';
 export * from './topicalMapPillarCoverage';
 export * from './topicalMapPillarCoverageSection';
+export * from './topicalMapSimilarPage';
 export * from './topicalMapSummary';
 export * from './topicalMapSummaryStats';
 export * from './topicalMapSummaryStatus';

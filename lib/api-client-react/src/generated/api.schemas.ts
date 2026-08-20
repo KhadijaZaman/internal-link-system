@@ -3711,6 +3711,22 @@ export interface TopicalMapBridge {
   bridgeConcept: string;
 }
 
+export interface TopicalMapSimilarPage {
+  /** Canonical path of an existing site page */
+  path: string;
+  /**
+     * Current page title from the canonical page registry
+     * @nullable
+     */
+  title: string | null;
+  /**
+     * Highest cosine similarity to an existing matched page in this pillar subtree
+     * @minimum 0
+     * @maximum 1
+     */
+  similarity: number;
+}
+
 export type TopicalMapPillarCoverageSection = typeof TopicalMapPillarCoverageSection[keyof typeof TopicalMapPillarCoverageSection];
 
 
@@ -3727,6 +3743,8 @@ export interface TopicalMapPillarCoverage {
   total: number;
   published: number;
   coveragePct: number;
+  /** Existing site pages scoring at least 0.42 cosine similarity against a matched page in this pillar subtree, ordered strongest first */
+  similarPages: TopicalMapSimilarPage[];
 }
 
 export interface TopicalMapCoverage {

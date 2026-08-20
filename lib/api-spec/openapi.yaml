@@ -6001,9 +6001,24 @@ components:
         sourceNodeId: { type: integer }
         targetNodeId: { type: integer }
         bridgeConcept: { type: string }
+    TopicalMapSimilarPage:
+      type: object
+      required: [path, title, similarity]
+      properties:
+        path:
+          type: string
+          description: Canonical path of an existing site page
+        title:
+          type: ["string", "null"]
+          description: Current page title from the canonical page registry
+        similarity:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Highest cosine similarity to an existing matched page in this pillar subtree
     TopicalMapPillarCoverage:
       type: object
-      required: [nodeId, title, section, total, published, coveragePct]
+      required: [nodeId, title, section, total, published, coveragePct, similarPages]
       properties:
         nodeId: { type: integer }
         title: { type: string }
@@ -6015,6 +6030,11 @@ components:
           description: Non-ignored nodes in this pillar's subtree (including the pillar)
         published: { type: integer }
         coveragePct: { type: number }
+        similarPages:
+          type: array
+          description: Existing site pages scoring at least 0.42 cosine similarity against a matched page in this pillar subtree, ordered strongest first
+          items:
+            $ref: "#/components/schemas/TopicalMapSimilarPage"
     TopicalMapCoverage:
       type: object
       required: [totalNodes, publishedNodes, gapNodes, ignoredNodes, coveragePct, perPillar]

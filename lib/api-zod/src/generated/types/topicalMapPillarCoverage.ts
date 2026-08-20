@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { TopicalMapPillarCoverageSection } from './topicalMapPillarCoverageSection';
+import type { TopicalMapSimilarPage } from './topicalMapSimilarPage';
 
 export interface TopicalMapPillarCoverage {
   nodeId: number;
@@ -15,4 +16,6 @@ export interface TopicalMapPillarCoverage {
   total: number;
   published: number;
   coveragePct: number;
+  /** Existing site pages scoring at least 0.42 cosine similarity against a matched page in this pillar subtree, ordered strongest first */
+  similarPages: TopicalMapSimilarPage[];
 }
