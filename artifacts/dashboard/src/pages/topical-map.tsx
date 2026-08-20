@@ -62,6 +62,7 @@ import { InfoTip } from "@/components/info-tip";
 import { DataNarrative, Num } from "@/components/data-narrative";
 import * as d3 from "d3";
 import { hitTestNodes, resolveClickSelection, resolveHoverTransition } from "@/lib/map-hittest";
+import { TopicalMapOverview } from "@/components/topical-map-overview";
 
 const STATUS_COLOR: Record<TopicalMapNode["status"], string> = {
   published: "#10b981",
@@ -142,7 +143,7 @@ export default function TopicalMapPage() {
     Record<"high" | "medium" | "low", boolean>
   >({ high: true, medium: true, low: true });
   const [showBridges, setShowBridges] = useState(true);
-  const [viewMode, setViewMode] = useState<"map" | "table">("map");
+  const [viewMode, setViewMode] = useState<"overview" | "map" | "table">("overview");
   const [formOpen, setFormOpen] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
   const [topicSearch, setTopicSearch] = useState("");
@@ -1036,11 +1037,11 @@ export default function TopicalMapPage() {
       )}
 
       {detail && layout && (
-        <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
-          <Card data-testid="card-map-canvas">
-            <CardHeader className="pb-2">
+        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <Card className="min-w-0" data-testid="card-map-canvas">
+            <CardHeader className="min-w-0 pb-2">
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <CardTitle className="text-base flex items-center gap-1.5">
+                <CardTitle className="flex min-w-0 items-center gap-1.5 text-base">
                   Map — {detail.map.centralEntity}
                   <InfoTip>
                     Each dot is a topic. The center is your main subject; dots branch out into
@@ -1048,13 +1049,18 @@ export default function TopicalMapPage() {
                     covered it yet.
                   </InfoTip>
                 </CardTitle>
-                <div className="flex items-center gap-1.5 text-xs">
-                  <div className="flex rounded-md border overflow-hidden mr-1">
-                    {(["map", "table"] as const).map((m) => (
+                <div className="flex w-full min-w-0 flex-wrap items-center gap-1.5 text-xs xl:w-auto">
+                  <div
+                    className="flex overflow-hidden rounded-md border mr-1"
+                    role="group"
+                    aria-label="Topical map view"
+                  >
+                    {(["overview", "map", "table"] as const).map((m) => (
                       <button
                         key={m}
                         type="button"
                         onClick={() => setViewMode(m)}
+                        aria-pressed={viewMode === m}
                         className={`px-2.5 py-1 transition-colors ${
                           viewMode === m
                             ? "bg-foreground text-background"
@@ -1062,7 +1068,7 @@ export default function TopicalMapPage() {
                         }`}
                         data-testid={`button-view-${m}`}
                       >
-                        {m === "map" ? "Map" : "Table"}
+                        {m === "overview" ? "Overview" : m === "map" ? "Map" : "Table"}
                       </button>
                     ))}
                   </div>
@@ -1184,16 +1190,19 @@ export default function TopicalMapPage() {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                Scroll to zoom, drag to pan, click a topic for details. Click a legend chip
-                to show or hide those topics. Outer-section topics have a dark ring.
+                {viewMode === "overview"
+                  ? "Scan the map by pillar, then select any visible topic to open its page match, brief, and actions. Filter chips update this outline too."
+                  : viewMode === "map"
+                    ? "Scroll to zoom, drag to pan, and click a topic for details. Outer-section topics have a dark ring."
+                    : "Scan every topic as an indented outline, then select a row for details or export the filtered list."}
               </p>
-              <div className="relative mt-1">
+              <div className="relative mt-1 w-full sm:max-w-sm">
                 <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                 <Input
                   value={topicSearch}
                   onChange={(e) => setTopicSearch(e.target.value)}
                   placeholder="Find a topic by name… (e.g. anchor text)"
-                  className="h-8 pl-8 text-sm max-w-sm"
+                  className="h-8 w-full pl-8 text-sm"
                   data-testid="input-topic-search"
                 />
                 {topicMatches.length > 0 && (
@@ -1232,9 +1241,26 @@ export default function TopicalMapPage() {
                 )}
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="min-w-0">
+              {viewMode === "overview" && (
+                <TopicalMapOverview
+                  detail={detail}
+                  statusFilter={statusFilter}
+                  priorityFilter={priorityFilter}
+                  selectedNodeId={selectedNodeId}
+                  onSelectNode={jumpToNode}
+                />
+              )}
               {/* Keep the canvas mounted (hidden) so pan/zoom state survives view switches. */}
-              <div ref={containerRef} className={viewMode === "map" ? "relative w-full" : "hidden"}>
+              <div
+                ref={containerRef}
+                aria-hidden={viewMode !== "map"}
+                className={
+                  viewMode === "map"
+                    ? "relative w-full"
+                    : "relative h-0 w-full overflow-hidden invisible pointer-events-none"
+                }
+              >
                 <canvas ref={canvasRef} className="rounded-md border bg-white cursor-grab" />
                 {layout && layout.nodes.length === 0 && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">

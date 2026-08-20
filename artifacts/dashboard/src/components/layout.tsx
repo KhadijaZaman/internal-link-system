@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useClerk, useUser } from "@clerk/react";
 import { useGetSession } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { SiteSwitcher } from "@/components/site-switcher";
-import { LayoutDashboard, Network, TrendingDown, Settings2, LogOut, LineChart, FileText, Ban, PenLine, Link2, Compass, BookOpen, ClipboardList, Bot, Gauge, Table2, ListTodo, Newspaper, Waypoints, SearchCheck, Boxes, GitCompareArrows, Sparkles, Map, Plug, ChevronDown, ShieldCheck, Lightbulb, ScrollText, ExternalLink, FlaskConical, UploadCloud } from "lucide-react";
+import { LayoutDashboard, Network, TrendingDown, Settings2, LogOut, LineChart, FileText, Ban, PenLine, Link2, Compass, BookOpen, ClipboardList, Bot, Gauge, Table2, ListTodo, Newspaper, Waypoints, SearchCheck, Boxes, GitCompareArrows, Sparkles, Map, Plug, ChevronDown, ShieldCheck, Lightbulb, ScrollText, ExternalLink, FlaskConical, UploadCloud, Menu, X } from "lucide-react";
 
 interface NavItem {
   href: string;
@@ -155,6 +155,7 @@ function ExternalNavLink({
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const { signOut } = useClerk();
   const { user } = useUser();
   const { data: session } = useGetSession();
@@ -189,11 +190,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
   };
 
   const isAdmin = session?.isAdmin === true;
+  const currentPageLabel =
+    [...primaryItems, ...navSections.flatMap((section) => section.items)].find(
+      (item) => isItemActive(item.href, location),
+    )?.label ?? "Linkweave";
+
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location]);
 
   return (
-    <div className="flex h-screen w-full bg-background overflow-hidden">
+    <div className="relative flex h-screen w-full overflow-hidden bg-background">
       {/* Sidebar */}
-      <aside className="w-60 border-r bg-card flex flex-col">
+      <aside
+        id="dashboard-navigation"
+        className={`fixed inset-y-0 left-0 z-50 flex w-60 shrink-0 flex-col border-r bg-card transition-transform duration-200 ease-out md:static md:z-auto md:translate-x-0 ${
+          mobileNavOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
         <div className="px-4 pt-5 pb-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground font-display text-sm font-bold">
@@ -207,6 +221,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 SEO Operations
               </div>
             </div>
+            <button
+              type="button"
+              className="ml-auto rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 md:hidden"
+              onClick={() => setMobileNavOpen(false)}
+              aria-label="Close navigation"
+              data-testid="button-close-mobile-nav"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
         </div>
         <div className="px-3 pb-3">
@@ -287,9 +310,36 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
+      {mobileNavOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-slate-950/35 md:hidden"
+          onClick={() => setMobileNavOpen(false)}
+          aria-label="Close navigation"
+          data-testid="button-mobile-nav-backdrop"
+        />
+      )}
+
       {/* Main Content */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
-        <main className="flex-1 overflow-y-auto p-8">
+      <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b bg-card px-4 md:hidden">
+          <button
+            type="button"
+            className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            onClick={() => setMobileNavOpen(true)}
+            aria-label="Open navigation"
+            aria-controls="dashboard-navigation"
+            aria-expanded={mobileNavOpen}
+            data-testid="button-open-mobile-nav"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{currentPageLabel}</p>
+            <p className="text-[11px] text-muted-foreground">Linkweave</p>
+          </div>
+        </header>
+        <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8">
           {children}
         </main>
       </div>

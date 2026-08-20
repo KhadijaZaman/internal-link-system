@@ -75,6 +75,10 @@ beforeAll(() => {
     writable: true,
     configurable: true,
   });
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+    get: () => 900,
+    configurable: true,
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -83,7 +87,7 @@ beforeAll(() => {
 // ---------------------------------------------------------------------------
 /** All fields that topical-map.tsx reads from a node (including the detail panel). */
 const baseNode = {
-  parentId: null as null, runId: 1,
+  parentId: null as number | null, runId: 1,
   section: "core", level: "pillar" as const,
   priority: "high", intent: "informational", predicate: "how-to",
   funnelStage: "tofu", pageType: "article",
@@ -104,6 +108,7 @@ const MOCK_NODES = [
   {
     // published + matched page to exercise the gscPosition branch
     ...baseNode, id: 2, sortOrder: 2, status: "published" as const,
+    parentId: 1, level: "core_topic" as const,
     priority: "medium",
     title: "Beta Topic", canonicalQuery: "beta query",
     matchedPagePath: "/beta", matchSource: "embedding", matchConfidence: 0.92,
@@ -112,7 +117,7 @@ const MOCK_NODES = [
   },
   {
     ...baseNode, id: 3, sortOrder: 3, status: "gap" as const,
-    section: "outer", priority: "low",
+    parentId: 2, level: "subtopic" as const, section: "outer", priority: "low",
     title: "Gamma Topic", canonicalQuery: "gamma query",
     informationGain: "High info gain",
   },
@@ -141,14 +146,12 @@ const MOCK_DETAIL = {
   bridges: [],
   coverage: {
     totalNodes: 3,
-    coveredNodes: 1,
+    publishedNodes: 1,
+    gapNodes: 2,
+    ignoredNodes: 0,
     coveragePct: 33,
     perPillar: [
-      { pillar: "Alpha Topic", total: 1, covered: 0, coveragePct: 0 },
-    ],
-    perSection: [
-      { section: "core", total: 2, covered: 1, coveragePct: 50 },
-      { section: "outer", total: 1, covered: 0, coveragePct: 0 },
+      { nodeId: 1, title: "Alpha Topic", section: "core", total: 3, published: 1, coveragePct: 33 },
     ],
   },
 };
@@ -289,5 +292,70 @@ describe("TopicalMapPage — hub click clears stale node selection", () => {
     await waitFor(() => {
       expect(q.queryByTestId("card-node-detail")).toBeNull();
     });
+  });
+});
+
+describe("TopicalMapPage — readable overview", () => {
+  afterEach(() => cleanup());
+
+  it("opens on the overview and shows the central entity with pillar coverage cues", () => {
+    const { q } = renderPage();
+
+    expect(q.getByTestId("topical-map-overview")).toBeTruthy();
+    expect(q.getByTestId("text-overview-central-entity").textContent).toContain(
+      "Test Entity",
+    );
+    expect(q.getByTestId("card-overview-pillar-1")).toBeTruthy();
+    expect(q.getByTestId("text-overview-covered-1").textContent).toContain(
+      "1 covered",
+    );
+    expect(q.getByTestId("text-overview-gaps-1").textContent).toContain("2 gaps");
+    expect(q.getByTestId("text-overview-priority-1").textContent).toContain(
+      "1 high priority",
+    );
+    expect(q.getByTestId("tree-overview-node-2")).toBeTruthy();
+    expect(q.getByTestId("tree-overview-node-3")).toBeTruthy();
+    expect(q.getByTestId("text-overview-page-2").textContent).toContain("/beta");
+  });
+
+  it("opens the existing detail panel when a topic is selected from the overview", async () => {
+    const { q } = renderPage();
+
+    fireEvent.click(q.getByTestId("button-overview-node-2"));
+
+    const panel = await q.findByTestId("card-node-detail");
+    expect(panel.textContent).toContain("Beta Topic");
+  });
+
+  it("applies the existing status filters to the overview", () => {
+    const { q } = renderPage();
+
+    expect(q.getByTestId("card-overview-pillar-1")).toBeTruthy();
+    fireEvent.click(q.getByTestId("button-filter-gap"));
+
+    expect(q.getByTestId("card-overview-pillar-1")).toBeTruthy();
+    expect(
+      (q.getByTestId("button-overview-pillar-1") as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(q.getByTestId("tree-overview-node-2")).toBeTruthy();
+    expect(q.queryByTestId("tree-overview-node-3")).toBeNull();
+  });
+
+  it("keeps a usable canvas when switching from the default overview to the map", () => {
+    const { q, canvas } = renderPage();
+    const mapButton = q.getByTestId("button-view-map");
+
+    expect(q.getByTestId("button-view-overview").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(canvas().parentElement?.className.split(/\s+/)).not.toContain("hidden");
+    expect(canvas().style.width).toBe("900px");
+    fireEvent.click(mapButton);
+
+    expect(mapButton.getAttribute("aria-pressed")).toBe("true");
+    expect(q.getByTestId("button-view-overview").getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    expect(canvas().parentElement?.getAttribute("aria-hidden")).toBe("false");
   });
 });

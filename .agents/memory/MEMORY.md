@@ -36,3 +36,4 @@
 - [OpenAI key vs proxy](openai-key-vs-proxy.md) — direct OPENAI_API_KEY is out of credits; prefer AI_INTEGRATIONS proxy baseURL, fallback to direct key.
 - [GSC comparison windows](gsc-comparison-windows.md) — compare equal weekly-chunked periods ending 3 days back; completion is run-level, not inferred from prior values.
 - [Content opportunity scoring](content-opportunity-scoring.md) — AI Visibility central-page choice, cluster roles, and evidence-weighted priority scoring for the sitemap roadmap.
+- [Topical-map view switching](topical-map-view-switching.md) — default non-canvas views must keep the canvas measurable without resetting its pan/zoom state.

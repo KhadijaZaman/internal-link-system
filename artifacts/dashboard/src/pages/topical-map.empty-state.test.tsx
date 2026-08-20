@@ -125,8 +125,8 @@ describe("TopicalMapPage — empty-state overlay (zero nodes)", () => {
   it("shows the regeneration hint text alongside the empty-state heading", () => {
     renderPage();
     expect(
-      screen.getByText(/try regenerating with a broader charter/i),
-    ).toBeTruthy();
+      screen.getAllByText(/try regenerating with a broader charter/i).length
+    ).toBeGreaterThan(0);
   });
 
   it("keeps the canvas element in the DOM even when no nodes were generated", () => {
