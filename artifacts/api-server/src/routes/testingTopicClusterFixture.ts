@@ -1,18 +1,27 @@
 import { createHash } from "node:crypto";
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq, like, lt } from "drizzle-orm";
 import {
   db,
   pagesTable,
   sitesTable,
   topicalMapNodesTable,
   topicalMapsTable,
+  usersTable,
   wpPostsTable,
 } from "@workspace/db";
-import { requireAuth, type AuthedRequest } from "../lib/auth";
+import {
+  invalidateLocalUserProvisioning,
+  requireAuth,
+  type AuthedRequest,
+} from "../lib/auth";
+import { deleteSiteData } from "../lib/deleteSiteData";
+import { E2E_FIXTURE_HOST_SUFFIX, isE2eFixtureHost } from "../lib/site";
 
 const router: IRouter = Router();
-const E2E_FIXTURE_HOST_SUFFIX = ".e2e-fixture.test";
+// Browser checks create a fresh Clerk account. A day is enough time to rerun a
+// local check while ensuring abandoned accounts do not build up in development.
+export const E2E_FIXTURE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 function fixtureEmbedding(similarity: number): number[] {
   const vector = Array<number>(1536).fill(0);
@@ -24,6 +33,84 @@ function fixtureEmbedding(similarity: number): number[] {
 function fixtureHostForUser(userId: string): string {
   const digest = createHash("sha256").update(userId).digest("hex").slice(0, 20);
   return `topic-clusters-${digest}${E2E_FIXTURE_HOST_SUFFIX}`;
+}
+
+function isTopicClusterFixtureSite(site: {
+  host: string;
+  domain: string;
+  ownerUserId: string | null;
+}): site is {
+  host: string;
+  domain: string;
+  ownerUserId: string;
+} {
+  return (
+    site.ownerUserId !== null &&
+    isE2eFixtureHost(site.host) &&
+    site.host === fixtureHostForUser(site.ownerUserId) &&
+    site.domain === `https://${site.host}`
+  );
+}
+
+/**
+ * Deletes abandoned development browser fixtures and the local user mirror
+ * only when that mirror no longer owns any site. The reserved hostname is the
+ * initial SQL selector; the exact owner-derived hostname and domain are checked
+ * again before deletion so an ordinary site can never qualify by suffix alone.
+ */
+export async function cleanupExpiredTopicClusterFixtures(
+  preserveOwnerUserId?: string,
+): Promise<number> {
+  if (process.env["NODE_ENV"] !== "development") return 0;
+
+  const cutoff = new Date(Date.now() - E2E_FIXTURE_MAX_AGE_MS);
+  const candidates = await db
+    .select({
+      id: sitesTable.id,
+      host: sitesTable.host,
+      domain: sitesTable.domain,
+      ownerUserId: sitesTable.ownerUserId,
+    })
+    .from(sitesTable)
+    .where(
+      and(
+        lt(sitesTable.createdAt, cutoff),
+        like(sitesTable.host, `%${E2E_FIXTURE_HOST_SUFFIX}`),
+      ),
+    );
+
+  const deletedOwnerIds = new Set<string>();
+  let deleted = 0;
+  for (const candidate of candidates) {
+    if (
+      candidate.ownerUserId === null ||
+      candidate.ownerUserId === preserveOwnerUserId ||
+      !isTopicClusterFixtureSite(candidate)
+    ) {
+      continue;
+    }
+    await deleteSiteData(candidate.id);
+    deletedOwnerIds.add(candidate.ownerUserId);
+    deleted += 1;
+  }
+
+  for (const ownerUserId of deletedOwnerIds) {
+    const remainingSites = await db
+      .select({ id: sitesTable.id })
+      .from(sitesTable)
+      .where(eq(sitesTable.ownerUserId, ownerUserId))
+      .limit(1);
+    if (remainingSites.length === 0) {
+      const deletedUsers = await db
+        .delete(usersTable)
+        .where(eq(usersTable.id, ownerUserId))
+        .returning({ id: usersTable.id });
+      if (deletedUsers.length > 0) {
+        invalidateLocalUserProvisioning(ownerUserId);
+      }
+    }
+  }
+  return deleted;
 }
 
 /**
@@ -39,6 +126,10 @@ router.post("/testing/topic-clusters/fixture", requireAuth, async (req, res, nex
 
   try {
     const userId = (req as AuthedRequest).userId!;
+    const deleted = await cleanupExpiredTopicClusterFixtures(userId);
+    if (deleted > 0) {
+      req.log.info({ deleted }, "expired topic-cluster browser fixtures cleaned up");
+    }
     const host = fixtureHostForUser(userId);
     const result = await db.transaction(async (tx) => {
       const [existing] = await tx

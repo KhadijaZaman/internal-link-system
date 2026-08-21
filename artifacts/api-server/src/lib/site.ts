@@ -31,6 +31,12 @@ export interface SiteScopedRequest extends AuthedRequest {
 
 export const LEGACY_SITE_ID = 1;
 export const INTEGRATION_TEST_OWNER_PREFIX = "test-";
+export const E2E_FIXTURE_HOST_SUFFIX = ".e2e-fixture.test";
+
+/** Reserved hostname space used exclusively by development browser fixtures. */
+export function isE2eFixtureHost(host: string): boolean {
+  return host.endsWith(E2E_FIXTURE_HOST_SUFFIX);
+}
 
 /**
  * Integration tests share the development database with the live dev server.
@@ -42,7 +48,7 @@ export function isIntegrationTestSite(
 ): boolean {
   return (
     site.ownerUserId?.startsWith(INTEGRATION_TEST_OWNER_PREFIX) ||
-    site.host.endsWith(".e2e-fixture.test")
+    isE2eFixtureHost(site.host)
   );
 }
 

@@ -24,6 +24,11 @@ export function getUserId(req: Request): string | null {
 // at most once per process per user (cheap in-memory guard).
 const provisionedUsers = new Set<string>();
 
+/** Allow development cleanup to remove a JIT user row without leaving this cache stale. */
+export function invalidateLocalUserProvisioning(userId: string): void {
+  provisionedUsers.delete(userId);
+}
+
 async function ensureLocalUser(userId: string): Promise<void> {
   if (provisionedUsers.has(userId)) return;
   const { db, usersTable } = await import("@workspace/db");

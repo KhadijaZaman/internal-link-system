@@ -4,6 +4,7 @@ import {
   aiCitationUploadsTable,
   appStateTable,
   auditReportsTable,
+  backlinkProspectsTable,
   bingPageStatsTable,
   bingQueryStatsTable,
   clusterRunsTable,
@@ -19,6 +20,7 @@ import {
   linkGraphTable,
   linkingSettingsTable,
   linkLookupsTable,
+  linkMapRunsTable,
   linkStatsTable,
   linkSuggestionsTable,
   optimizeQueueTable,
@@ -27,6 +29,7 @@ import {
   pageTargetKeywordsTable,
   queryIntelTable,
   queryLosersTable,
+  researchRunsTable,
   similarityRunsTable,
   siteIntegrationsTable,
   sitesTable,
@@ -36,7 +39,7 @@ import {
   watchlistQueriesTable,
   wpPostsTable,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { invalidateSiteCache } from "./site";
 import { invalidateIntegrationCache } from "./siteIntegrations";
 
@@ -67,7 +70,11 @@ export async function deleteSiteData(siteId: number): Promise<void> {
     await tx.delete(queryLosersTable).where(eq(queryLosersTable.siteId, siteId));
     await tx.delete(optimizeQueueTable).where(eq(optimizeQueueTable.siteId, siteId));
     await tx.delete(auditReportsTable).where(eq(auditReportsTable.siteId, siteId));
+    await tx.delete(backlinkProspectsTable).where(eq(backlinkProspectsTable.siteId, siteId));
     await tx.delete(linkLookupsTable).where(eq(linkLookupsTable.siteId, siteId));
+    await tx.delete(linkMapRunsTable).where(eq(linkMapRunsTable.siteId, siteId));
+    // research_findings cascade from their research_run parent.
+    await tx.delete(researchRunsTable).where(eq(researchRunsTable.siteId, siteId));
     await tx.delete(trackedSubmissionsTable).where(eq(trackedSubmissionsTable.siteId, siteId));
     await tx.delete(actionItemsTable).where(eq(actionItemsTable.siteId, siteId));
     await tx.delete(healthSnapshotsTable).where(eq(healthSnapshotsTable.siteId, siteId));
@@ -88,26 +95,24 @@ export async function deleteSiteData(siteId: number): Promise<void> {
     await tx.delete(watchlistQueriesTable).where(eq(watchlistQueriesTable.siteId, siteId));
     await tx.delete(jobRunsTable).where(eq(jobRunsTable.siteId, siteId));
     await tx.delete(siteIntegrationsTable).where(eq(siteIntegrationsTable.siteId, siteId));
-    // Per-site app_state entries (e.g. the keyword movement spreadsheet id and
-    // the GSC rollup window dates written by gscInventory after each sync).
+    // app_state has no site FK, so every known per-site key must be removed
+    // explicitly alongside the relational rows.
     await tx
       .delete(appStateTable)
-      .where(eq(appStateTable.key, `keyword_movement_sheet_id:${siteId}`));
-    await tx
-      .delete(appStateTable)
-      .where(eq(appStateTable.key, `gsc_window_start:${siteId}`));
-    await tx
-      .delete(appStateTable)
-      .where(eq(appStateTable.key, `gsc_window_end:${siteId}`));
-    await tx
-      .delete(appStateTable)
-      .where(eq(appStateTable.key, `optimization_roadmap_sheet:${siteId}:id`));
-    await tx
-      .delete(appStateTable)
-      .where(eq(appStateTable.key, `optimization_roadmap_sheet:${siteId}:tab`));
-    await tx
-      .delete(appStateTable)
-      .where(eq(appStateTable.key, `optimization_roadmap_sheet:${siteId}:synced_at`));
+      .where(
+        inArray(appStateTable.key, [
+          `keyword_movement_sheet_id:${siteId}`,
+          `keyword_movement_sheet_id:${siteId}:shared`,
+          `gsc_window_start:${siteId}`,
+          `gsc_window_end:${siteId}`,
+          `optimization_roadmap_sheet:${siteId}:id`,
+          `optimization_roadmap_sheet:${siteId}:tab`,
+          `optimization_roadmap_sheet:${siteId}:synced_at`,
+          `link_map_sheet_id:${siteId}`,
+          `link_map_sheet_id:${siteId}:shared`,
+          `link_map_sheet_id:${siteId}:synced_at`,
+        ]),
+      );
     await tx.delete(sitesTable).where(eq(sitesTable.id, siteId));
   });
   invalidateSiteCache(siteId);
