@@ -6,57 +6,95 @@ id = "EhPcYZCQiICUZRwGK6vu6"
 uri = "file://.local/outputs/Internal-Link-System.pdf"
 type = "pdf"
 title = "Internal Link System.pdf"
+logical_id = "b27b12d1-cc3f-45f8-8c66-78d26c4db38a"
 
 [[outputs]]
 id = "HJm2hxZdSZDJV3RT28WwO"
 uri = "file://exports/wellows-features-gsc-compare-28d.csv"
 type = "table"
 title = "Performance: 28d vs previous 28d (clicks, impressions, CTR, position)"
+logical_id = "7afbbb67-a56d-423b-9623-83cb3ce7bf12"
 
 [[outputs]]
 id = "lxKacw98vK4b3p8J9r2jC"
 uri = "file://exports/wellows-features-gsc-breakdowns-28d.csv"
 type = "table"
 title = "Breakdowns: queries, countries, devices, search appearance (last 28d)"
+logical_id = "f326996d-fc79-4f0c-a8c3-b2bba72e630b"
 
 [[outputs]]
 id = "y4IthCaJBYd_ltbpMyHJ4"
 uri = "file://exports/wellows-features-gsc-searchtype-28d.csv"
 type = "table"
 title = "By search type: web / image / video / news (last 28d)"
+logical_id = "f214b37e-746f-457c-b1e1-4edec97831fb"
 
 [[outputs]]
 id = "Kpt2rZEg1uEb3bnkKCuIF"
 uri = "file://exports/wellows-features-gsc-inspection.csv"
 type = "table"
 title = "URL Inspection: index status, last crawl, canonical, robots, rich results"
+logical_id = "c174affa-5894-40df-b65a-f5f0b805ba86"
 
 [[outputs]]
 id = "R3ktJ6pMwp5N813Is8rBA"
 uri = "file://exports/wellows-gsc-summary.xlsx"
 type = "table"
 title = "Wellows GSC Summary — incl. Prompt → GSC Map tab"
+logical_id = "310087b5-13bb-4977-8403-1b0fd8c169e3"
 
 [[outputs]]
 id = "ejB3U41XOHtxbmbXVvRBx"
 uri = "file://.local/outputs/Wellows---Partnership-Impact.pptx"
 type = "slides"
 title = "Wellows — Partnership Impact (PPTX)"
+logical_id = "55ba8c5e-5a9d-49c3-b2ea-c36538c0327c"
 
 [[outputs]]
 id = "dwW-FVbDRj4tS8YKP9HQ_"
 uri = "file://.local/outputs/Internal-Link-System.pptx"
 type = "slides"
 title = "Internal Link System.pptx"
+logical_id = "c4d73518-d499-4986-8bac-6a2fdaaeda1d"
 
 [[outputs]]
 id = "7EeJ66L03CLKBLNgBaHWB"
 uri = "file://exports/wellows-source.zip"
 type = "unspecified"
 title = "Wellows — Full Source Code (663 files)"
+logical_id = "c7ebebb6-8555-429a-9f09-0a8d790d01a4"
 
 [[outputs]]
 id = "s2-17sc7iMVMXjp14t-b9"
 uri = "file://.local/outputs/Linkweave---The-Complete-Tool-Guide.pptx"
 type = "slides"
 title = "Linkweave - The Complete Tool Guide (PPTX)"
+logical_id = "cd6d29f3-0318-4da0-8045-9cf9188dc347"
+
+[[outputs]]
+id = "hEp7C84BsrVBywEurK2jS"
+uri = "file://wellows-pricing-editorial-pages.csv"
+type = "table"
+title = "Wellows pricing editorial pages — CSV"
+description = "133 Wellows pages with exact-word pricing mentions in editorial content, including titles, mention counts, and context excerpts."
+logical_id = "3392eb8a-ed27-4d98-8d5f-4f5990e1a219"
+content_hash = "sha256:be198ad49df0264adee2aeb8ba6558e2ea2c1592f7041dd378e820540b255fff"
+size = 55698
+mtime_ms = 1788262863828
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:c6dd7a75-820c-4224-8e91-8e4aa1776f5c/3392eb8a-ed27-4d98-8d5f-4f5990e1a219/1961f8f2-3a1d-4885-a9f7-e6590eb12a23"
+storage_version_token = "1788262872320560"
+content_type = "text/csv"
+
+[[outputs]]
+id = "gdmOjiXdVlu5anEur-nZV"
+uri = "file://wellows-pricing-editorial-pages.md"
+type = "text"
+title = "Wellows pricing editorial pages — linked list"
+description = "Readable linked list of the 133 qualifying Wellows pages."
+logical_id = "288e5d26-9598-44b2-90b2-c9e0e03ec4b0"
+content_hash = "sha256:781412f00e9ca37c039bdac328b6fdfed015da36106f6416056aeca9a125b5a3"
+size = 18731
+mtime_ms = 1788262863829
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:c6dd7a75-820c-4224-8e91-8e4aa1776f5c/288e5d26-9598-44b2-90b2-c9e0e03ec4b0/bd518325-8b2f-4867-9acd-e25b5ce771a4"
+storage_version_token = "1788262873754148"
+content_type = "text/markdown"
