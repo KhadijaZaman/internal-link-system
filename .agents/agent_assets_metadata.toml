@@ -98,3 +98,17 @@ mtime_ms = 1788262863829
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:c6dd7a75-820c-4224-8e91-8e4aa1776f5c/288e5d26-9598-44b2-90b2-c9e0e03ec4b0/bd518325-8b2f-4867-9acd-e25b5ce771a4"
 storage_version_token = "1788262873754148"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "s41wGwTaBWkxdY_UgpYN4"
+uri = "file://reports/wellows-pricing-editorial-pages.html"
+type = "text"
+title = "Open Wellows pricing pages in browser"
+description = "Browser-friendly list of 133 qualifying pages. Click any title to open the live Wellows page in a new tab."
+logical_id = "dd5ab155-5298-4ec3-a928-ca906e3b41bc"
+content_hash = "sha256:f22317699de2b07e38a5f031fa627edb85e31c1ac4fe868ba7d91551b8777b56"
+size = 80604
+mtime_ms = 1788263172905
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:c6dd7a75-820c-4224-8e91-8e4aa1776f5c/dd5ab155-5298-4ec3-a928-ca906e3b41bc/425d75bf-1f1c-446d-a27c-bcf9c00e0da4"
+storage_version_token = "1788263180170916"
+content_type = "text/html"
