@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListActions,
   getListActionsQueryKey,
-  useSetActionStatus,
+  useUpdateAction,
   useExportOpportunitiesSheet,
   useGetOpportunitiesSheetInfo,
   getGetOpportunitiesSheetInfoQueryKey,
@@ -14,6 +14,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -35,6 +36,8 @@ import {
   CalendarDays,
   UserRound,
   Database,
+  Pencil,
+  Save,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { HowThisWorks } from "@/components/how-this-works";
@@ -146,13 +149,34 @@ function fmtNum(n: number): string {
 
 function ActionRow({
   item,
-  onSetStatus,
+  onUpdate,
   busy,
 }: {
   item: ActionItem;
-  onSetStatus: (id: number, status: "open" | "done" | "dismissed") => void;
+  onUpdate: (
+    item: ActionItem,
+    update: {
+      status?: "open" | "done" | "dismissed";
+      owner?: string | null;
+      dueDate?: string | null;
+      market?: string;
+    },
+    onSuccess?: () => void,
+    onConflict?: () => void,
+  ) => void;
   busy: boolean;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [owner, setOwner] = useState(item.owner ?? "");
+  const [dueDate, setDueDate] = useState(item.dueDate ?? "");
+  const [market, setMarket] = useState(item.market);
+  const [status, setStatus] = useState<"open" | "done" | "dismissed">(item.status);
+  useEffect(() => {
+    setOwner(item.owner ?? "");
+    setDueDate(item.dueDate ?? "");
+    setMarket(item.market);
+    setStatus(item.status);
+  }, [item.version, item.owner, item.dueDate, item.market, item.status]);
   const cfg = TYPE_CONFIG[item.actionType] ?? {
     label: item.actionType,
     icon: ListTodo,
@@ -161,6 +185,29 @@ function ActionRow({
     routeLabel: "Dashboard",
   };
   const Icon = cfg.icon;
+  const cancelEditing = () => {
+    setOwner(item.owner ?? "");
+    setDueDate(item.dueDate ?? "");
+    setMarket(item.market);
+    setStatus(item.status);
+    setEditing(false);
+  };
+  const saveEditing = () => {
+    const trimmedMarket = market.trim();
+    if (!trimmedMarket) return;
+    onUpdate(
+      item,
+      {
+        owner: owner.trim() || null,
+        dueDate: dueDate || null,
+        market: trimmedMarket,
+        status,
+      },
+      () => setEditing(false),
+      () => setEditing(false),
+    );
+  };
+
   return (
     <Card data-testid={`card-action-${item.id}`}>
       <CardContent className="flex items-start gap-3 p-4">
@@ -212,6 +259,57 @@ function ActionRow({
               {item.description}
             </p>
           )}
+          {editing ? (
+            <div className="mt-3 grid gap-3 rounded-md border bg-muted/20 p-3 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="space-y-1 text-xs font-medium">
+                Owner
+                <Input
+                  value={owner}
+                  maxLength={200}
+                  placeholder="Unassigned"
+                  onChange={(event) => setOwner(event.target.value)}
+                  data-testid={`input-owner-${item.id}`}
+                />
+              </label>
+              <label className="space-y-1 text-xs font-medium">
+                Due date
+                <Input
+                  type="date"
+                  value={dueDate}
+                  onChange={(event) => setDueDate(event.target.value)}
+                  data-testid={`input-due-date-${item.id}`}
+                />
+              </label>
+              <label className="space-y-1 text-xs font-medium">
+                Market
+                <Input
+                  value={market}
+                  maxLength={100}
+                  required
+                  onChange={(event) => setMarket(event.target.value)}
+                  data-testid={`input-market-${item.id}`}
+                />
+              </label>
+              <label className="space-y-1 text-xs font-medium">
+                Status
+                <select
+                  value={status}
+                  onChange={(event) => setStatus(event.target.value as typeof status)}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  data-testid={`select-status-${item.id}`}
+                >
+                  <option value="open">Open</option>
+                  <option value="done">Done</option>
+                  <option value="dismissed">Dismissed</option>
+                </select>
+              </label>
+              {!market.trim() && (
+                <p className="text-xs text-destructive sm:col-span-2 lg:col-span-4">
+                  Market is required.
+                </p>
+              )}
+            </div>
+          ) : null}
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               {fmtNum(item.impressionsAtStake)} impressions at stake
@@ -277,13 +375,34 @@ function ActionRow({
           </details>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {item.status === "open" ? (
+          {editing ? (
+            <>
+              <Button
+                size="sm"
+                disabled={busy || !market.trim()}
+                onClick={saveEditing}
+                data-testid={`button-save-${item.id}`}
+              >
+                <Save className="mr-1 h-3.5 w-3.5" />
+                Save
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                onClick={cancelEditing}
+                data-testid={`button-cancel-edit-${item.id}`}
+              >
+                Cancel
+              </Button>
+            </>
+          ) : item.status === "open" ? (
             <>
               <Button
                 size="sm"
                 variant="outline"
                 disabled={busy}
-                onClick={() => onSetStatus(item.id, "done")}
+                onClick={() => onUpdate(item, { status: "done" })}
                 data-testid={`button-done-${item.id}`}
               >
                 <Check className="mr-1 h-3.5 w-3.5" />
@@ -293,24 +412,46 @@ function ActionRow({
                 size="sm"
                 variant="ghost"
                 disabled={busy}
-                onClick={() => onSetStatus(item.id, "dismissed")}
+                onClick={() => onUpdate(item, { status: "dismissed" })}
                 data-testid={`button-dismiss-${item.id}`}
               >
                 <X className="mr-1 h-3.5 w-3.5" />
                 Dismiss
               </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => setEditing(true)}
+                data-testid={`button-edit-${item.id}`}
+              >
+                <Pencil className="mr-1 h-3.5 w-3.5" />
+                Edit
+              </Button>
             </>
           ) : (
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={busy}
-              onClick={() => onSetStatus(item.id, "open")}
-              data-testid={`button-reopen-${item.id}`}
-            >
-              <RotateCcw className="mr-1 h-3.5 w-3.5" />
-              Reopen
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => onUpdate(item, { status: "open" })}
+                data-testid={`button-reopen-${item.id}`}
+              >
+                <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                Reopen
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => setEditing(true)}
+                data-testid={`button-edit-${item.id}`}
+              >
+                <Pencil className="mr-1 h-3.5 w-3.5" />
+                Edit
+              </Button>
+            </>
           )}
         </div>
       </CardContent>
@@ -349,7 +490,7 @@ export default function Actions() {
     },
   });
 
-  const mutation = useSetActionStatus({
+  const mutation = useUpdateAction({
     mutation: {
       onSuccess: () => {
         void queryClient.invalidateQueries({ queryKey: ["/actions"] });
@@ -358,18 +499,45 @@ export default function Actions() {
             typeof q.queryKey[0] === "string" && q.queryKey[0].includes("/actions"),
         });
       },
-      onError: () => {
+      onError: (error) => {
+        const conflict = error.status === 409;
+        if (conflict) {
+          void queryClient.invalidateQueries({
+            predicate: (q) =>
+              typeof q.queryKey[0] === "string" && q.queryKey[0].includes("/actions"),
+          });
+        }
         toast({
-          title: "Update failed",
-          description: "Could not update the action. Try again.",
+          title: conflict ? "Opportunity changed" : "Update failed",
+          description: conflict
+            ? "Someone else updated this opportunity. The latest version is loading; review it before saving again."
+            : "Could not update the opportunity. Try again.",
           variant: "destructive",
         });
       },
     },
   });
 
-  const onSetStatus = (id: number, next: "open" | "done" | "dismissed") => {
-    mutation.mutate({ id, data: { status: next } });
+  const onUpdate = (
+    item: ActionItem,
+    update: {
+      status?: "open" | "done" | "dismissed";
+      owner?: string | null;
+      dueDate?: string | null;
+      market?: string;
+    },
+    onSuccess?: () => void,
+    onConflict?: () => void,
+  ) => {
+    mutation.mutate(
+      { id: item.id, data: { expectedVersion: item.version, ...update } },
+      {
+        onSuccess,
+        onError: (error) => {
+          if (error.status === 409) onConflict?.();
+        },
+      },
+    );
   };
 
   const counts = data?.counts;
@@ -506,7 +674,7 @@ export default function Actions() {
             <ActionRow
               key={item.id}
               item={item}
-              onSetStatus={onSetStatus}
+              onUpdate={onUpdate}
               busy={mutation.isPending}
             />
           ))}
