@@ -16,6 +16,14 @@ import { queryGa4Pages } from "../integrations/ga4";
 import type { SiteContext } from "../lib/site";
 import { db, bingPageStatsTable, bingQueryStatsTable, linkGraphTable } from "@workspace/db";
 import { and, eq, desc, inArray, sql } from "drizzle-orm";
+import {
+  evidenceForClient,
+  SAFE_GROUNDING_REFUSAL,
+  validateGroundedAnswer,
+  type EvidenceClaimField,
+  type SeoEvidence,
+} from "../lib/gscEvidence";
+import { routeSeoQuestion } from "../lib/gscQuestionRouter";
 
 const router: IRouter = Router();
 
@@ -52,6 +60,10 @@ You read the user's question and the data slice provided (Google Search Console,
 
 Grounding rules (strict):
 - Every number you state must come from the slice. Never estimate, extrapolate, or use outside knowledge about the site.
+- Return JSON only, with this shape: {"claims":[{"kind":"Fact|Calculation|Inference|Recommendation","text":"plain claim without citations","capability":"one supplied claimFields capability","metric":"one supplied claimFields metric","evidence":[{"id":"exact evidence ID","path":"exact rows path"}],"calculation":{"formula":"plain formula","inputs":[{"id":"exact evidence ID","path":"exact input path"}]}}]}.
+- Omit calculation except for Calculation claims. Calculation claims require at least two exact input paths. Fact and Calculation claims require a metric represented by the cited path. Inference and Recommendation claims must cite the exact fields supporting them.
+- Use only exact evidence IDs and exact concrete rows paths that exist. claimFields paths describe allowed patterns; replace * or ** with real row indexes/segments from the record.
+- Keep Bing performance, Bing indexing, Copilot citations, URL indexing, sitemap indexing, CrUX, GA4, GSC, and crawl capabilities separate. Never assign a capability that the cited claimFields do not allow.
 - When a data source object contains a "notice" key instead of data fields, that means the source is not connected or not configured. Say it isn't connected rather than guessing.
 - If the slice can't answer the question, say exactly what's missing (e.g. "pick that page in the URL filter and ask again").
 
@@ -60,6 +72,7 @@ Source attribution (always):
 - Format CTR and engagement rate as percentages (0.0002 -> 0.02%), and round positions to one decimal.
 - When the user asks for "best" or "top" anything (queries, pages, opportunities), answer from BOTH GSC and Bing when both have data, in clearly labeled sections, then give one combined recommendation that says which source supports it. Note that Bing data is weekly buckets while GSC follows the selected date range.
 - GA4 covers sessions/engagement/conversions only, not queries.
+- Bing Webmaster performance/indexing, Bing Copilot citations, and GA4 AI-referral sessions are different datasets. Never use one as evidence for another. Copilot citation data is unavailable unless an explicit Copilot evidence record is present.
 
 Intent clarification:
 - If the question is ambiguous about which data source, metric, or filter the user wants (e.g. "how are we doing?" or "show me the data"), ask ONE short clarifying question first (offer the concrete options: GSC search performance, Bing, GA4 traffic/conversions; site-wide or a specific page) instead of guessing.
@@ -68,6 +81,8 @@ Intent clarification:
 Timeframe (always):
 - Open every answer by naming the exact date range the numbers cover (e.g. "Jun 1 – Jun 30"). When Bing's weekly buckets differ from the selected range, say which week(s) the Bing numbers cover.
 - Never present a number without its timeframe being clear from the answer.
+- Evidence records state property, filters, range, freshness, rows, and limitations. Disclose stale, sampled, missing, or unavailable evidence before drawing an inference.
+- You have no tool that starts a paid scan. If a question needs a paid or new scan, explain what evidence is missing and ask for confirmation; do not claim the scan ran.
 
 When the user asks about a specific URL/page, structure the answer around:
 1. GSC: clicks, impressions, CTR, average position, top queries for that page, trend vs previous period
@@ -112,6 +127,11 @@ interface ContextOpts {
   startDate: string;
   endDate: string;
   url?: string | null;
+}
+
+interface GroundedContext {
+  json: string;
+  evidence: SeoEvidence[];
 }
 
 function previousRange(startDate: string, endDate: string): { startDate: string; endDate: string } {
@@ -215,6 +235,58 @@ function pathVariants(pathname: string): string[] {
   if (!bare || bare === "/") return ["/"];
   return [bare, `${bare}/`];
 }
+
+function evidenceToken(value: string): string {
+  let hash = 2_166_136_261;
+  for (const char of value) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  const suffix = (hash >>> 0).toString(36).toUpperCase();
+  const normalized = value
+    .toUpperCase()
+    .replace(/^HTTPS?:\/\//, "")
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 20);
+  return `${normalized || "LOOKUP"}-${suffix}`;
+}
+
+const GSC_PERFORMANCE_FIELDS: EvidenceClaimField[] = [
+  { path: "rows.**.clicks", capability: "search-performance", metric: "clicks" },
+  { path: "rows.**.impressions", capability: "search-performance", metric: "impressions" },
+  { path: "rows.**.ctr", capability: "search-performance", metric: "ctr" },
+  { path: "rows.**.position", capability: "search-performance", metric: "position" },
+  { path: "rows.**.key", capability: "search-performance", metric: "result-key" },
+  { path: "rows.**.query", capability: "search-performance", metric: "query" },
+  { path: "rows.**.path", capability: "search-performance", metric: "page" },
+];
+
+const GSC_CHANGE_FIELDS: EvidenceClaimField[] = [
+  ...GSC_PERFORMANCE_FIELDS,
+  { path: "rows.**.deltaPct.clicks", capability: "search-performance", metric: "clicks-change" },
+  { path: "rows.**.deltaPct.impressions", capability: "search-performance", metric: "impressions-change" },
+  { path: "rows.**.deltaPct.ctr", capability: "search-performance", metric: "ctr-change" },
+  { path: "rows.**.deltaPct.position", capability: "search-performance", metric: "position-change" },
+];
+
+const GA4_FIELDS: EvidenceClaimField[] = [
+  { path: "rows.**.sessions", capability: "analytics", metric: "sessions" },
+  { path: "rows.**.engagementRate", capability: "analytics", metric: "engagement-rate" },
+  { path: "rows.**.avgEngagementTimeSec", capability: "analytics", metric: "average-engagement-time" },
+  { path: "rows.**.keyEvents", capability: "analytics", metric: "key-events" },
+  { path: "rows.**.aiSessions", capability: "analytics", metric: "ai-referral-sessions" },
+  { path: "rows.**.path", capability: "analytics", metric: "landing-page" },
+];
+
+const BING_PERFORMANCE_FIELDS: EvidenceClaimField[] = [
+  { path: "rows.**.clicks", capability: "bing-performance", metric: "clicks" },
+  { path: "rows.**.impressions", capability: "bing-performance", metric: "impressions" },
+  { path: "rows.**.position", capability: "bing-performance", metric: "position" },
+  { path: "rows.**.query", capability: "bing-performance", metric: "query" },
+  { path: "rows.**.path", capability: "bing-performance", metric: "page" },
+  { path: "rows.**.bucketDate", capability: "bing-performance", metric: "bucket-date" },
+];
 
 async function bingSummary(siteId: number, url: string | null | undefined) {
   const buckets = await db
@@ -330,7 +402,7 @@ async function ga4Summary(site: SiteContext, startDate: string, endDate: string,
   };
 }
 
-async function buildContext(opts: ContextOpts, site: SiteContext): Promise<string> {
+async function buildContext(opts: ContextOpts, site: SiteContext): Promise<GroundedContext> {
   const siteId = site.id;
   const { startDate, endDate, url } = opts;
   const prev = previousRange(startDate, endDate);
@@ -417,8 +489,7 @@ async function buildContext(opts: ContextOpts, site: SiteContext): Promise<strin
     metrics: ff.metrics.map((m) => ({ metric: m.metric, p75: m.p75, band: m.band })),
   }));
 
-  return JSON.stringify(
-    {
+  const context = {
       range: { startDate, endDate, url: url ?? null },
       previousRange: prev,
       totals: {
@@ -457,10 +528,127 @@ async function buildContext(opts: ContextOpts, site: SiteContext): Promise<strin
       ...(url
         ? { internalLinks: linksResult ?? { notice: "No crawl data for this page yet." } }
         : {}),
+    };
+
+  const pageFilter = url ?? null;
+  const commonGsc = {
+    source: "Google Search Console" as const,
+    property,
+    filters: { page: pageFilter, country: "all", searchType: "web" },
+    dateRange: { startDate, endDate },
+    freshness: "Queried for the selected range; Search Console normally lags by about 48 hours.",
+  };
+  const evidence: SeoEvidence[] = [
+    { id: "GSC-TOTALS", ...commonGsc, rows: [context.totals], claimFields: GSC_PERFORMANCE_FIELDS },
+    {
+      id: "GSC-PREVIOUS",
+      ...commonGsc,
+      dateRange: prev,
+      freshness: "Queried for the adjacent previous period; Search Console normally lags by about 48 hours.",
+      rows: [context.previousTotals],
+      claimFields: GSC_PERFORMANCE_FIELDS,
     },
-    null,
-    2,
-  );
+    {
+      id: "GSC-CHANGE",
+      ...commonGsc,
+      filters: { ...commonGsc.filters, calculation: "current period versus adjacent equal-length previous period" },
+      dateRange: { startDate: prev.startDate, endDate },
+      rows: [{ current: context.totals, previous: context.previousTotals, deltaPct: context.deltaPct }],
+      claimFields: GSC_CHANGE_FIELDS,
+    },
+    {
+      id: "GSC-QUERIES",
+      ...commonGsc,
+      rows: context.topQueries,
+      claimFields: GSC_PERFORMANCE_FIELDS,
+      limitation: "Top rows only; anonymized long-tail queries may be omitted by Search Console.",
+    },
+    { id: "GSC-PAGES", ...commonGsc, rows: context.topPages, claimFields: GSC_PERFORMANCE_FIELDS },
+    {
+      id: "GSC-BRAND-SAMPLE",
+      ...commonGsc,
+      rows: [context.brandedVsUnbranded],
+      claimFields: GSC_PERFORMANCE_FIELDS,
+      limitation: "Computed from the top-50 query sample; anonymized and long-tail queries are not included.",
+    },
+    {
+      id: "GSC-INDEXING",
+      ...commonGsc,
+      rows: [context.indexing],
+      claimFields: [
+        { path: "rows.**.totalSubmitted", capability: "sitemap-indexing", metric: "sitemap-submitted" },
+        { path: "rows.**.totalIndexed", capability: "sitemap-indexing", metric: "sitemap-indexed" },
+        { path: "rows.**.totalSitemapErrors", capability: "sitemap-indexing", metric: "sitemap-errors" },
+        { path: "rows.**.indexCoverageRatio", capability: "sitemap-indexing", metric: "sitemap-index-coverage" },
+        { path: "rows.**.notIndexedFromSitemaps", capability: "sitemap-indexing", metric: "sitemap-not-indexed" },
+        { path: "rows.**.sitemaps.**.path", capability: "sitemap-indexing", metric: "sitemap-path" },
+      ],
+      limitation: "Sitemap submission/indexing data is not URL Inspection coverage.",
+    },
+    {
+      id: "CRUX-CWV",
+      source: "Chrome UX Report",
+      property: url ?? property,
+      filters: { formFactor: "all available" },
+      dateRange: { startDate: null, endDate: null },
+      freshness: "Latest available rolling CrUX field-data window.",
+      rows: cwvSummary,
+      claimFields: [
+        { path: "rows.**.formFactor", capability: "core-web-vitals", metric: "form-factor" },
+        { path: "rows.**.metric", capability: "core-web-vitals", metric: "cwv-metric" },
+        { path: "rows.**.p75", capability: "core-web-vitals", metric: "cwv-p75" },
+        { path: "rows.**.band", capability: "core-web-vitals", metric: "cwv-band" },
+      ],
+      ...(cwvSummary.length === 0 ? { limitation: cruxResult.notice ?? "No CrUX field data available." } : {}),
+    },
+  ];
+  if (ga4Result) {
+    evidence.push({
+      id: "GA4-ORGANIC",
+      source: "Google Analytics 4",
+      property: site.host,
+      filters: { channel: "organic", landingPage: pageFilter },
+      dateRange: { startDate, endDate },
+      freshness: "Queried for the selected range.",
+      rows: [ga4Result.totals, ...ga4Result.topPages],
+      claimFields: GA4_FIELDS,
+      limitation: "AI sessions are GA4 referrals from known AI assistants, not Copilot citations or search impressions.",
+    });
+  }
+  if (bingResult) {
+    evidence.push({
+      id: "BING-WEBMASTER",
+      source: "Bing Webmaster",
+      property: site.host,
+      filters: { page: pageFilter },
+      dateRange: {
+        startDate: bingResult.priorWeek?.bucketDate ?? bingResult.latestWeek.bucketDate ?? null,
+        endDate: bingResult.latestWeek.bucketDate ?? null,
+      },
+      freshness: `Latest synced weekly bucket: ${bingResult.latestWeek.bucketDate ?? "unknown"}.`,
+      rows: [bingResult.latestWeek, bingResult.priorWeek, ...(bingResult.topQueries ?? []), ...bingResult.topPages],
+      claimFields: BING_PERFORMANCE_FIELDS,
+      limitation: "Weekly Bing Webmaster performance only; not Bing indexing status and not Copilot citations.",
+    });
+  }
+  if (url && linksResult) {
+    evidence.push({
+      id: "CRAWL-LINKS",
+      source: "Site crawl",
+      property: site.host,
+      filters: { page: url, placement: "content", excludes: "nav, sidebar, footer" },
+      dateRange: { startDate: null, endDate: null },
+      freshness: "Latest completed crawl snapshot.",
+      rows: [linksResult],
+      claimFields: [
+        { path: "rows.**.inboundCount", capability: "crawl-links", metric: "inbound-links" },
+        { path: "rows.**.outboundCount", capability: "crawl-links", metric: "outbound-links" },
+        { path: "rows.**.inboundLinks.**.fromPath", capability: "crawl-links", metric: "link-source" },
+        { path: "rows.**.inboundLinks.**.anchor", capability: "crawl-links", metric: "anchor-text" },
+      ],
+    });
+  }
+  return { json: JSON.stringify({ ...context, evidence }, null, 2), evidence };
 }
 
 function buildPromptMessages(messages: ChatMessage[], includeDefault: boolean, contextJson: string): ChatMessage[] | null {
@@ -478,6 +666,27 @@ function buildPromptMessages(messages: ChatMessage[], includeDefault: boolean, c
     { role: first.role, content: `DATA SLICE (GSC + GA4 + Bing, JSON):\n${contextJson}\n\nQUESTION:\n${first.content}` },
     ...prompt.slice(1),
   ];
+}
+
+function activeQuestion(messages: ChatMessage[], includeDefault: boolean): string {
+  const latest = [...messages].reverse().find((message) => message.role === "user");
+  return latest?.content ?? (includeDefault ? DEFAULT_PROMPT : "");
+}
+
+async function repairGrounding(
+  _openai: OpenAI,
+  _history: OpenAI.Chat.ChatCompletionMessageParam[],
+  answer: string,
+  evidence: SeoEvidence[],
+): Promise<{ answer: string; citedIds: string[] }> {
+  const validation = validateGroundedAnswer(answer, evidence);
+  if (validation.ok) return { answer: validation.answer, citedIds: validation.citedIds };
+
+  console.warn("Ask AI grounding rejected", { errors: validation.errors });
+  return {
+    answer: SAFE_GROUNDING_REFUSAL,
+    citedIds: [],
+  };
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -591,8 +800,21 @@ router.post("/gsc/chat", requireAuth, requireSite, async (req, res) => {
   }
 
   try {
-    const contextJson = await buildContext(parsed, site);
-    const withCtx = buildPromptMessages(parsed.messages, parsed.includeDefault, contextJson);
+    const context = await buildContext(parsed, site);
+    const questionRoute = routeSeoQuestion(
+      activeQuestion(parsed.messages, parsed.includeDefault),
+      context.evidence,
+    );
+    if (questionRoute.directAnswer) {
+      res.json({
+        reply: questionRoute.directAnswer,
+        evidence: [],
+        capabilities: questionRoute.capabilities,
+        contextSummary: `Analyzed ${parsed.startDate} → ${parsed.endDate}${parsed.url ? ` for ${parsed.url}` : ""}`,
+      });
+      return;
+    }
+    const withCtx = buildPromptMessages(parsed.messages, parsed.includeDefault, context.json);
     if (!withCtx) {
       res.status(400).json({ error: "no messages" });
       return;
@@ -600,7 +822,13 @@ router.post("/gsc/chat", requireAuth, requireSite, async (req, res) => {
 
     const openai = getOpenAI();
 
-    const toolOpts = { startDate: parsed.startDate, endDate: parsed.endDate, siteId: site.id, site };
+    const toolOpts = {
+      startDate: parsed.startDate,
+      endDate: parsed.endDate,
+      siteId: site.id,
+      site,
+      property: context.evidence.find((item) => item.source === "Google Search Console")?.property ?? site.host,
+    };
     const history: OpenAI.Chat.ChatCompletionMessageParam[] = [
       { role: "system", content: SYSTEM },
       ...withCtx,
@@ -612,6 +840,7 @@ router.post("/gsc/chat", requireAuth, requireSite, async (req, res) => {
         model: CHAT_MODEL,
         max_completion_tokens: 1400,
         messages: history,
+        response_format: { type: "json_object" },
         ...(toolCallsUsed < MAX_TOOL_CALLS ? { tools: TOOLS, tool_choice: "auto" as const } : {}),
       });
       const msg = completion.choices[0]?.message;
@@ -632,11 +861,19 @@ router.post("/gsc/chat", requireAuth, requireSite, async (req, res) => {
         let args: Record<string, unknown> = {};
         try { args = JSON.parse(tc.function.arguments || "{}"); } catch { /* keep empty */ }
         const result = await executeTool(tc.function.name, args, toolOpts);
+        try {
+          const toolEvidence = (JSON.parse(result) as { evidence?: SeoEvidence[] }).evidence;
+          if (Array.isArray(toolEvidence)) context.evidence.push(...toolEvidence);
+        } catch {
+          // Invalid tool JSON is already surfaced to the model as a tool error.
+        }
         history.push({ role: "tool", tool_call_id: tc.id, content: result });
       }
     }
+    const grounded = await repairGrounding(openai, history, reply, context.evidence);
     res.json({
-      reply,
+      reply: grounded.answer,
+      evidence: evidenceForClient(context.evidence, grounded.citedIds),
       contextSummary: `Analyzed ${parsed.startDate} → ${parsed.endDate}${parsed.url ? ` for ${parsed.url}` : ""}`,
     });
   } catch (err) {
@@ -690,8 +927,23 @@ router.post("/gsc/chat/stream", requireAuth, requireSite, async (req, res) => {
   }, 15_000);
 
   try {
-    const contextJson = await buildContext(parsed, site);
-    const withCtx = buildPromptMessages(parsed.messages, parsed.includeDefault, contextJson);
+    const context = await buildContext(parsed, site);
+    const questionRoute = routeSeoQuestion(
+      activeQuestion(parsed.messages, parsed.includeDefault),
+      context.evidence,
+    );
+    if (questionRoute.directAnswer) {
+      send("meta", {
+        contextSummary: `Analyzed ${parsed.startDate} → ${parsed.endDate}${parsed.url ? ` for ${parsed.url}` : ""}`,
+        capabilities: questionRoute.capabilities,
+      });
+      send("delta", { text: questionRoute.directAnswer });
+      send("evidence", { items: [] });
+      send("done", { ok: true });
+      res.end();
+      return;
+    }
+    const withCtx = buildPromptMessages(parsed.messages, parsed.includeDefault, context.json);
     if (!withCtx) {
       send("error", { error: "no messages" });
       res.end();
@@ -703,7 +955,13 @@ router.post("/gsc/chat/stream", requireAuth, requireSite, async (req, res) => {
 
     const openai = getOpenAI();
 
-    const toolOpts = { startDate: parsed.startDate, endDate: parsed.endDate, siteId: site.id, site };
+    const toolOpts = {
+      startDate: parsed.startDate,
+      endDate: parsed.endDate,
+      siteId: site.id,
+      site,
+      property: context.evidence.find((item) => item.source === "Google Search Console")?.property ?? site.host,
+    };
 
     // Conversation message history for the tool-calling loop.
     const apiMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
@@ -713,6 +971,7 @@ router.post("/gsc/chat/stream", requireAuth, requireSite, async (req, res) => {
 
     let toolCallsUsed = 0;
     let continueLoop = true;
+    let sentFinalAnswer = false;
 
     while (continueLoop && !closed) {
       continueLoop = false;
@@ -725,6 +984,7 @@ router.post("/gsc/chat/stream", requireAuth, requireSite, async (req, res) => {
         model: CHAT_MODEL,
         max_completion_tokens: 1400,
         stream: true,
+        response_format: { type: "json_object" },
         // Disable tools once the cap is reached to force a text reply.
         ...(toolCallsUsed < MAX_TOOL_CALLS ? { tools: TOOLS, tool_choice: "auto" } : {}),
         messages: apiMessages,
@@ -738,10 +998,7 @@ router.post("/gsc/chat/stream", requireAuth, requireSite, async (req, res) => {
         const delta = choice.delta;
 
         // Text delta
-        if (delta.content) {
-          assistantText += delta.content;
-          send("delta", { text: delta.content });
-        }
+        if (delta.content) assistantText += delta.content;
 
         // Accumulate tool-call argument fragments
         if (delta.tool_calls) {
@@ -804,7 +1061,11 @@ router.post("/gsc/chat/stream", requireAuth, requireSite, async (req, res) => {
           const result = await executeTool(tc.name, args, toolOpts);
           let parsedResult: unknown;
           try { parsedResult = JSON.parse(result); } catch { parsedResult = result; }
-          send("tool_result", { data: parsedResult });
+          if (parsedResult && typeof parsedResult === "object") {
+            const toolEvidence = (parsedResult as { evidence?: SeoEvidence[] }).evidence;
+            if (Array.isArray(toolEvidence)) context.evidence.push(...toolEvidence);
+          }
+          send("tool_result", { name: tc.name, data: parsedResult });
           toolCallsUsed++;
 
           apiMessages.push({
@@ -818,9 +1079,27 @@ router.post("/gsc/chat/stream", requireAuth, requireSite, async (req, res) => {
         // parameter — the model is forced to respond with text instead of
         // calling more tools, and finish_reason will be "stop".
         continueLoop = true;
+      } else if (!closed) {
+        const grounded = await repairGrounding(
+          openai,
+          apiMessages.slice(0, -1),
+          assistantText,
+          context.evidence,
+        );
+        send("delta", { text: grounded.answer });
+        send("evidence", { items: evidenceForClient(context.evidence, grounded.citedIds) });
+        sentFinalAnswer = true;
       }
     }
 
+    if (!closed && !sentFinalAnswer) {
+      send("delta", {
+        text:
+          "**Fact:** The assistant returned no answer, so no SEO claim could be verified.\n\n" +
+          "**Recommendation:** Try the question again or narrow it to one available source.",
+      });
+      send("evidence", { items: [] });
+    }
     if (!closed) {
       send("done", { ok: true });
       res.end();
@@ -933,9 +1212,9 @@ async function bingQueryLookup(siteId: number, query: string) {
 async function executeTool(
   name: string,
   args: Record<string, unknown>,
-  opts: { startDate: string; endDate: string; siteId: number; site: SiteContext },
+  opts: { startDate: string; endDate: string; siteId: number; site: SiteContext; property: string },
 ): Promise<string> {
-  const { startDate, endDate, siteId, site } = opts;
+  const { startDate, endDate, siteId, site, property } = opts;
 
   if (name === "get_page_metrics") {
     const raw = typeof args["page_url"] === "string" ? args["page_url"].trim() : "";
@@ -1002,9 +1281,7 @@ async function executeTool(
         }
       }
 
-      return JSON.stringify({
-        page: pageUrl,
-        range: { startDate, endDate },
+      const gscRows = {
         totals: {
           clicks: totals.clicks,
           impressions: totals.impressions,
@@ -1012,8 +1289,49 @@ async function executeTool(
           position: Number(totals.position.toFixed(2)),
         },
         topQueries: trim(queries, 20),
+      };
+      const evidence: SeoEvidence[] = [{
+        id: `GSC-PAGE-${evidenceToken(pageUrl)}`,
+        source: "Google Search Console",
+        property,
+        filters: { page: pageUrl, country: "all", searchType: "web" },
+        dateRange: { startDate, endDate },
+        freshness: "Queried for the selected range; Search Console normally lags by about 48 hours.",
+        rows: [gscRows],
+        claimFields: GSC_PERFORMANCE_FIELDS,
+      }];
+      if (ga4) evidence.push({
+        id: `GA4-PAGE-${evidenceToken(pageUrl)}`,
+        source: "Google Analytics 4",
+        property: site.host,
+        filters: { channel: "organic", landingPage: pageUrl },
+        dateRange: { startDate, endDate },
+        freshness: "Queried for the selected range.",
+        rows: [ga4.totals, ...ga4.topPages],
+        claimFields: GA4_FIELDS,
+        limitation: "AI sessions are referrals from known AI assistants, not Copilot citations.",
+      });
+      if (bing) evidence.push({
+        id: `BING-PAGE-${evidenceToken(pageUrl)}`,
+        source: "Bing Webmaster",
+        property: site.host,
+        filters: { page: pageUrl },
+        dateRange: {
+          startDate: bing.priorWeek?.bucketDate ?? bing.latestWeek.bucketDate ?? null,
+          endDate: bing.latestWeek.bucketDate ?? null,
+        },
+        freshness: `Latest synced weekly bucket: ${bing.latestWeek.bucketDate ?? "unknown"}.`,
+        rows: [bing.latestWeek, bing.priorWeek, ...bing.topPages],
+        claimFields: BING_PERFORMANCE_FIELDS,
+        limitation: "Weekly Bing Webmaster performance only; not indexing status or Copilot citations.",
+      });
+      return JSON.stringify({
+        page: pageUrl,
+        range: { startDate, endDate },
+        ...gscRows,
         ga4: ga4 ?? { notice: "GA4 not connected or returned no data for this page and range." },
         bing: bing ?? { notice: "No Bing Webmaster data synced for this page." },
+        evidence,
         ...(isEmpty
           ? {
               zero_data_diagnostic:
@@ -1054,19 +1372,45 @@ async function executeTool(
       const isEmpty = totals.clicks === 0 && totals.impressions === 0;
       // Bing side of the same query, from synced weekly buckets (no API spend).
       const bing = await bingQueryLookup(siteId, query).catch(() => null);
+      const gsc = {
+        totals: {
+          clicks: totals.clicks,
+          impressions: totals.impressions,
+          ctr: Number(totals.ctr.toFixed(4)),
+          position: Number(totals.position.toFixed(2)),
+        },
+        topPages: trim(pages, 15),
+      };
+      const evidence: SeoEvidence[] = [{
+        id: `GSC-QUERY-${evidenceToken(query)}`,
+        source: "Google Search Console",
+        property,
+        filters: { query, match: "exact", country: "all", searchType: "web" },
+        dateRange: { startDate, endDate },
+        freshness: "Queried for the selected range; Search Console normally lags by about 48 hours.",
+        rows: [gsc],
+        claimFields: GSC_PERFORMANCE_FIELDS,
+      }];
+      if (bing) evidence.push({
+        id: `BING-QUERY-${evidenceToken(query)}`,
+        source: "Bing Webmaster",
+        property: site.host,
+        filters: { query, match: "case-insensitive exact" },
+        dateRange: {
+          startDate: bing.priorWeek?.bucketDate ?? bing.latestWeek?.bucketDate ?? null,
+          endDate: bing.latestWeek?.bucketDate ?? null,
+        },
+        freshness: `Latest synced weekly bucket: ${bing.latestWeek?.bucketDate ?? "unknown"}.`,
+        rows: [bing.latestWeek, bing.priorWeek],
+        claimFields: BING_PERFORMANCE_FIELDS,
+        limitation: "Only the top synced Bing queries are retained; not Copilot citation evidence.",
+      });
       return JSON.stringify({
         query,
         range: { startDate, endDate },
-        gsc: {
-          totals: {
-            clicks: totals.clicks,
-            impressions: totals.impressions,
-            ctr: Number(totals.ctr.toFixed(4)),
-            position: Number(totals.position.toFixed(2)),
-          },
-          topPages: trim(pages, 15),
-        },
+        gsc,
         bing: bing ?? { notice: "No Bing data synced for this query." },
+        evidence,
         // zero_data_diagnostic at the top level so clients (and tests) can find
         // it without knowing the internal gsc/bing nesting.
         ...(isEmpty
@@ -1146,6 +1490,23 @@ async function executeTool(
         notice = notice ? `${notice} ${shortNotice}` : shortNotice;
       }
 
+      const evidence: SeoEvidence[] = [{
+        id: `GSC-TREND-${evidenceToken(target)}`,
+        source: "Google Search Console",
+        property,
+        filters: {
+          target,
+          targetType: isPage ? "page" : "query",
+          granularity: effectiveGranularity,
+          country: "all",
+          searchType: "web",
+        },
+        dateRange: { startDate, endDate },
+        freshness: "Queried for the selected range; Search Console normally lags by about 48 hours.",
+        rows: points,
+        claimFields: GSC_PERFORMANCE_FIELDS,
+        ...(notice ? { limitation: notice } : {}),
+      }];
       return JSON.stringify({
         target,
         targetType: isPage ? "page" : "query",
@@ -1154,6 +1515,7 @@ async function executeTool(
         range: { startDate, endDate },
         pointCount: points.length,
         points,
+        evidence,
         ...(notice ? { notice } : {}),
       });
     } catch (err) {

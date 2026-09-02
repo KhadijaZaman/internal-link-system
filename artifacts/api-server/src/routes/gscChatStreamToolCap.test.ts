@@ -243,7 +243,14 @@ describe("gscChat /gsc/chat/stream – tool-call cap", () => {
 
     const deltas = events.filter((e) => e.event === "delta");
     expect(deltas.length, "delta events received").toBeGreaterThan(0);
-    expect(deltas.some((d) => String(d.data["text"]).includes("Final answer")), "final text delivered").toBe(true);
+    expect(
+      deltas.some((d) => String(d.data["text"]).includes("couldn't produce a fully grounded answer")),
+      "uncited final text is replaced by a grounded refusal",
+    ).toBe(true);
+    expect(
+      deltas.every((d) => !String(d.data["text"]).includes("Final answer.")),
+      "rejected draft text never reaches the client",
+    ).toBe(true);
 
     const done = events.find((e) => e.event === "done");
     expect(done, "done event received").toBeDefined();
@@ -292,7 +299,10 @@ describe("gscChat /gsc/chat/stream – tool-call cap", () => {
 
     // Final text reaches the client
     const deltas = events.filter((e) => e.event === "delta");
-    expect(deltas.some((d) => String(d.data["text"]).includes("Final answer")), "final text delta received").toBe(true);
+    expect(
+      deltas.some((d) => String(d.data["text"]).includes("couldn't produce a fully grounded answer")),
+      "uncited final text is replaced by a grounded refusal",
+    ).toBe(true);
 
     const done = events.find((e) => e.event === "done");
     expect(done, "done event received").toBeDefined();

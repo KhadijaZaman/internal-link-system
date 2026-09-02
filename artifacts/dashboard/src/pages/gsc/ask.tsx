@@ -43,6 +43,18 @@ interface Msg {
   toolName?: string;
   /** Trend data attached when a get_trend_data tool result was received for this assistant turn */
   trendData?: TrendData;
+  evidence?: SeoEvidence[];
+}
+
+interface SeoEvidence {
+  id: string;
+  source: string;
+  property: string;
+  filters: Record<string, string | null>;
+  dateRange: { startDate: string | null; endDate: string | null };
+  freshness: string;
+  rows: unknown[];
+  limitation?: string;
 }
 
 const STREAM_URL = `${import.meta.env.BASE_URL}api/gsc/chat/stream`.replace(/\/+api/, "/api");
@@ -79,6 +91,7 @@ interface StreamArgs {
   onDelta: (text: string) => void;
   onToolUse: (name: string, label: string) => void;
   onToolResult: (name: string, data: unknown) => void;
+  onEvidence: (items: SeoEvidence[]) => void;
 }
 
 async function streamChat(args: StreamArgs): Promise<void> {
@@ -138,6 +151,8 @@ async function streamChat(args: StreamArgs): Promise<void> {
     } else if (eventName === "tool_result") {
       const name = typeof obj["name"] === "string" ? obj["name"] : "";
       args.onToolResult(name, obj["data"]);
+    } else if (eventName === "evidence" && Array.isArray(obj["items"])) {
+      args.onEvidence(obj["items"] as SeoEvidence[]);
     } else if (eventName === "error") {
       streamError = typeof obj["error"] === "string" ? obj["error"] : "stream error";
     }
@@ -304,6 +319,32 @@ function TrendSparkline({ data }: { data: TrendData }) {
   );
 }
 
+function EvidencePanel({ items }: { items: SeoEvidence[] }) {
+  if (items.length === 0) return null;
+  return (
+    <details className="mt-3 border-t border-border/40 pt-3 text-xs">
+      <summary className="cursor-pointer font-medium text-foreground">Evidence cited ({items.length})</summary>
+      <div className="mt-2 space-y-2">
+        {items.map((item) => (
+          <div key={item.id} className="rounded-md border border-border/60 bg-background/70 p-2">
+            <div className="font-medium">[{item.id}] {item.source}</div>
+            <div className="text-muted-foreground">Property: {item.property}</div>
+            <div className="text-muted-foreground">
+              Range: {item.dateRange.startDate && item.dateRange.endDate
+                ? `${item.dateRange.startDate} to ${item.dateRange.endDate}`
+                : "Latest available snapshot"}
+            </div>
+            <div className="text-muted-foreground">Filters: {JSON.stringify(item.filters)}</div>
+            <div className="text-muted-foreground">Freshness: {item.freshness}</div>
+            {item.limitation && <div className="mt-1 text-amber-700 dark:text-amber-400">Limit: {item.limitation}</div>}
+            <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-muted p-2">{JSON.stringify(item.rows, null, 2)}</pre>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 function AskBody() {
   const { range } = useGscRange();
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -367,6 +408,19 @@ function AskBody() {
           for (let i = next.length - 1; i >= 0; i--) {
             if (next[i]!.role === "assistant") {
               next[i] = { ...next[i]!, trendData: td };
+              break;
+            }
+          }
+          return next;
+        });
+      },
+      onEvidence: (items) => {
+        if (abortRef.current !== ctrl) return;
+        setMessages((prev) => {
+          const next = prev.slice();
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i]!.role === "assistant") {
+              next[i] = { ...next[i]!, evidence: items };
               break;
             }
           }
@@ -486,6 +540,7 @@ function AskBody() {
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
                         </div>
                         {m.trendData && <TrendSparkline data={m.trendData} />}
+                        {m.evidence && <EvidencePanel items={m.evidence} />}
                       </>
                     ) : (
                       isLast && pending && <TypingDots />
