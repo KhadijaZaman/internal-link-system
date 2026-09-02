@@ -2119,6 +2119,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OpportunitiesSheetResult"
+        "409":
+          description: Unresolved spreadsheet conflicts require explicit overwrite confirmation
   /actions/sync-sheet:
     post:
       operationId: syncOpportunitiesSheet
@@ -3103,13 +3105,20 @@ components:
       type: object
       properties:
         spreadsheetId: { type: string, minLength: 20, maxLength: 200 }
+        confirmConflictOverwrite:
+          type: boolean
+          default: false
     OpportunitiesSheetInfo:
       type: object
-      required: [url, lastExportedAt, lastImportedAt]
+      required: [url, lastExportedAt, lastImportedAt, conflicts]
       properties:
         url: { type: ["string", "null"] }
         lastExportedAt: { type: ["string", "null"], format: date-time }
         lastImportedAt: { type: ["string", "null"], format: date-time }
+        conflicts:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpportunitiesSyncConflict"
     OpportunitiesSheetResult:
       type: object
       required: [url, rowCount, exportedAt]
@@ -3121,9 +3130,22 @@ components:
       allOf:
         - $ref: "#/components/schemas/ActionBatchReviewResult"
         - type: object
-          required: [importedAt]
+          required: [importedAt, conflicts]
           properties:
             importedAt: { type: string, format: date-time }
+            conflicts:
+              type: array
+              items:
+                $ref: "#/components/schemas/OpportunitiesSyncConflict"
+    OpportunitiesSyncConflict:
+      type: object
+      required: [rowNumber, actionId, reason]
+      properties:
+        rowNumber: { type: integer, minimum: 2 }
+        actionId: { type: string }
+        reason:
+          type: string
+          enum: [stale, invalid]
     HealthComponent:
       type: object
       required: [key, label, weight, penalty, deduction, raw, detail]

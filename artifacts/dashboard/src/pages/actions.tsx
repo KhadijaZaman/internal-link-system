@@ -38,6 +38,7 @@ import {
   Database,
   Pencil,
   Save,
+  AlertTriangle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { HowThisWorks } from "@/components/how-this-works";
@@ -462,6 +463,11 @@ function ActionRow({
 export default function Actions() {
   const [status, setStatus] = useState<StatusFilter>("open");
   const [category, setCategory] = useState<CategoryFilter>("all");
+  const [sheetConflicts, setSheetConflicts] = useState<Array<{
+    rowNumber: number;
+    actionId: string;
+    reason: "stale" | "invalid";
+  }>>([]);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -470,9 +476,13 @@ export default function Actions() {
     { query: { queryKey: getListActionsQueryKey({ status, category }) } },
   );
   const sheetInfo = useGetOpportunitiesSheetInfo();
+  useEffect(() => {
+    if (sheetInfo.data) setSheetConflicts(sheetInfo.data.conflicts);
+  }, [sheetInfo.data]);
   const exportSheet = useExportOpportunitiesSheet({
     mutation: {
       onSuccess: (result) => {
+        setSheetConflicts([]);
         void queryClient.invalidateQueries({ queryKey: getGetOpportunitiesSheetInfoQueryKey() });
         toast({ title: "Opportunities exported", description: `${result.rowCount} rows refreshed in Google Sheets.` });
       },
@@ -482,6 +492,7 @@ export default function Actions() {
   const syncSheet = useSyncOpportunitiesSheet({
     mutation: {
       onSuccess: (result) => {
+        setSheetConflicts(result.conflicts);
         void queryClient.invalidateQueries({ queryKey: ["/actions"] });
         void queryClient.invalidateQueries({ queryKey: getGetOpportunitiesSheetInfoQueryKey() });
         toast({ title: "Sheet review imported", description: `${result.updated} updated, ${result.stale} stale, ${result.invalid} invalid.` });
@@ -542,6 +553,19 @@ export default function Actions() {
 
   const counts = data?.counts;
   const items = data?.items ?? [];
+  const refreshExport = () => {
+    if (
+      sheetConflicts.length > 0 &&
+      !window.confirm(
+        `Refreshing the export will replace ${sheetConflicts.length} unresolved spreadsheet row${sheetConflicts.length === 1 ? "" : "s"}. Continue?`,
+      )
+    ) {
+      return;
+    }
+    exportSheet.mutate({
+      data: { confirmConflictOverwrite: sheetConflicts.length > 0 },
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -567,7 +591,7 @@ export default function Actions() {
           <Button
             variant="outline"
             disabled={exportSheet.isPending}
-            onClick={() => exportSheet.mutate({ data: {} })}
+            onClick={refreshExport}
           >
             <Sheet className="mr-2 h-4 w-4" />
             {sheetInfo.data?.url ? "Refresh export" : "Export to Sheets"}
@@ -583,6 +607,46 @@ export default function Actions() {
           )}
         </div>
       </div>
+
+      {sheetConflicts.length > 0 && (
+        <Card className="border-amber-300 bg-amber-50/60">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+              <div className="min-w-0 flex-1">
+                <h2 className="font-semibold text-amber-950">Spreadsheet rows need refreshing</h2>
+                <p className="mt-1 text-sm text-amber-900">
+                  These reviews were not imported. Resolve them in the sheet, or refresh the export to replace them with the latest app values.
+                </p>
+                <ul className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {sheetConflicts.map((conflict) => (
+                    <li
+                      key={`${conflict.rowNumber}-${conflict.actionId}-${conflict.reason}`}
+                      className="rounded-md border border-amber-200 bg-background px-3 py-2 text-sm"
+                    >
+                      <span className="font-medium">Row {conflict.rowNumber}</span>
+                      {" · "}Action ID {conflict.actionId || "(missing)"}
+                      <Badge variant="outline" className="ml-2 capitalize text-amber-800">
+                        {conflict.reason}
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  className="mt-3"
+                  size="sm"
+                  variant="outline"
+                  disabled={exportSheet.isPending}
+                  onClick={refreshExport}
+                >
+                  <Sheet className="mr-2 h-4 w-4" />
+                  Refresh export and replace these rows
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <HowThisWorks
         summary="One governed opportunity list built from specialist evidence without creating duplicate task stores."

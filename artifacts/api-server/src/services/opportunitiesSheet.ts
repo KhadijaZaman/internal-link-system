@@ -32,11 +32,13 @@ interface ValueRange {
   values?: SheetValue[][];
 }
 
-function key(siteId: number, suffix: "id" | "exported" | "imported"): string {
+type SheetStateSuffix = "id" | "exported" | "imported" | "conflicts";
+
+function key(siteId: number, suffix: SheetStateSuffix): string {
   return `${BASE_KEY}:${siteId}:${suffix}`;
 }
 
-async function readState(siteId: number, suffix: "id" | "exported" | "imported") {
+async function readState(siteId: number, suffix: SheetStateSuffix) {
   const [row] = await db
     .select({ value: appStateTable.value })
     .from(appStateTable)
@@ -45,7 +47,7 @@ async function readState(siteId: number, suffix: "id" | "exported" | "imported")
   return row?.value ?? null;
 }
 
-async function writeState(siteId: number, suffix: "id" | "exported" | "imported", value: string) {
+async function writeState(siteId: number, suffix: SheetStateSuffix, value: string) {
   await db
     .insert(appStateTable)
     .values({ key: key(siteId, suffix), value, updatedAt: new Date() })
@@ -146,20 +148,47 @@ export async function replaceOpportunitySheetValues(
 }
 
 export async function getOpportunitiesSheetInfo(siteId: number) {
-  const [id, lastExportedAt, lastImportedAt] = await Promise.all([
+  const [id, lastExportedAt, lastImportedAt, rawConflicts] = await Promise.all([
     readState(siteId, "id"),
     readState(siteId, "exported"),
     readState(siteId, "imported"),
+    readState(siteId, "conflicts"),
   ]);
   return {
     url: id ? `https://docs.google.com/spreadsheets/d/${id}/edit` : null,
     lastExportedAt,
     lastImportedAt,
+    conflicts: parseStoredConflicts(rawConflicts),
   };
 }
 
-async function exportOpportunitiesSheetInner(site: SiteContext, supplied?: string) {
+function parseStoredConflicts(raw: string | null): OpportunitiesSyncConflict[] {
+  if (!raw) return [];
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (!Array.isArray(value)) return [];
+    return value.filter((item): item is OpportunitiesSyncConflict => (
+      typeof item === "object" &&
+      item !== null &&
+      Number.isInteger((item as OpportunitiesSyncConflict).rowNumber) &&
+      typeof (item as OpportunitiesSyncConflict).actionId === "string" &&
+      ["stale", "invalid"].includes((item as OpportunitiesSyncConflict).reason)
+    ));
+  } catch {
+    return [];
+  }
+}
+
+async function exportOpportunitiesSheetInner(
+  site: SiteContext,
+  supplied?: string,
+  confirmConflictOverwrite = false,
+) {
   const existingBinding = await readState(site.id, "id");
+  const conflicts = parseStoredConflicts(await readState(site.id, "conflicts"));
+  if (existingBinding && conflicts.length > 0 && !confirmConflictOverwrite) {
+    throw new Error("Unresolved spreadsheet conflicts must be confirmed before refreshing the export");
+  }
   let spreadsheetId = supplied ? parseSheetId(supplied) : existingBinding;
   if (supplied && !spreadsheetId) throw new Error("Invalid Google Sheets spreadsheet id or URL");
   if (supplied && existingBinding && existingBinding !== spreadsheetId) {
@@ -211,7 +240,10 @@ async function exportOpportunitiesSheetInner(site: SiteContext, supplied?: strin
     ];
     await replaceOpportunitySheetValues(spreadsheetId, values);
     const exportedAt = new Date().toISOString();
-    await writeState(site.id, "exported", exportedAt);
+    await Promise.all([
+      writeState(site.id, "exported", exportedAt),
+      writeState(site.id, "conflicts", "[]"),
+    ]);
     return { url, rowCount: rows.length, exportedAt };
   } catch (error) {
     if (isNewBinding) await releaseNewBinding(site.id, spreadsheetId);
@@ -219,19 +251,30 @@ async function exportOpportunitiesSheetInner(site: SiteContext, supplied?: strin
   }
 }
 
-export async function exportOpportunitiesSheet(site: SiteContext, supplied?: string) {
+export async function exportOpportunitiesSheet(
+  site: SiteContext,
+  supplied?: string,
+  confirmConflictOverwrite = false,
+) {
   return withOpportunitiesSheetLock(site.id, () =>
-    exportOpportunitiesSheetInner(site, supplied),
+    exportOpportunitiesSheetInner(site, supplied, confirmConflictOverwrite),
   );
 }
 
 export interface ParsedReview {
   id: number;
   expectedVersion: number;
+  rowNumber?: number;
   status?: "open" | "done" | "dismissed";
   owner?: string | null;
   dueDate?: string | null;
   market?: string;
+}
+
+export interface OpportunitiesSyncConflict {
+  rowNumber: number;
+  actionId: string;
+  reason: "stale" | "invalid";
 }
 
 function validCalendarDate(value: string): boolean {
@@ -243,7 +286,7 @@ function validCalendarDate(value: string): boolean {
 /** Pure validation helper used by the importer and focused unit tests. */
 export function parseOpportunitySheetRows(values: SheetValue[][], siteId: number): {
   valid: ParsedReview[];
-  invalid: number;
+  conflicts: OpportunitiesSyncConflict[];
 } {
   const headers = (values[0] ?? []).map(String);
   const at = (name: string) => headers.indexOf(name);
@@ -251,11 +294,13 @@ export function parseOpportunitySheetRows(values: SheetValue[][], siteId: number
     throw new Error("The Opportunities sheet headers were changed");
   }
   const valid: ParsedReview[] = [];
-  let invalid = 0;
-  for (const row of values.slice(1)) {
+  const conflicts: OpportunitiesSyncConflict[] = [];
+  for (const [index, row] of values.slice(1).entries()) {
     if (row.every((cell) => String(cell ?? "").trim() === "")) continue;
+    const rowNumber = index + 2;
+    const actionId = String(row[at("Action ID")] ?? "").trim();
     const rowSite = Number(row[at("Site ID")]);
-    const id = Number(row[at("Action ID")]);
+    const id = Number(actionId);
     const expectedVersion = Number(row[at("Version")]);
     const status = String(row[at("Status")] ?? "").trim();
     const ownerRaw = String(row[at("Owner")] ?? "").trim();
@@ -273,24 +318,29 @@ export function parseOpportunitySheetRows(values: SheetValue[][], siteId: number
       ownerRaw.length > 200 ||
       market.length > 100
     ) {
-      invalid++;
+      conflicts.push({ rowNumber, actionId, reason: "invalid" });
       continue;
     }
     valid.push({
       id,
       expectedVersion,
+      rowNumber,
       status: status as ParsedReview["status"],
       owner: ownerRaw || null,
       dueDate: dueRaw || null,
       market,
     });
   }
-  return { valid, invalid };
+  return { valid, conflicts };
 }
 
-export async function applyActionReviews(siteId: number, reviews: ParsedReview[], invalid = 0) {
+async function applyActionReviewsWithConflicts(
+  siteId: number,
+  reviews: ParsedReview[],
+  invalidConflicts: OpportunitiesSyncConflict[] = [],
+) {
   let updated = 0;
-  let stale = 0;
+  const conflicts = [...invalidConflicts];
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${BASE_KEY}:site:${siteId}`}))`);
     for (const review of reviews) {
@@ -306,7 +356,11 @@ export async function applyActionReviews(siteId: number, reviews: ParsedReview[]
         .where(and(eq(actionItemsTable.siteId, siteId), eq(actionItemsTable.id, review.id)))
         .limit(1);
       if (!current || current.version !== review.expectedVersion) {
-        stale++;
+        conflicts.push({
+          rowNumber: review.rowNumber ?? 2,
+          actionId: String(review.id),
+          reason: "stale",
+        });
         continue;
       }
       const nextStatus = review.status ?? current.status;
@@ -351,9 +405,25 @@ export async function applyActionReviews(siteId: number, reviews: ParsedReview[]
         )
         .returning({ id: actionItemsTable.id });
       if (changed.length) updated++;
-      else stale++;
+      else {
+        conflicts.push({
+          rowNumber: review.rowNumber ?? 2,
+          actionId: String(review.id),
+          reason: "stale",
+        });
+      }
     }
   });
+  return {
+    updated,
+    stale: conflicts.filter((conflict) => conflict.reason === "stale").length,
+    invalid: conflicts.filter((conflict) => conflict.reason === "invalid").length,
+    conflicts,
+  };
+}
+
+export async function applyActionReviews(siteId: number, reviews: ParsedReview[]) {
+  const { updated, stale, invalid } = await applyActionReviewsWithConflicts(siteId, reviews);
   return { updated, stale, invalid };
 }
 
@@ -364,9 +434,12 @@ async function syncOpportunitiesSheetInner(siteId: number) {
     `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`'${TAB}'!A:Z`)}`,
   );
   const parsed = parseOpportunitySheetRows(data.values ?? [], siteId);
-  const result = await applyActionReviews(siteId, parsed.valid, parsed.invalid);
+  const result = await applyActionReviewsWithConflicts(siteId, parsed.valid, parsed.conflicts);
   const importedAt = new Date().toISOString();
-  await writeState(siteId, "imported", importedAt);
+  await Promise.all([
+    writeState(siteId, "imported", importedAt),
+    writeState(siteId, "conflicts", JSON.stringify(result.conflicts)),
+  ]);
   return { ...result, importedAt };
 }
 

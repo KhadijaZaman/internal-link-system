@@ -3554,10 +3554,19 @@ export const ListActionsResponse = zod.object({
 /**
  * @summary Get the active site's persistent governed Opportunities sheet
  */
+export const getOpportunitiesSheetInfoResponseConflictsItemRowNumberMin = 2;
+
+
+
 export const GetOpportunitiesSheetInfoResponse = zod.object({
   "url": zod.string().nullable(),
   "lastExportedAt": zod.coerce.date().nullable(),
-  "lastImportedAt": zod.coerce.date().nullable()
+  "lastImportedAt": zod.coerce.date().nullable(),
+  "conflicts": zod.array(zod.object({
+  "rowNumber": zod.number().min(getOpportunitiesSheetInfoResponseConflictsItemRowNumberMin),
+  "actionId": zod.string(),
+  "reason": zod.enum(['stale', 'invalid'])
+}))
 })
 
 
@@ -3567,10 +3576,11 @@ export const GetOpportunitiesSheetInfoResponse = zod.object({
 export const exportOpportunitiesSheetBodySpreadsheetIdMin = 20;
 export const exportOpportunitiesSheetBodySpreadsheetIdMax = 200;
 
-
+export const exportOpportunitiesSheetBodyConfirmConflictOverwriteDefault = false;
 
 export const ExportOpportunitiesSheetBody = zod.object({
-  "spreadsheetId": zod.string().min(exportOpportunitiesSheetBodySpreadsheetIdMin).max(exportOpportunitiesSheetBodySpreadsheetIdMax).optional()
+  "spreadsheetId": zod.string().min(exportOpportunitiesSheetBodySpreadsheetIdMin).max(exportOpportunitiesSheetBodySpreadsheetIdMax).optional(),
+  "confirmConflictOverwrite": zod.boolean().default(exportOpportunitiesSheetBodyConfirmConflictOverwriteDefault)
 })
 
 export const ExportOpportunitiesSheetResponse = zod.object({
@@ -3583,12 +3593,21 @@ export const ExportOpportunitiesSheetResponse = zod.object({
 /**
  * @summary Import whitelisted review fields with site and optimistic-version validation
  */
+export const syncOpportunitiesSheetResponseTwoConflictsItemRowNumberMin = 2;
+
+
+
 export const SyncOpportunitiesSheetResponse = zod.object({
   "updated": zod.number(),
   "stale": zod.number(),
   "invalid": zod.number()
 }).and(zod.object({
-  "importedAt": zod.coerce.date()
+  "importedAt": zod.coerce.date(),
+  "conflicts": zod.array(zod.object({
+  "rowNumber": zod.number().min(syncOpportunitiesSheetResponseTwoConflictsItemRowNumberMin),
+  "actionId": zod.string(),
+  "reason": zod.enum(['stale', 'invalid'])
+}))
 }))
 
 

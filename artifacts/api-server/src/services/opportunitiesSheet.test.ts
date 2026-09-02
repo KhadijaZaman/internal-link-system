@@ -43,10 +43,11 @@ describe("parseOpportunitySheetRows", () => {
       7,
     );
     expect(result).toEqual({
-      invalid: 0,
+      conflicts: [],
       valid: [{
         id: 42,
         expectedVersion: 3,
+        rowNumber: 2,
         owner: "Ava",
         status: "done",
         dueDate: "2026-09-01",
@@ -61,12 +62,16 @@ describe("parseOpportunitySheetRows", () => {
         headers,
         [8, 42, 3, "", "", "", "", "", "", "", "", "done", "", "US"],
         [7, 43, 1, "", "", "", "", "", "", "", "", "approved", "", "US"],
-        [7, 44, 1, "", "", "", "", "", "", "", "", "open", "09/01/26", "US"],
+        [7, "bad-id", 1, "", "", "", "", "", "", "", "", "open", "09/01/26", "US"],
       ],
       7,
     );
     expect(result.valid).toEqual([]);
-    expect(result.invalid).toBe(3);
+    expect(result.conflicts).toEqual([
+      { rowNumber: 2, actionId: "42", reason: "invalid" },
+      { rowNumber: 3, actionId: "43", reason: "invalid" },
+      { rowNumber: 4, actionId: "bad-id", reason: "invalid" },
+    ]);
   });
 
   it("fails closed when governed headers are changed", () => {

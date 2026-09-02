@@ -8971,7 +8971,7 @@ export const exportOpportunitiesSheet = async (opportunitiesSheetInput?: Opportu
 
 
 
-export const getExportOpportunitiesSheetMutationOptions = <TError = ErrorType<unknown>,
+export const getExportOpportunitiesSheetMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportOpportunitiesSheet>>, TError,{data?: BodyType<OpportunitiesSheetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof exportOpportunitiesSheet>>, TError,{data?: BodyType<OpportunitiesSheetInput>}, TContext> => {
 
@@ -9000,12 +9000,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type ExportOpportunitiesSheetMutationResult = NonNullable<Awaited<ReturnType<typeof exportOpportunitiesSheet>>>
     export type ExportOpportunitiesSheetMutationBody = BodyType<OpportunitiesSheetInput> | undefined
-    export type ExportOpportunitiesSheetMutationError = ErrorType<unknown>
+    export type ExportOpportunitiesSheetMutationError = ErrorType<void>
 
     /**
  * @summary Create or refresh the persistent governed Opportunities sheet from app records
  */
-export const useExportOpportunitiesSheet = <TError = ErrorType<unknown>,
+export const useExportOpportunitiesSheet = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportOpportunitiesSheet>>, TError,{data?: BodyType<OpportunitiesSheetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof exportOpportunitiesSheet>>,

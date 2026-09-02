@@ -5,6 +5,7 @@
  * Linkweave internal linking system API
  * OpenAPI spec version: 0.1.0
  */
+import type { OpportunitiesSyncConflict } from './opportunitiesSyncConflict';
 
 export interface OpportunitiesSheetInfo {
   /** @nullable */
@@ -13,4 +14,5 @@ export interface OpportunitiesSheetInfo {
   lastExportedAt: Date | null;
   /** @nullable */
   lastImportedAt: Date | null;
+  conflicts: OpportunitiesSyncConflict[];
 }

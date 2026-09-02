@@ -274,6 +274,8 @@ export * from './okResponse';
 export * from './opportunitiesSheetInfo';
 export * from './opportunitiesSheetInput';
 export * from './opportunitiesSheetResult';
+export * from './opportunitiesSyncConflict';
+export * from './opportunitiesSyncConflictReason';
 export * from './opportunitiesSyncResult';
 export * from './optimizeQueueInput';
 export * from './optimizeQueueInputPriority';

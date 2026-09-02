@@ -644,6 +644,22 @@ export interface OpportunitiesSheetInput {
      * @maxLength 200
      */
   spreadsheetId?: string;
+  confirmConflictOverwrite?: boolean;
+}
+
+export type OpportunitiesSyncConflictReason = typeof OpportunitiesSyncConflictReason[keyof typeof OpportunitiesSyncConflictReason];
+
+
+export const OpportunitiesSyncConflictReason = {
+  stale: 'stale',
+  invalid: 'invalid',
+} as const;
+
+export interface OpportunitiesSyncConflict {
+  /** @minimum 2 */
+  rowNumber: number;
+  actionId: string;
+  reason: OpportunitiesSyncConflictReason;
 }
 
 export interface OpportunitiesSheetInfo {
@@ -653,6 +669,7 @@ export interface OpportunitiesSheetInfo {
   lastExportedAt: string | null;
   /** @nullable */
   lastImportedAt: string | null;
+  conflicts: OpportunitiesSyncConflict[];
 }
 
 export interface OpportunitiesSheetResult {
@@ -663,6 +680,7 @@ export interface OpportunitiesSheetResult {
 
 export type OpportunitiesSyncResult = ActionBatchReviewResult & {
   importedAt: string;
+  conflicts: OpportunitiesSyncConflict[];
 };
 
 export type HealthComponentKey = typeof HealthComponentKey[keyof typeof HealthComponentKey];

@@ -12,4 +12,5 @@ export interface OpportunitiesSheetInput {
      * @maxLength 200
      */
   spreadsheetId?: string;
+  confirmConflictOverwrite?: boolean;
 }

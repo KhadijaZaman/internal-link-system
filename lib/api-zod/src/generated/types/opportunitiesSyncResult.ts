@@ -6,7 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ActionBatchReviewResult } from './actionBatchReviewResult';
+import type { OpportunitiesSyncConflict } from './opportunitiesSyncConflict';
 
 export type OpportunitiesSyncResult = ActionBatchReviewResult & {
   importedAt: Date;
+  conflicts: OpportunitiesSyncConflict[];
 };

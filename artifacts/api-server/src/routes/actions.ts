@@ -116,11 +116,21 @@ router.post("/actions/export-sheet", requireAuth, requireSite, async (req, res) 
     return;
   }
   try {
-    res.json(await exportOpportunitiesSheet(getSite(req), parsed.data.spreadsheetId));
+    res.json(await exportOpportunitiesSheet(
+      getSite(req),
+      parsed.data.spreadsheetId,
+      parsed.data.confirmConflictOverwrite,
+    ));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     req.log.error({ err: error }, "opportunities sheet export failed");
-    res.status(/Invalid|already bound/.test(message) ? 400 : 502).json({ error: message });
+    res.status(
+      /Unresolved spreadsheet conflicts/.test(message)
+        ? 409
+        : /Invalid|already bound/.test(message)
+          ? 400
+          : 502,
+    ).json({ error: message });
   }
 });
 
