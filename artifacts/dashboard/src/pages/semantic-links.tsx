@@ -534,8 +534,15 @@ const SEVERITY_BADGE: Record<StatusMeaning["severity"], string> = {
   error: "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30",
 };
 
-function BrokenStatusBadge({ status, error }: { status: unknown; error?: string }) {
-  const meaning = describeStatus(status);
+function BrokenStatusBadge({
+  status,
+  error,
+  meaning = describeStatus(status),
+}: {
+  status: unknown;
+  error?: string;
+  meaning?: StatusMeaning;
+}) {
   const label = status != null ? String(status) : "ERR";
   return (
     <div className="inline-flex items-center gap-2">
@@ -814,11 +821,12 @@ function AuditTab({ type, label }: { type: "orphans" | "over_linked"; label: str
   );
 }
 
-type BrokenAction = "repoint" | "dead";
+type BrokenAction = "canonical" | "repoint" | "dead";
 
 interface BrokenLinkItem {
   url: string;
   status: number | null;
+  classification?: "broken" | "redirect" | "canonical_redirect";
   error?: string;
   inboundCount: number;
   redirectTo?: string;
@@ -826,7 +834,8 @@ interface BrokenLinkItem {
 }
 
 /** What the operator actually has to do: repoint a working redirect, or fix a dead target. */
-function classifyBrokenAction(it: BrokenLinkItem): BrokenAction {
+export function classifyBrokenAction(it: BrokenLinkItem): BrokenAction {
+  if (it.classification === "canonical_redirect") return "canonical";
   const n = it.status;
   if (typeof n === "number" && n >= 300 && n < 400 && it.redirectTo) return "repoint";
   return "dead";
@@ -871,6 +880,12 @@ function coerceBrokenItem(raw: Record<string, unknown>): BrokenLinkItem {
   return {
     url: String(raw["url"] ?? ""),
     status: typeof status === "number" ? status : null,
+    classification:
+      raw["classification"] === "canonical_redirect" ||
+      raw["classification"] === "redirect" ||
+      raw["classification"] === "broken"
+        ? raw["classification"]
+        : undefined,
     error: raw["error"] != null ? String(raw["error"]) : undefined,
     inboundCount: Number(raw["inboundCount"] ?? 0),
     redirectTo: raw["redirectTo"] != null ? String(raw["redirectTo"]) : undefined,
@@ -878,7 +893,7 @@ function coerceBrokenItem(raw: Record<string, unknown>): BrokenLinkItem {
   };
 }
 
-type BrokenFilter = "all" | "repoint" | "dead" | "malformed";
+type BrokenFilter = "all" | "canonical" | "repoint" | "dead" | "malformed";
 
 const BROKEN_CARD_TONE: Record<"warn" | "error" | "neutral", string> = {
   warn: "border-amber-300/70 bg-amber-50/50 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200",
@@ -886,7 +901,7 @@ const BROKEN_CARD_TONE: Record<"warn" | "error" | "neutral", string> = {
   neutral: "border-slate-300/70 bg-slate-50/70 text-slate-800 dark:border-slate-700/60 dark:bg-slate-900/30 dark:text-slate-200",
 };
 
-function BrokenLinksTab() {
+export function BrokenLinksTab() {
   const { data, isLoading, isError } = useGetAuditReport("broken_links");
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -928,6 +943,7 @@ function BrokenLinksTab() {
   type Row = (typeof withMeta)[number];
 
   const repoint = withMeta.filter((m) => m.action === "repoint");
+  const canonical = withMeta.filter((m) => m.action === "canonical");
   const dead = withMeta.filter((m) => m.action === "dead");
   const malformed = withMeta.filter((m) => m.malformed);
   const sumInbound = (arr: Row[]) => arr.reduce((a, m) => a + (m.it.inboundCount || 0), 0);
@@ -941,6 +957,8 @@ function BrokenLinksTab() {
     .filter((m) =>
       filter === "all"
         ? true
+        : filter === "canonical"
+          ? m.action === "canonical"
         : filter === "repoint"
           ? m.action === "repoint"
           : filter === "dead"
@@ -988,6 +1006,14 @@ function BrokenLinksTab() {
     tone: "warn" | "error" | "neutral";
     body: string;
   }[] = [
+    {
+      key: "canonical",
+      title: "Canonical redirects",
+      count: canonical.length,
+      affected: sumInbound(canonical),
+      tone: "neutral",
+      body: "These permanent redirects only add or remove a trailing slash. They still resolve to the same page and are not counted as broken links.",
+    },
     {
       key: "repoint",
       title: "Repoint redirects",
@@ -1069,7 +1095,8 @@ function BrokenLinksTab() {
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span>
             Last run: {data?.runAt ? new Date(data.runAt).toLocaleString() : "never"}
-            {data?.itemCount !== undefined && ` · ${data.itemCount} issue${data.itemCount === 1 ? "" : "s"}`}
+            {data?.itemCount !== undefined &&
+              ` · ${data.itemCount} broken link${data.itemCount === 1 ? "" : "s"} · ${canonical.length + repoint.length} redirect finding${canonical.length + repoint.length === 1 ? "" : "s"}`}
           </span>
           {filter !== "all" && (
             <Button
@@ -1084,9 +1111,9 @@ function BrokenLinksTab() {
         </div>
         <div className="flex items-center gap-2">
           <InfoTip>
-            The audit sends a HEAD request to every internal link target and lists anything that
-            isn't a clean 200 OK — including 3xx redirects, which still work for users but waste
-            crawl budget and leak PageRank, so they belong on the clean-up list.
+            The audit sends a HEAD request to every internal link target. 4xx/5xx responses and
+            fetch failures count as broken. Redirects are reported separately; normal permanent
+            redirects that only add or remove a trailing slash are informational.
           </InfoTip>
           <Button variant="outline" onClick={copyAll} disabled={items.length === 0}>
             <Copy className="mr-1 h-4 w-4" /> Copy action list
@@ -1108,7 +1135,7 @@ function BrokenLinksTab() {
       ) : items.length === 0 ? (
         <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
           {data?.runAt
-            ? "Every internal link resolves to 200 OK in the latest crawl — nothing to fix."
+            ? "Every internal link resolves successfully in the latest crawl — nothing to fix."
             : "Run the audit to check every internal link target."}
         </div>
       ) : visible.length === 0 ? (
@@ -1143,7 +1170,17 @@ function BrokenLinksTab() {
                 const pages = it.linkingPages ?? [];
                 const canExpand = pages.length > 0;
                 const isOpen = canExpand && expanded.has(it.url);
-                const meaning = describeStatus(it.status);
+                const meaning =
+                  action === "canonical"
+                    ? {
+                        name: "Canonical trailing-slash redirect",
+                        meaning:
+                          "This permanent redirect only adds or removes a trailing slash and resolves to the same page.",
+                        action:
+                          "No action is required. This is shown for visibility and is not counted as a broken link.",
+                        severity: "info" as const,
+                      }
+                    : describeStatus(it.status);
                 return (
                   <Fragment key={it.url}>
                     <TableRow
@@ -1160,7 +1197,15 @@ function BrokenLinksTab() {
                                 toggleRow(it.url);
                               }}
                               aria-expanded={isOpen}
-                              aria-label={isOpen ? "Hide pages to edit" : "Show pages to edit"}
+                              aria-label={
+                                action === "canonical"
+                                  ? isOpen
+                                    ? "Hide referencing pages"
+                                    : "Show referencing pages"
+                                  : isOpen
+                                    ? "Hide pages to edit"
+                                    : "Show pages to edit"
+                              }
                               className="mt-0.5 shrink-0 rounded text-muted-foreground hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             >
                               {isOpen ? (
@@ -1186,14 +1231,16 @@ function BrokenLinksTab() {
                         </div>
                       </TableCell>
                       <TableCell className="max-w-[400px] align-top">
-                        <BrokenStatusBadge status={it.status} error={it.error} />
+                        <BrokenStatusBadge status={it.status} error={it.error} meaning={meaning} />
                         <div className="mt-1 text-[11px] text-muted-foreground">{meaning.action}</div>
                         {it.redirectTo && (
                           <div
                             className="mt-1 flex items-center gap-1 text-[11px]"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <span className="shrink-0 opacity-70">→ repoint to</span>
+                            <span className="shrink-0 opacity-70">
+                              {action === "canonical" ? "→ canonical URL" : "→ repoint to"}
+                            </span>
                             <a
                               href={it.redirectTo}
                               target="_blank"
@@ -1217,7 +1264,8 @@ function BrokenLinksTab() {
                         <div className="font-mono">{it.inboundCount}</div>
                         {canExpand && (
                           <div className="text-[10px] text-muted-foreground">
-                            {pages.length} page{pages.length === 1 ? "" : "s"} to edit
+                            {pages.length} page{pages.length === 1 ? "" : "s"}{" "}
+                            {action === "canonical" ? "reference this URL" : "to edit"}
                           </div>
                         )}
                       </TableCell>
@@ -1239,10 +1287,20 @@ function BrokenLinksTab() {
                           <div className="space-y-2 px-4 py-3">
                             <div className="flex items-center justify-between gap-2">
                               <div className="text-xs font-medium text-muted-foreground">
-                                Edit the link on {pages.length} page{pages.length === 1 ? "" : "s"}
-                                {action === "repoint"
-                                  ? " — point it at the final URL above"
-                                  : " — repoint it to a live page or remove it"}
+                                {action === "canonical" ? (
+                                  <>
+                                    Referenced on {pages.length} page{pages.length === 1 ? "" : "s"}
+                                    {" — "}no action required
+                                  </>
+                                ) : (
+                                  <>
+                                    Edit the link on {pages.length} page
+                                    {pages.length === 1 ? "" : "s"}
+                                    {action === "repoint"
+                                      ? " — point it at the final URL above"
+                                      : " — repoint it to a live page or remove it"}
+                                  </>
+                                )}
                               </div>
                               <CopyButton
                                 variant="outline"

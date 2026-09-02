@@ -44,6 +44,7 @@ function hasRealAnchor(text: string | null | undefined): boolean {
 interface BrokenItem {
   url: string;
   status: number | null;
+  classification: "broken" | "redirect" | "canonical_redirect";
   error?: string;
   inboundCount: number;
   /** For 3xx: the absolute URL this link redirects to (the link should be repointed here). */
@@ -55,6 +56,35 @@ interface BrokenItem {
    * how many.
    */
   linkingPages?: LinkingPage[];
+}
+
+export function isSamePageTrailingSlashRedirect(
+  sourceUrl: string,
+  status: number,
+  redirectTo: string | undefined,
+): boolean {
+  if ((status !== 301 && status !== 308) || !redirectTo) return false;
+  try {
+    const source = new URL(sourceUrl);
+    const destination = new URL(redirectTo, source);
+    if (
+      source.protocol !== destination.protocol ||
+      source.hostname.toLowerCase() !== destination.hostname.toLowerCase() ||
+      source.port !== destination.port ||
+      source.search !== destination.search ||
+      source.hash !== destination.hash
+    ) {
+      return false;
+    }
+    const withoutTrailingSlash = (path: string) =>
+      path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
+    return (
+      source.pathname !== destination.pathname &&
+      withoutTrailingSlash(source.pathname) === withoutTrailingSlash(destination.pathname)
+    );
+  } catch {
+    return false;
+  }
 }
 
 async function record(siteId: number, type: string, payload: unknown, itemCount: number): Promise<void> {
@@ -301,6 +331,7 @@ export async function runAuditBrokenLinks(site: SiteContext): Promise<void> {
           const item: BrokenItem = {
             url,
             status: res.status,
+            classification: "broken",
             inboundCount: inboundByUrl.get(url) ?? 0,
             linkingPages: linkingPagesFor(url),
           };
@@ -314,6 +345,13 @@ export async function runAuditBrokenLinks(site: SiteContext): Promise<void> {
                 // clickable href in the dashboard.
                 if (dest.protocol === "http:" || dest.protocol === "https:") {
                   item.redirectTo = dest.href;
+                  item.classification = isSamePageTrailingSlashRedirect(
+                    url,
+                    res.status,
+                    item.redirectTo,
+                  )
+                    ? "canonical_redirect"
+                    : "redirect";
                 }
               } catch {
                 // Unparseable Location: drop it rather than store raw input.
@@ -326,6 +364,7 @@ export async function runAuditBrokenLinks(site: SiteContext): Promise<void> {
         broken.push({
           url,
           status: null,
+            classification: "broken",
           error: e instanceof Error ? e.message : String(e),
           inboundCount: inboundByUrl.get(url) ?? 0,
           linkingPages: linkingPagesFor(url),
@@ -334,6 +373,13 @@ export async function runAuditBrokenLinks(site: SiteContext): Promise<void> {
     }
   }
   await Promise.all(Array.from({ length: BROKEN_CONCURRENCY }, () => worker()));
-  await record(site.id, "broken_links", broken, broken.length);
-  logger.info({ checked: list.length, broken: broken.length }, "Audit broken links: done");
+  const brokenCount = broken.filter((item) => item.classification === "broken").length;
+  const canonicalRedirectCount = broken.filter(
+    (item) => item.classification === "canonical_redirect",
+  ).length;
+  await record(site.id, "broken_links", broken, brokenCount);
+  logger.info(
+    { checked: list.length, broken: brokenCount, canonicalRedirects: canonicalRedirectCount },
+    "Audit broken links: done",
+  );
 }
