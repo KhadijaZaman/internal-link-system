@@ -467,9 +467,33 @@ export const ActionItemActionType = {
   optimize_content: 'optimize_content',
   improve_ctr: 'improve_ctr',
   fix_cannibalization: 'fix_cannibalization',
+  create_topical_content: 'create_topical_content',
+  pursue_authority_prospect: 'pursue_authority_prospect',
+} as const;
+
+export type ActionItemCategory = typeof ActionItemCategory[keyof typeof ActionItemCategory];
+
+
+export const ActionItemCategory = {
+  content: 'content',
+  linking: 'linking',
+  technical: 'technical',
+  visibility: 'visibility',
+  authority: 'authority',
 } as const;
 
 export type ActionItemSource = { [key: string]: unknown };
+
+export type ActionItemScoreComponents = { [key: string]: unknown };
+
+export type ActionItemFreshness = typeof ActionItemFreshness[keyof typeof ActionItemFreshness];
+
+
+export const ActionItemFreshness = {
+  fresh: 'fresh',
+  stale: 'stale',
+  missing: 'missing',
+} as const;
 
 export type ActionItemStatus = typeof ActionItemStatus[keyof typeof ActionItemStatus];
 
@@ -491,9 +515,20 @@ export const ActionItemResolution = {
   auto: 'auto',
 } as const;
 
+export type ActionSourceRecordData = { [key: string]: unknown };
+
+export interface ActionSourceRecord {
+  kind: string;
+  label: string;
+  url?: string;
+  observedAt?: string;
+  data?: ActionSourceRecordData;
+}
+
 export interface ActionItem {
   id: number;
   actionType: ActionItemActionType;
+  category: ActionItemCategory;
   targetUrl: string;
   /** @nullable */
   title?: string | null;
@@ -503,6 +538,17 @@ export interface ActionItem {
   impressionsAtStake: number;
   clicksAtStake: number;
   source?: ActionItemSource;
+  sourceRecords: ActionSourceRecord[];
+  scoreComponents: ActionItemScoreComponents;
+  /** @nullable */
+  owner?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
+  market: string;
+  freshness: ActionItemFreshness;
+  /** @nullable */
+  sourceObservedAt?: string | null;
+  version: number;
   status: ActionItemStatus;
   /** @nullable */
   resolution?: ActionItemResolution;
@@ -514,6 +560,7 @@ export interface ActionItem {
   dismissedAt?: string | null;
   /** @nullable */
   lastSeenAt?: string | null;
+  updatedAt?: string;
 }
 
 export type ActionQueueCounts = {
@@ -544,6 +591,79 @@ export const ActionStatusInputStatus = {
 export interface ActionStatusInput {
   status: ActionStatusInputStatus;
 }
+
+export type ActionReviewInputStatus = typeof ActionReviewInputStatus[keyof typeof ActionReviewInputStatus];
+
+
+export const ActionReviewInputStatus = {
+  open: 'open',
+  done: 'done',
+  dismissed: 'dismissed',
+} as const;
+
+export interface ActionReviewInput {
+  /** @minimum 1 */
+  expectedVersion: number;
+  status?: ActionReviewInputStatus;
+  /**
+     * @maxLength 200
+     * @nullable
+     */
+  owner?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  market?: string;
+}
+
+export type ActionBatchReviewRow = ActionReviewInput & {
+  /** @minimum 1 */
+  id: number;
+};
+
+export interface ActionBatchReviewInput {
+  /**
+     * @minItems 1
+     * @maxItems 500
+     */
+  items: ActionBatchReviewRow[];
+}
+
+export interface ActionBatchReviewResult {
+  updated: number;
+  stale: number;
+  invalid: number;
+}
+
+export interface OpportunitiesSheetInput {
+  /**
+     * @minLength 20
+     * @maxLength 200
+     */
+  spreadsheetId?: string;
+}
+
+export interface OpportunitiesSheetInfo {
+  /** @nullable */
+  url: string | null;
+  /** @nullable */
+  lastExportedAt: string | null;
+  /** @nullable */
+  lastImportedAt: string | null;
+}
+
+export interface OpportunitiesSheetResult {
+  url: string;
+  rowCount: number;
+  exportedAt: string;
+}
+
+export type OpportunitiesSyncResult = ActionBatchReviewResult & {
+  importedAt: string;
+};
 
 export type HealthComponentKey = typeof HealthComponentKey[keyof typeof HealthComponentKey];
 
@@ -4000,6 +4120,8 @@ url: string;
 
 export type ListActionsParams = {
 status?: ListActionsStatus;
+category?: ListActionsCategory;
+market?: string;
 };
 
 export type ListActionsStatus = typeof ListActionsStatus[keyof typeof ListActionsStatus];
@@ -4009,6 +4131,18 @@ export const ListActionsStatus = {
   open: 'open',
   done: 'done',
   dismissed: 'dismissed',
+  all: 'all',
+} as const;
+
+export type ListActionsCategory = typeof ListActionsCategory[keyof typeof ListActionsCategory];
+
+
+export const ListActionsCategory = {
+  content: 'content',
+  linking: 'linking',
+  technical: 'technical',
+  visibility: 'visibility',
+  authority: 'authority',
   all: 'all',
 } as const;
 

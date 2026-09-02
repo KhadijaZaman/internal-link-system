@@ -20,7 +20,7 @@ interface NavSection {
 // Always visible at the top — the everyday starting points.
 const primaryItems: NavItem[] = [
   { href: "/", label: "Home", icon: LayoutDashboard },
-  { href: "/actions", label: "To-Do List", icon: ListTodo },
+  { href: "/actions", label: "Opportunities", icon: ListTodo },
   { href: "/digest", label: "Weekly Digest", icon: Newspaper },
 ];
 

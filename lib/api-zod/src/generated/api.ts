@@ -3494,12 +3494,15 @@ export const GetUrlLinkBreakdownResponse = zod.object({
 
 
 /**
- * @summary Ranked action queue — what to do next, scored by search opportunity
+ * @summary Ranked Opportunities workspace — the sole task record across all SEO signals
  */
 export const listActionsQueryStatusDefault = `open`;
+export const listActionsQueryCategoryDefault = `all`;
 
 export const ListActionsQueryParams = zod.object({
-  "status": zod.enum(['open', 'done', 'dismissed', 'all']).default(listActionsQueryStatusDefault)
+  "status": zod.enum(['open', 'done', 'dismissed', 'all']).default(listActionsQueryStatusDefault),
+  "category": zod.enum(['content', 'linking', 'technical', 'visibility', 'authority', 'all']).default(listActionsQueryCategoryDefault),
+  "market": zod.coerce.string().optional()
 })
 
 export const ListActionsResponse = zod.object({
@@ -3513,7 +3516,8 @@ export const ListActionsResponse = zod.object({
   "gscWindowEnd": zod.coerce.date().nullable(),
   "items": zod.array(zod.object({
   "id": zod.number(),
-  "actionType": zod.enum(['add_inbound_links', 'add_outbound_links', 'fix_losing_query', 'review_suggestions', 'optimize_content', 'improve_ctr', 'fix_cannibalization']),
+  "actionType": zod.enum(['add_inbound_links', 'add_outbound_links', 'fix_losing_query', 'review_suggestions', 'optimize_content', 'improve_ctr', 'fix_cannibalization', 'create_topical_content', 'pursue_authority_prospect']),
+  "category": zod.enum(['content', 'linking', 'technical', 'visibility', 'authority']),
   "targetUrl": zod.string(),
   "title": zod.string().nullish(),
   "description": zod.string().nullish(),
@@ -3521,14 +3525,102 @@ export const ListActionsResponse = zod.object({
   "impressionsAtStake": zod.number(),
   "clicksAtStake": zod.number(),
   "source": zod.record(zod.string(), zod.unknown()).optional(),
+  "sourceRecords": zod.array(zod.object({
+  "kind": zod.string(),
+  "label": zod.string(),
+  "url": zod.string().optional(),
+  "observedAt": zod.coerce.date().optional(),
+  "data": zod.record(zod.string(), zod.unknown()).optional()
+})),
+  "scoreComponents": zod.record(zod.string(), zod.unknown()),
+  "owner": zod.string().nullish(),
+  "dueDate": zod.coerce.date().nullish(),
+  "market": zod.string(),
+  "freshness": zod.enum(['fresh', 'stale', 'missing']),
+  "sourceObservedAt": zod.coerce.date().nullish(),
+  "version": zod.number(),
   "status": zod.enum(['open', 'done', 'dismissed']),
   "resolution": zod.union([zod.literal('manual'),zod.literal('auto'),zod.literal(null)]).nullish(),
   "pinnedOpen": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "completedAt": zod.coerce.date().nullish(),
   "dismissedAt": zod.coerce.date().nullish(),
-  "lastSeenAt": zod.coerce.date().nullish()
+  "lastSeenAt": zod.coerce.date().nullish(),
+  "updatedAt": zod.coerce.date().optional()
 }))
+})
+
+
+/**
+ * @summary Get the active site's persistent governed Opportunities sheet
+ */
+export const GetOpportunitiesSheetInfoResponse = zod.object({
+  "url": zod.string().nullable(),
+  "lastExportedAt": zod.coerce.date().nullable(),
+  "lastImportedAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Create or refresh the persistent governed Opportunities sheet from app records
+ */
+export const exportOpportunitiesSheetBodySpreadsheetIdMin = 20;
+export const exportOpportunitiesSheetBodySpreadsheetIdMax = 200;
+
+
+
+export const ExportOpportunitiesSheetBody = zod.object({
+  "spreadsheetId": zod.string().min(exportOpportunitiesSheetBodySpreadsheetIdMin).max(exportOpportunitiesSheetBodySpreadsheetIdMax).optional()
+})
+
+export const ExportOpportunitiesSheetResponse = zod.object({
+  "url": zod.string(),
+  "rowCount": zod.number(),
+  "exportedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Import whitelisted review fields with site and optimistic-version validation
+ */
+export const SyncOpportunitiesSheetResponse = zod.object({
+  "updated": zod.number(),
+  "stale": zod.number(),
+  "invalid": zod.number()
+}).and(zod.object({
+  "importedAt": zod.coerce.date()
+}))
+
+
+/**
+ * @summary Apply governed owner, status, due-date, and market changes to multiple opportunities
+ */
+
+export const batchReviewActionsBodyItemsItemOneOwnerMax = 200;
+
+export const batchReviewActionsBodyItemsItemOneMarketMax = 100;
+
+
+export const batchReviewActionsBodyItemsMax = 500;
+
+
+
+export const BatchReviewActionsBody = zod.object({
+  "items": zod.array(zod.object({
+  "expectedVersion": zod.number().min(1),
+  "status": zod.enum(['open', 'done', 'dismissed']).optional(),
+  "owner": zod.string().max(batchReviewActionsBodyItemsItemOneOwnerMax).nullish(),
+  "dueDate": zod.coerce.date().nullish(),
+  "market": zod.string().min(1).max(batchReviewActionsBodyItemsItemOneMarketMax).optional()
+}).and(zod.object({
+  "id": zod.number().min(1)
+}))).min(1).max(batchReviewActionsBodyItemsMax)
+})
+
+export const BatchReviewActionsResponse = zod.object({
+  "updated": zod.number(),
+  "stale": zod.number(),
+  "invalid": zod.number()
 })
 
 
@@ -3545,7 +3637,8 @@ export const SetActionStatusBody = zod.object({
 
 export const SetActionStatusResponse = zod.object({
   "id": zod.number(),
-  "actionType": zod.enum(['add_inbound_links', 'add_outbound_links', 'fix_losing_query', 'review_suggestions', 'optimize_content', 'improve_ctr', 'fix_cannibalization']),
+  "actionType": zod.enum(['add_inbound_links', 'add_outbound_links', 'fix_losing_query', 'review_suggestions', 'optimize_content', 'improve_ctr', 'fix_cannibalization', 'create_topical_content', 'pursue_authority_prospect']),
+  "category": zod.enum(['content', 'linking', 'technical', 'visibility', 'authority']),
   "targetUrl": zod.string(),
   "title": zod.string().nullish(),
   "description": zod.string().nullish(),
@@ -3553,13 +3646,86 @@ export const SetActionStatusResponse = zod.object({
   "impressionsAtStake": zod.number(),
   "clicksAtStake": zod.number(),
   "source": zod.record(zod.string(), zod.unknown()).optional(),
+  "sourceRecords": zod.array(zod.object({
+  "kind": zod.string(),
+  "label": zod.string(),
+  "url": zod.string().optional(),
+  "observedAt": zod.coerce.date().optional(),
+  "data": zod.record(zod.string(), zod.unknown()).optional()
+})),
+  "scoreComponents": zod.record(zod.string(), zod.unknown()),
+  "owner": zod.string().nullish(),
+  "dueDate": zod.coerce.date().nullish(),
+  "market": zod.string(),
+  "freshness": zod.enum(['fresh', 'stale', 'missing']),
+  "sourceObservedAt": zod.coerce.date().nullish(),
+  "version": zod.number(),
   "status": zod.enum(['open', 'done', 'dismissed']),
   "resolution": zod.union([zod.literal('manual'),zod.literal('auto'),zod.literal(null)]).nullish(),
   "pinnedOpen": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "completedAt": zod.coerce.date().nullish(),
   "dismissedAt": zod.coerce.date().nullish(),
-  "lastSeenAt": zod.coerce.date().nullish()
+  "lastSeenAt": zod.coerce.date().nullish(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Update governed workflow fields on an opportunity
+ */
+export const UpdateActionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+export const updateActionBodyOwnerMax = 200;
+
+export const updateActionBodyMarketMax = 100;
+
+
+
+export const UpdateActionBody = zod.object({
+  "expectedVersion": zod.number().min(1),
+  "status": zod.enum(['open', 'done', 'dismissed']).optional(),
+  "owner": zod.string().max(updateActionBodyOwnerMax).nullish(),
+  "dueDate": zod.coerce.date().nullish(),
+  "market": zod.string().min(1).max(updateActionBodyMarketMax).optional()
+})
+
+export const UpdateActionResponse = zod.object({
+  "id": zod.number(),
+  "actionType": zod.enum(['add_inbound_links', 'add_outbound_links', 'fix_losing_query', 'review_suggestions', 'optimize_content', 'improve_ctr', 'fix_cannibalization', 'create_topical_content', 'pursue_authority_prospect']),
+  "category": zod.enum(['content', 'linking', 'technical', 'visibility', 'authority']),
+  "targetUrl": zod.string(),
+  "title": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "score": zod.number(),
+  "impressionsAtStake": zod.number(),
+  "clicksAtStake": zod.number(),
+  "source": zod.record(zod.string(), zod.unknown()).optional(),
+  "sourceRecords": zod.array(zod.object({
+  "kind": zod.string(),
+  "label": zod.string(),
+  "url": zod.string().optional(),
+  "observedAt": zod.coerce.date().optional(),
+  "data": zod.record(zod.string(), zod.unknown()).optional()
+})),
+  "scoreComponents": zod.record(zod.string(), zod.unknown()),
+  "owner": zod.string().nullish(),
+  "dueDate": zod.coerce.date().nullish(),
+  "market": zod.string(),
+  "freshness": zod.enum(['fresh', 'stale', 'missing']),
+  "sourceObservedAt": zod.coerce.date().nullish(),
+  "version": zod.number(),
+  "status": zod.enum(['open', 'done', 'dismissed']),
+  "resolution": zod.union([zod.literal('manual'),zod.literal('auto'),zod.literal(null)]).nullish(),
+  "pinnedOpen": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullish(),
+  "dismissedAt": zod.coerce.date().nullish(),
+  "lastSeenAt": zod.coerce.date().nullish(),
+  "updatedAt": zod.coerce.date().optional()
 })
 
 

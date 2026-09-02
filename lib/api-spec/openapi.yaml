@@ -55,7 +55,7 @@ tags:
   - name: kb
     description: Knowledge base documents used to ground optimization briefs
   - name: actions
-    description: Prioritized action queue — one ranked "do this next" list
+    description: Unified Opportunities workspace and governed review workflow
   - name: impact
     description: Before/after search impact of completed work, from GSC snapshots
   - name: digests
@@ -2062,7 +2062,7 @@ paths:
     get:
       operationId: listActions
       tags: [actions]
-      summary: Ranked action queue — what to do next, scored by search opportunity
+      summary: Ranked Opportunities workspace — the sole task record across all SEO signals
       parameters:
         - in: query
           name: status
@@ -2071,6 +2071,17 @@ paths:
             type: string
             enum: [open, done, dismissed, all]
             default: open
+        - in: query
+          name: category
+          required: false
+          schema:
+            type: string
+            enum: [content, linking, technical, visibility, authority, all]
+            default: all
+        - in: query
+          name: market
+          required: false
+          schema: { type: string }
       responses:
         "200":
           description: Action queue with counts
@@ -2078,6 +2089,68 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ActionQueue"
+  /actions/sheet-info:
+    get:
+      operationId: getOpportunitiesSheetInfo
+      tags: [actions]
+      summary: Get the active site's persistent governed Opportunities sheet
+      responses:
+        "200":
+          description: Sheet binding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpportunitiesSheetInfo"
+  /actions/export-sheet:
+    post:
+      operationId: exportOpportunitiesSheet
+      tags: [actions]
+      summary: Create or refresh the persistent governed Opportunities sheet from app records
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpportunitiesSheetInput"
+      responses:
+        "200":
+          description: Sheet refreshed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpportunitiesSheetResult"
+  /actions/sync-sheet:
+    post:
+      operationId: syncOpportunitiesSheet
+      tags: [actions]
+      summary: Import whitelisted review fields with site and optimistic-version validation
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpportunitiesSyncResult"
+        "409":
+          description: No sheet has been bound for this site
+  /actions/batch-review:
+    post:
+      operationId: batchReviewActions
+      tags: [actions]
+      summary: Apply governed owner, status, due-date, and market changes to multiple opportunities
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActionBatchReviewInput"
+      responses:
+        "200":
+          description: Batch review result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionBatchReviewResult"
   /actions/{id}/status:
     post:
       operationId: setActionStatus
@@ -2103,6 +2176,31 @@ paths:
                 $ref: "#/components/schemas/ActionItem"
         "404":
           description: Action not found
+  /actions/{id}:
+    patch:
+      operationId: updateAction
+      tags: [actions]
+      summary: Update governed workflow fields on an opportunity
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActionReviewInput"
+      responses:
+        "200":
+          description: Updated opportunity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionItem"
+        "409":
+          description: The opportunity changed since it was loaded
   /health-score:
     get:
       operationId: getHealthScore
@@ -2873,18 +2971,27 @@ components:
       required:
         - id
         - actionType
+        - category
         - targetUrl
         - score
         - impressionsAtStake
         - clicksAtStake
         - status
         - pinnedOpen
+        - sourceRecords
+        - scoreComponents
+        - market
+        - freshness
+        - version
         - createdAt
       properties:
         id: { type: integer }
         actionType:
           type: string
-          enum: [add_inbound_links, add_outbound_links, fix_losing_query, review_suggestions, optimize_content, improve_ctr, fix_cannibalization]
+          enum: [add_inbound_links, add_outbound_links, fix_losing_query, review_suggestions, optimize_content, improve_ctr, fix_cannibalization, create_topical_content, pursue_authority_prospect]
+        category:
+          type: string
+          enum: [content, linking, technical, visibility, authority]
         targetUrl: { type: string }
         title: { type: ["string", "null"] }
         description: { type: ["string", "null"] }
@@ -2894,6 +3001,21 @@ components:
         source:
           type: object
           additionalProperties: true
+        sourceRecords:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActionSourceRecord"
+        scoreComponents:
+          type: object
+          additionalProperties: true
+        owner: { type: ["string", "null"] }
+        dueDate: { type: ["string", "null"], format: date }
+        market: { type: string }
+        freshness:
+          type: string
+          enum: [fresh, stale, missing]
+        sourceObservedAt: { type: ["string", "null"], format: date-time }
+        version: { type: integer }
         status:
           type: string
           enum: [open, done, dismissed]
@@ -2903,6 +3025,18 @@ components:
         completedAt: { type: ["string", "null"], format: date-time }
         dismissedAt: { type: ["string", "null"], format: date-time }
         lastSeenAt: { type: ["string", "null"], format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ActionSourceRecord:
+      type: object
+      required: [kind, label]
+      properties:
+        kind: { type: string }
+        label: { type: string }
+        url: { type: string }
+        observedAt: { type: string, format: date-time }
+        data:
+          type: object
+          additionalProperties: true
     ActionQueue:
       type: object
       required: [generatedAt, counts, gscWindowStart, gscWindowEnd, items]
@@ -2930,6 +3064,66 @@ components:
         status:
           type: string
           enum: [open, done, dismissed]
+    ActionReviewInput:
+      type: object
+      required: [expectedVersion]
+      properties:
+        expectedVersion: { type: integer, minimum: 1 }
+        status:
+          type: string
+          enum: [open, done, dismissed]
+        owner: { type: ["string", "null"], maxLength: 200 }
+        dueDate: { type: ["string", "null"], format: date }
+        market: { type: string, minLength: 1, maxLength: 100 }
+    ActionBatchReviewRow:
+      allOf:
+        - $ref: "#/components/schemas/ActionReviewInput"
+        - type: object
+          required: [id]
+          properties:
+            id: { type: integer, minimum: 1 }
+    ActionBatchReviewInput:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/ActionBatchReviewRow"
+    ActionBatchReviewResult:
+      type: object
+      required: [updated, stale, invalid]
+      properties:
+        updated: { type: integer }
+        stale: { type: integer }
+        invalid: { type: integer }
+    OpportunitiesSheetInput:
+      type: object
+      properties:
+        spreadsheetId: { type: string, minLength: 20, maxLength: 200 }
+    OpportunitiesSheetInfo:
+      type: object
+      required: [url, lastExportedAt, lastImportedAt]
+      properties:
+        url: { type: ["string", "null"] }
+        lastExportedAt: { type: ["string", "null"], format: date-time }
+        lastImportedAt: { type: ["string", "null"], format: date-time }
+    OpportunitiesSheetResult:
+      type: object
+      required: [url, rowCount, exportedAt]
+      properties:
+        url: { type: string }
+        rowCount: { type: integer }
+        exportedAt: { type: string, format: date-time }
+    OpportunitiesSyncResult:
+      allOf:
+        - $ref: "#/components/schemas/ActionBatchReviewResult"
+        - type: object
+          required: [importedAt]
+          properties:
+            importedAt: { type: string, format: date-time }
     HealthComponent:
       type: object
       required: [key, label, weight, penalty, deduction, raw, detail]

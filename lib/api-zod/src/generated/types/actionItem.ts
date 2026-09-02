@@ -6,13 +6,18 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ActionItemActionType } from './actionItemActionType';
+import type { ActionItemCategory } from './actionItemCategory';
+import type { ActionItemFreshness } from './actionItemFreshness';
 import type { ActionItemResolution } from './actionItemResolution';
+import type { ActionItemScoreComponents } from './actionItemScoreComponents';
 import type { ActionItemSource } from './actionItemSource';
 import type { ActionItemStatus } from './actionItemStatus';
+import type { ActionSourceRecord } from './actionSourceRecord';
 
 export interface ActionItem {
   id: number;
   actionType: ActionItemActionType;
+  category: ActionItemCategory;
   targetUrl: string;
   /** @nullable */
   title?: string | null;
@@ -22,6 +27,17 @@ export interface ActionItem {
   impressionsAtStake: number;
   clicksAtStake: number;
   source?: ActionItemSource;
+  sourceRecords: ActionSourceRecord[];
+  scoreComponents: ActionItemScoreComponents;
+  /** @nullable */
+  owner?: string | null;
+  /** @nullable */
+  dueDate?: Date | null;
+  market: string;
+  freshness: ActionItemFreshness;
+  /** @nullable */
+  sourceObservedAt?: Date | null;
+  version: number;
   status: ActionItemStatus;
   /** @nullable */
   resolution?: ActionItemResolution;
@@ -33,4 +49,5 @@ export interface ActionItem {
   dismissedAt?: Date | null;
   /** @nullable */
   lastSeenAt?: Date | null;
+  updatedAt?: Date;
 }

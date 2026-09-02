@@ -20,8 +20,11 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ActionBatchReviewInput,
+  ActionBatchReviewResult,
   ActionItem,
   ActionQueue,
+  ActionReviewInput,
   ActionStatusInput,
   AdminOverview,
   AiCitationUpload,
@@ -130,6 +133,10 @@ import type {
   LoserWeekOption,
   MovementSheetInfo,
   OkResponse,
+  OpportunitiesSheetInfo,
+  OpportunitiesSheetInput,
+  OpportunitiesSheetResult,
+  OpportunitiesSyncResult,
   OptimizeQueueInput,
   OptimizeQueueItem,
   PageKeywordInput,
@@ -8793,7 +8800,7 @@ export const getListActionsUrl = (params?: ListActionsParams,) => {
 }
 
 /**
- * @summary Ranked action queue — what to do next, scored by search opportunity
+ * @summary Ranked Opportunities workspace — the sole task record across all SEO signals
  */
 export const listActions = async (params?: ListActionsParams, options?: RequestInit): Promise<ActionQueue> => {
 
@@ -8840,7 +8847,7 @@ export type ListActionsQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Ranked action queue — what to do next, scored by search opportunity
+ * @summary Ranked Opportunities workspace — the sole task record across all SEO signals
  */
 
 export function useListActions<TData = Awaited<ReturnType<typeof listActions>>, TError = ErrorType<unknown>>(
@@ -8860,6 +8867,295 @@ export function useListActions<TData = Awaited<ReturnType<typeof listActions>>, 
 
 
 
+
+export const getGetOpportunitiesSheetInfoUrl = () => {
+
+
+
+
+  return `/api/actions/sheet-info`
+}
+
+/**
+ * @summary Get the active site's persistent governed Opportunities sheet
+ */
+export const getOpportunitiesSheetInfo = async ( options?: RequestInit): Promise<OpportunitiesSheetInfo> => {
+
+  return customFetch<OpportunitiesSheetInfo>(getGetOpportunitiesSheetInfoUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetOpportunitiesSheetInfoQueryKey = () => {
+    return [
+    `/api/actions/sheet-info`
+    ] as const;
+    }
+
+
+export const getGetOpportunitiesSheetInfoQueryOptions = <TData = Awaited<ReturnType<typeof getOpportunitiesSheetInfo>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOpportunitiesSheetInfo>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetOpportunitiesSheetInfoQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOpportunitiesSheetInfo>>> = ({ signal }) => getOpportunitiesSheetInfo({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getOpportunitiesSheetInfo>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetOpportunitiesSheetInfoQueryResult = NonNullable<Awaited<ReturnType<typeof getOpportunitiesSheetInfo>>>
+export type GetOpportunitiesSheetInfoQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the active site's persistent governed Opportunities sheet
+ */
+
+export function useGetOpportunitiesSheetInfo<TData = Awaited<ReturnType<typeof getOpportunitiesSheetInfo>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOpportunitiesSheetInfo>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetOpportunitiesSheetInfoQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getExportOpportunitiesSheetUrl = () => {
+
+
+
+
+  return `/api/actions/export-sheet`
+}
+
+/**
+ * @summary Create or refresh the persistent governed Opportunities sheet from app records
+ */
+export const exportOpportunitiesSheet = async (opportunitiesSheetInput?: OpportunitiesSheetInput, options?: RequestInit): Promise<OpportunitiesSheetResult> => {
+
+  return customFetch<OpportunitiesSheetResult>(getExportOpportunitiesSheetUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      opportunitiesSheetInput,)
+  }
+);}
+
+
+
+
+export const getExportOpportunitiesSheetMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportOpportunitiesSheet>>, TError,{data?: BodyType<OpportunitiesSheetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof exportOpportunitiesSheet>>, TError,{data?: BodyType<OpportunitiesSheetInput>}, TContext> => {
+
+const mutationKey = ['exportOpportunitiesSheet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof exportOpportunitiesSheet>>, {data?: BodyType<OpportunitiesSheetInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  exportOpportunitiesSheet(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ExportOpportunitiesSheetMutationResult = NonNullable<Awaited<ReturnType<typeof exportOpportunitiesSheet>>>
+    export type ExportOpportunitiesSheetMutationBody = BodyType<OpportunitiesSheetInput> | undefined
+    export type ExportOpportunitiesSheetMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create or refresh the persistent governed Opportunities sheet from app records
+ */
+export const useExportOpportunitiesSheet = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof exportOpportunitiesSheet>>, TError,{data?: BodyType<OpportunitiesSheetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof exportOpportunitiesSheet>>,
+        TError,
+        {data?: BodyType<OpportunitiesSheetInput>},
+        TContext
+      > => {
+      return useMutation(getExportOpportunitiesSheetMutationOptions(options));
+    }
+
+export const getSyncOpportunitiesSheetUrl = () => {
+
+
+
+
+  return `/api/actions/sync-sheet`
+}
+
+/**
+ * @summary Import whitelisted review fields with site and optimistic-version validation
+ */
+export const syncOpportunitiesSheet = async ( options?: RequestInit): Promise<OpportunitiesSyncResult> => {
+
+  return customFetch<OpportunitiesSyncResult>(getSyncOpportunitiesSheetUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getSyncOpportunitiesSheetMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncOpportunitiesSheet>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof syncOpportunitiesSheet>>, TError,void, TContext> => {
+
+const mutationKey = ['syncOpportunitiesSheet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncOpportunitiesSheet>>, void> = () => {
+
+
+          return  syncOpportunitiesSheet(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SyncOpportunitiesSheetMutationResult = NonNullable<Awaited<ReturnType<typeof syncOpportunitiesSheet>>>
+
+    export type SyncOpportunitiesSheetMutationError = ErrorType<void>
+
+    /**
+ * @summary Import whitelisted review fields with site and optimistic-version validation
+ */
+export const useSyncOpportunitiesSheet = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncOpportunitiesSheet>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof syncOpportunitiesSheet>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getSyncOpportunitiesSheetMutationOptions(options));
+    }
+
+export const getBatchReviewActionsUrl = () => {
+
+
+
+
+  return `/api/actions/batch-review`
+}
+
+/**
+ * @summary Apply governed owner, status, due-date, and market changes to multiple opportunities
+ */
+export const batchReviewActions = async (actionBatchReviewInput: ActionBatchReviewInput, options?: RequestInit): Promise<ActionBatchReviewResult> => {
+
+  return customFetch<ActionBatchReviewResult>(getBatchReviewActionsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      actionBatchReviewInput,)
+  }
+);}
+
+
+
+
+export const getBatchReviewActionsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof batchReviewActions>>, TError,{data: BodyType<ActionBatchReviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof batchReviewActions>>, TError,{data: BodyType<ActionBatchReviewInput>}, TContext> => {
+
+const mutationKey = ['batchReviewActions'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof batchReviewActions>>, {data: BodyType<ActionBatchReviewInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  batchReviewActions(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BatchReviewActionsMutationResult = NonNullable<Awaited<ReturnType<typeof batchReviewActions>>>
+    export type BatchReviewActionsMutationBody = BodyType<ActionBatchReviewInput>
+    export type BatchReviewActionsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Apply governed owner, status, due-date, and market changes to multiple opportunities
+ */
+export const useBatchReviewActions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof batchReviewActions>>, TError,{data: BodyType<ActionBatchReviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof batchReviewActions>>,
+        TError,
+        {data: BodyType<ActionBatchReviewInput>},
+        TContext
+      > => {
+      return useMutation(getBatchReviewActionsMutationOptions(options));
+    }
 
 export const getSetActionStatusUrl = (id: number,) => {
 
@@ -8931,6 +9227,78 @@ export const useSetActionStatus = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getSetActionStatusMutationOptions(options));
+    }
+
+export const getUpdateActionUrl = (id: number,) => {
+
+
+
+
+  return `/api/actions/${id}`
+}
+
+/**
+ * @summary Update governed workflow fields on an opportunity
+ */
+export const updateAction = async (id: number,
+    actionReviewInput: ActionReviewInput, options?: RequestInit): Promise<ActionItem> => {
+
+  return customFetch<ActionItem>(getUpdateActionUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      actionReviewInput,)
+  }
+);}
+
+
+
+
+export const getUpdateActionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAction>>, TError,{id: number;data: BodyType<ActionReviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAction>>, TError,{id: number;data: BodyType<ActionReviewInput>}, TContext> => {
+
+const mutationKey = ['updateAction'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAction>>, {id: number;data: BodyType<ActionReviewInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateAction(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateActionMutationResult = NonNullable<Awaited<ReturnType<typeof updateAction>>>
+    export type UpdateActionMutationBody = BodyType<ActionReviewInput>
+    export type UpdateActionMutationError = ErrorType<void>
+
+    /**
+ * @summary Update governed workflow fields on an opportunity
+ */
+export const useUpdateAction = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAction>>, TError,{id: number;data: BodyType<ActionReviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAction>>,
+        TError,
+        {id: number;data: BodyType<ActionReviewInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateActionMutationOptions(options));
     }
 
 export const getGetHealthScoreUrl = () => {

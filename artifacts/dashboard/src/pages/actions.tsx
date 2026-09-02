@@ -5,6 +5,10 @@ import {
   useListActions,
   getListActionsQueryKey,
   useSetActionStatus,
+  useExportOpportunitiesSheet,
+  useGetOpportunitiesSheetInfo,
+  getGetOpportunitiesSheetInfoQueryKey,
+  useSyncOpportunitiesSheet,
   type ActionItem,
 } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,6 +30,11 @@ import {
   ChevronRight,
   MousePointerClick,
   Split,
+  Sheet,
+  RefreshCw,
+  CalendarDays,
+  UserRound,
+  Database,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { HowThisWorks } from "@/components/how-this-works";
@@ -33,6 +42,7 @@ import { ImpactWins } from "@/components/impact-wins";
 import { InfoTip } from "@/components/info-tip";
 
 type StatusFilter = "open" | "done" | "dismissed" | "all";
+type CategoryFilter = "all" | "content" | "linking" | "technical" | "visibility" | "authority";
 
 /** "Aug 6 – Aug 12, 2026" for the 7-day stored GSC window, or a fallback. */
 function gscWindowLabel(start: string | null | undefined, end: string | null | undefined): string {
@@ -103,6 +113,20 @@ const TYPE_CONFIG: Record<
     route: "/link-lookups",
     routeLabel: "Suggest Links",
   },
+  create_topical_content: {
+    label: "Create topical content",
+    icon: Settings2,
+    badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    route: "/topical-map",
+    routeLabel: "Topical Map",
+  },
+  pursue_authority_prospect: {
+    label: "Earn authority",
+    icon: ArrowUpRight,
+    badgeClass: "bg-indigo-100 text-indigo-800 border-indigo-200",
+    route: "/backlinks",
+    routeLabel: "Backlinks",
+  },
 };
 
 function pathOf(url: string): string {
@@ -148,6 +172,7 @@ function ActionRow({
             <Badge variant="outline" className={cfg.badgeClass}>
               {cfg.label}
             </Badge>
+            <Badge variant="secondary" className="capitalize">{item.category}</Badge>
             <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
               score {Math.round(item.score)}
               <InfoTip>How urgent this task is. Higher scores mean a bigger likely payoff, so work down the list from the top.</InfoTip>
@@ -192,6 +217,21 @@ function ActionRow({
               {fmtNum(item.impressionsAtStake)} impressions at stake
               <InfoTip>Impressions are the times your page showed up in Google's results. "At stake" is roughly how many you could gain or lose depending on whether you do this fix.</InfoTip>
             </span>
+            <span className="inline-flex items-center gap-1" title="Assigned owner">
+              <UserRound className="h-3 w-3" />
+              {item.owner || "unassigned"}
+            </span>
+            <span className="inline-flex items-center gap-1" title="Due date">
+              <CalendarDays className="h-3 w-3" />
+              {item.dueDate || "no due date"}
+            </span>
+            <span>{item.market} market</span>
+            <Badge
+              variant="outline"
+              className={item.freshness === "fresh" ? "text-emerald-700" : "text-amber-700"}
+            >
+              {item.freshness}
+            </Badge>
             <span className="inline-flex items-center gap-1">
               {fmtNum(item.clicksAtStake)} clicks at stake
               <InfoTip>Clicks are the times people actually clicked through to your page. "At stake" is roughly how many extra visits this fix could win you.</InfoTip>
@@ -215,6 +255,26 @@ function ActionRow({
               {cfg.routeLabel}
             </Link>
           </div>
+          <details className="mt-2 text-xs text-muted-foreground">
+            <summary className="cursor-pointer inline-flex items-center gap-1 font-medium">
+              <Database className="h-3 w-3" />
+              Source evidence & score
+            </summary>
+            <div className="mt-2 rounded-md border bg-muted/30 p-2 space-y-1">
+              {item.sourceRecords.map((record, index) => (
+                <p key={`${record.kind}-${index}`}>
+                  <span className="font-medium capitalize">{record.label}</span>
+                  {record.observedAt ? ` · observed ${new Date(record.observedAt).toLocaleDateString()}` : ""}
+                </p>
+              ))}
+              <p>
+                Components:{" "}
+                {Object.entries(item.scoreComponents)
+                  .map(([key, value]) => `${key.replace(/([A-Z])/g, " $1")}: ${String(value)}`)
+                  .join(" · ")}
+              </p>
+            </div>
+          </details>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {item.status === "open" ? (
@@ -260,13 +320,34 @@ function ActionRow({
 
 export default function Actions() {
   const [status, setStatus] = useState<StatusFilter>("open");
+  const [category, setCategory] = useState<CategoryFilter>("all");
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const { data, isLoading } = useListActions(
-    { status },
-    { query: { queryKey: getListActionsQueryKey({ status }) } },
+    { status, category },
+    { query: { queryKey: getListActionsQueryKey({ status, category }) } },
   );
+  const sheetInfo = useGetOpportunitiesSheetInfo();
+  const exportSheet = useExportOpportunitiesSheet({
+    mutation: {
+      onSuccess: (result) => {
+        void queryClient.invalidateQueries({ queryKey: getGetOpportunitiesSheetInfoQueryKey() });
+        toast({ title: "Opportunities exported", description: `${result.rowCount} rows refreshed in Google Sheets.` });
+      },
+      onError: () => toast({ title: "Export failed", description: "Google Sheets could not be refreshed.", variant: "destructive" }),
+    },
+  });
+  const syncSheet = useSyncOpportunitiesSheet({
+    mutation: {
+      onSuccess: (result) => {
+        void queryClient.invalidateQueries({ queryKey: ["/actions"] });
+        void queryClient.invalidateQueries({ queryKey: getGetOpportunitiesSheetInfoQueryKey() });
+        toast({ title: "Sheet review imported", description: `${result.updated} updated, ${result.stale} stale, ${result.invalid} invalid.` });
+      },
+      onError: () => toast({ title: "Import failed", description: "Check the sheet headers and row versions.", variant: "destructive" }),
+    },
+  });
 
   const mutation = useSetActionStatus({
     mutation: {
@@ -296,23 +377,51 @@ export default function Actions() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
         <h1 className="flex items-center gap-2 text-2xl font-semibold">
           <ListTodo className="h-6 w-6" />
-          Action Queue
+          Opportunities
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Everything worth doing next, ranked by search opportunity. Refreshed
-          automatically after each crawl and GSC sync.
+          One ranked workspace across content, linking, technical, visibility,
+          and authority. Specialist tools provide evidence; this is the task record.
         </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {sheetInfo.data?.url && (
+            <Button variant="outline" asChild>
+              <a href={sheetInfo.data.url} target="_blank" rel="noreferrer">
+                <Sheet className="mr-2 h-4 w-4" /> Open sheet
+              </a>
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            disabled={exportSheet.isPending}
+            onClick={() => exportSheet.mutate({ data: {} })}
+          >
+            <Sheet className="mr-2 h-4 w-4" />
+            {sheetInfo.data?.url ? "Refresh export" : "Export to Sheets"}
+          </Button>
+          {sheetInfo.data?.url && (
+            <Button
+              variant="outline"
+              disabled={syncSheet.isPending}
+              onClick={() => syncSheet.mutate()}
+            >
+              <RefreshCw className="mr-2 h-4 w-4" /> Import reviews
+            </Button>
+          )}
+        </div>
       </div>
 
       <HowThisWorks
-        summary="One ranked to-do list built from orphans, dead ends, losing queries, pending suggestions, and the optimize queue."
+        summary="One governed opportunity list built from specialist evidence without creating duplicate task stores."
         steps={[
           {
             title: "Signals are collected",
-            body: "After every crawl, GSC sync, and semantic-linking run, the queue rebuilds from five signals: orphan pages (need inbound links), dead-end pages (need outbound links), queries losing position, pending semantic link suggestions, and pages queued in the Optimizer.",
+            body: "After source jobs run, Opportunities reconciles orphans, dead ends, ranking and CTR issues, semantic suggestions, optimizer work, topical gaps, and authority prospects by stable identity.",
           },
           {
             title: "Each action is scored",
@@ -355,6 +464,19 @@ export default function Actions() {
           </TabsTrigger>
         </TabsList>
       </Tabs>
+      <div className="flex flex-wrap gap-2" aria-label="Opportunity category">
+        {(["all", "content", "linking", "technical", "visibility", "authority"] as const).map((value) => (
+          <Button
+            key={value}
+            size="sm"
+            variant={category === value ? "default" : "outline"}
+            className="capitalize"
+            onClick={() => setCategory(value)}
+          >
+            {value}
+          </Button>
+        ))}
+      </div>
 
       {data?.gscWindowStart != null && (
         <p className="text-xs text-muted-foreground">
@@ -374,7 +496,7 @@ export default function Actions() {
         <Card>
           <CardContent className="py-12 text-center text-sm text-muted-foreground">
             {status === "open"
-              ? "Nothing to do — the queue is clear. It refreshes after each crawl and GSC sync."
+              ? "No matching open opportunities. The workspace refreshes after source jobs run."
               : `No ${status === "all" ? "" : status + " "}actions yet.`}
           </CardContent>
         </Card>

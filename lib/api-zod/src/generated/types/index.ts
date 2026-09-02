@@ -6,13 +6,23 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './actionBatchReviewInput';
+export * from './actionBatchReviewResult';
+export * from './actionBatchReviewRow';
 export * from './actionItem';
 export * from './actionItemActionType';
+export * from './actionItemCategory';
+export * from './actionItemFreshness';
 export * from './actionItemResolution';
+export * from './actionItemScoreComponents';
 export * from './actionItemSource';
 export * from './actionItemStatus';
 export * from './actionQueue';
 export * from './actionQueueCounts';
+export * from './actionReviewInput';
+export * from './actionReviewInputStatus';
+export * from './actionSourceRecord';
+export * from './actionSourceRecordData';
 export * from './actionStatusInput';
 export * from './actionStatusInputStatus';
 export * from './adminOverview';
@@ -245,6 +255,7 @@ export * from './linkMapSheetExportResult';
 export * from './linkMapSheetInfo';
 export * from './linkRef';
 export * from './linkSuggestion';
+export * from './listActionsCategory';
 export * from './listActionsParams';
 export * from './listActionsStatus';
 export * from './listGscProperties200';
@@ -260,6 +271,10 @@ export * from './loserWeekCounts';
 export * from './loserWeekOption';
 export * from './movementSheetInfo';
 export * from './okResponse';
+export * from './opportunitiesSheetInfo';
+export * from './opportunitiesSheetInput';
+export * from './opportunitiesSheetResult';
+export * from './opportunitiesSyncResult';
 export * from './optimizeQueueInput';
 export * from './optimizeQueueInputPriority';
 export * from './optimizeQueueItem';

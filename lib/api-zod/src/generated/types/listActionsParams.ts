@@ -5,8 +5,11 @@
  * Linkweave internal linking system API
  * OpenAPI spec version: 0.1.0
  */
+import type { ListActionsCategory } from './listActionsCategory';
 import type { ListActionsStatus } from './listActionsStatus';
 
 export type ListActionsParams = {
 status?: ListActionsStatus;
+category?: ListActionsCategory;
+market?: string;
 };

@@ -4,6 +4,7 @@ import {
   text,
   integer,
   boolean,
+  date,
   doublePrecision,
   timestamp,
   jsonb,
@@ -37,6 +38,26 @@ export const actionItemsTable = pgTable(
     clicksAtStake: integer("clicks_at_stake").default(0).notNull(),
     /** Type-specific detail (severity, suggestion count, top query, ...). */
     source: jsonb("source").$type<Record<string, unknown>>().default({}),
+    /** Stable workspace grouping: content | linking | technical | visibility | authority. */
+    category: text("category").default("technical").notNull(),
+    /** Canonical, human-readable source records retained alongside the summary source payload. */
+    sourceRecords: jsonb("source_records")
+      .$type<Array<{ kind: string; label: string; url?: string; observedAt?: string; data?: Record<string, unknown> }>>()
+      .default([])
+      .notNull(),
+    /** Explainable score inputs; score remains the sortable aggregate. */
+    scoreComponents: jsonb("score_components")
+      .$type<Record<string, number | string | null>>()
+      .default({})
+      .notNull(),
+    owner: text("owner"),
+    dueDate: date("due_date", { mode: "string" }),
+    market: text("market").default("global").notNull(),
+    /** fresh | stale | missing */
+    freshness: text("freshness").default("fresh").notNull(),
+    sourceObservedAt: timestamp("source_observed_at", { withTimezone: true }),
+    /** Optimistic-lock token used by governed spreadsheet and batch updates. */
+    version: integer("version").default(1).notNull(),
     /** open | done | dismissed */
     status: text("status").default("open").notNull(),
     /** How a non-open row got there: manual (admin click) | auto (signal resolved). */
@@ -51,6 +72,7 @@ export const actionItemsTable = pgTable(
     completedAt: timestamp("completed_at", { withTimezone: true }),
     dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({
     uniq: uniqueIndex("action_items_dedupe_uniq").on(t.siteId, t.dedupeKey),

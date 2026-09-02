@@ -1,6 +1,7 @@
 import {
   db,
   actionItemsTable,
+  backlinkProspectsTable,
   gscSnapshotsTable,
   inventoryTable,
   linkExcludeListTable,
@@ -8,6 +9,9 @@ import {
   linkSuggestionsTable,
   optimizeQueueTable,
   queryLosersTable,
+  sitesTable,
+  topicalMapNodesTable,
+  topicalMapsTable,
   wpPostsTable,
 } from "@workspace/db";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
@@ -55,7 +59,11 @@ export type ActionType =
   | "review_suggestions"
   | "optimize_content"
   | "improve_ctr"
-  | "fix_cannibalization";
+  | "fix_cannibalization"
+  | "create_topical_content"
+  | "pursue_authority_prospect";
+
+export type OpportunityCategory = "content" | "linking" | "technical" | "visibility" | "authority";
 
 const TYPE_WEIGHTS: Record<ActionType, number> = {
   fix_losing_query: 100, // critical gets 100; high 70 (handled below)
@@ -65,6 +73,8 @@ const TYPE_WEIGHTS: Record<ActionType, number> = {
   optimize_content: 55,
   review_suggestions: 50,
   add_outbound_links: 30,
+  create_topical_content: 58,
+  pursue_authority_prospect: 45,
 };
 
 /**
@@ -128,6 +138,48 @@ interface DesiredAction {
   impressionsAtStake: number;
   clicksAtStake: number;
   source: Record<string, unknown>;
+  category?: OpportunityCategory;
+  sourceObservedAt?: Date | null;
+}
+
+const CATEGORY_BY_TYPE: Record<ActionType, OpportunityCategory> = {
+  add_inbound_links: "technical",
+  add_outbound_links: "technical",
+  fix_losing_query: "visibility",
+  review_suggestions: "linking",
+  optimize_content: "content",
+  improve_ctr: "visibility",
+  fix_cannibalization: "linking",
+  create_topical_content: "content",
+  pursue_authority_prospect: "authority",
+};
+
+function metadataFor(action: DesiredAction, now: Date) {
+  const observedAt = action.sourceObservedAt ?? now;
+  const ageDays = Math.max(0, (now.getTime() - observedAt.getTime()) / 86_400_000);
+  const sourceKind = typeof action.source.kind === "string" ? action.source.kind : action.actionType;
+  const sourceLabel = sourceKind.replace(/_/g, " ");
+  const weight = TYPE_WEIGHTS[action.actionType];
+  return {
+    category: action.category ?? CATEGORY_BY_TYPE[action.actionType],
+    sourceRecords: [
+      {
+        kind: sourceKind,
+        label: sourceLabel,
+        url: action.targetUrl,
+        observedAt: observedAt.toISOString(),
+        data: action.source,
+      },
+    ],
+    scoreComponents: {
+      typeWeight: weight,
+      impressionsAtStake: action.impressionsAtStake,
+      trafficMultiplier: Math.round((1 + Math.log10(1 + action.impressionsAtStake)) * 100) / 100,
+      aggregate: Math.round(action.score * 100) / 100,
+    },
+    freshness: ageDays > 35 ? "stale" : "fresh",
+    sourceObservedAt: observedAt,
+  };
 }
 
 async function loadTitleMap(urls: string[], siteId: number): Promise<Map<string, string>> {
@@ -188,6 +240,86 @@ async function collectDesiredActions(siteId: number): Promise<DesiredAction[]> {
     invByKey.get(urlKey(url)) ?? { impressions: 0, clicks: 0, topQuery: null };
 
   const desired: DesiredAction[] = [];
+
+  // Topical gaps become content opportunities, not a second task store. Only
+  // the newest completed map is projected and identity follows canonical query
+  // rather than run/node ids, so regeneration reconciles to the same row.
+  const [latestMap, site] = await Promise.all([
+    db
+      .select({ id: topicalMapsTable.id, finishedAt: topicalMapsTable.finishedAt })
+      .from(topicalMapsTable)
+      .where(and(eq(topicalMapsTable.siteId, siteId), eq(topicalMapsTable.status, "complete")))
+      .orderBy(desc(topicalMapsTable.id))
+      .limit(1),
+    db.select({ host: sitesTable.host }).from(sitesTable).where(eq(sitesTable.id, siteId)).limit(1),
+  ]);
+  if (latestMap[0]) {
+    const gaps = await db
+      .select()
+      .from(topicalMapNodesTable)
+      .where(
+        and(
+          eq(topicalMapNodesTable.siteId, siteId),
+          eq(topicalMapNodesTable.mapId, latestMap[0].id),
+          eq(topicalMapNodesTable.status, "gap"),
+        ),
+      );
+    for (const gap of gaps) {
+      const queryKey = gap.canonicalQuery.trim().toLowerCase().replace(/\s+/g, " ");
+      const targetUrl = `https://${site[0]?.host ?? ""}${gap.suggestedSlug.startsWith("/") ? "" : "/"}${gap.suggestedSlug}`;
+      const priorityBoost = gap.priority === "high" ? 20 : gap.priority === "low" ? -15 : 0;
+      desired.push({
+        dedupeKey: `create_topical_content:${queryKey}`,
+        actionType: "create_topical_content",
+        category: "content",
+        targetUrl,
+        title: gap.suggestedTitle,
+        description: `Topical coverage gap for "${gap.canonicalQuery}". Create the planned ${gap.pageType.replace(/_/g, " ")} page and connect it to its topic cluster.`,
+        score: scoreOf(TYPE_WEIGHTS.create_topical_content + priorityBoost, 0),
+        impressionsAtStake: 0,
+        clicksAtStake: 0,
+        sourceObservedAt: latestMap[0].finishedAt,
+        source: {
+          kind: "topical_gap",
+          mapId: latestMap[0].id,
+          nodeId: gap.id,
+          canonicalQuery: gap.canonicalQuery,
+          priority: gap.priority,
+          intent: gap.intent,
+          informationGain: gap.informationGain,
+          competitors: gap.competitors ?? [],
+        },
+      });
+    }
+  }
+
+  // Existing backlink prospects are projected into authority work. Prospect
+  // status remains evidence only; action_items owns review workflow state.
+  const prospects = await db
+    .select()
+    .from(backlinkProspectsTable)
+    .where(and(eq(backlinkProspectsTable.siteId, siteId), eq(backlinkProspectsTable.status, "new")));
+  for (const prospect of prospects) {
+    desired.push({
+      dedupeKey: `pursue_authority_prospect:${prospect.domain.toLowerCase()}`,
+      actionType: "pursue_authority_prospect",
+      category: "authority",
+      targetUrl: `https://${prospect.domain}`,
+      title: `Earn a link from ${prospect.domain}`,
+      description: `${prospect.domain} links to ${Array.isArray(prospect.competitorsLinking) ? prospect.competitorsLinking.length : 0} tracked competitor(s). Review relevance and begin outreach.`,
+      score: scoreOf(TYPE_WEIGHTS.pursue_authority_prospect + Math.min(30, Math.round((prospect.rank ?? 0) / 20)), 0),
+      impressionsAtStake: 0,
+      clicksAtStake: 0,
+      sourceObservedAt: prospect.updatedAt,
+      source: {
+        kind: "backlink_prospect",
+        prospectId: prospect.id,
+        domainRank: prospect.rank,
+        backlinks: prospect.backlinks,
+        competitorsLinking: prospect.competitorsLinking,
+      },
+    });
+  }
 
   // 1) Orphans & dead-ends (already ghost-filtered to real pages upstream)
   const stats = await db
@@ -564,7 +696,7 @@ async function collectDesiredActions(siteId: number): Promise<DesiredAction[]> {
   // Attach titles in one pass.
   const all = Array.from(byKey.values());
   const titles = await loadTitleMap(all.map((d) => d.targetUrl), siteId);
-  for (const d of all) d.title = titles.get(urlKey(d.targetUrl)) ?? null;
+  for (const d of all) d.title = titles.get(urlKey(d.targetUrl)) ?? d.title;
   return all;
 }
 
@@ -573,6 +705,28 @@ export interface RecomputeResult {
   created: number;
   updated: number;
   autoClosed: number;
+}
+
+export async function autoCloseActionItem(
+  siteId: number,
+  actionId: number,
+  now = new Date(),
+): Promise<void> {
+  await withDbRetry(
+    () =>
+      db
+        .update(actionItemsTable)
+        .set({
+          status: "done",
+          resolution: "auto",
+          completedAt: now,
+          lastSeenAt: now,
+          updatedAt: now,
+          version: sql`${actionItemsTable.version} + 1`,
+        })
+        .where(and(eq(actionItemsTable.id, actionId), eq(actionItemsTable.siteId, siteId))),
+    { label: "action_queue:auto_close" },
+  );
 }
 
 export async function recomputeActionQueue(siteId: number): Promise<RecomputeResult> {
@@ -598,6 +752,7 @@ export async function recomputeActionQueue(siteId: number): Promise<RecomputeRes
       // auto-close) decided this item's fate; the signal reappearing will be
       // visible again once THIS row ages out, not by flipping it back open.
       if (row.status !== "open") continue;
+      const metadata = metadataFor(want, now);
       await withDbRetry(
         () =>
           db
@@ -609,8 +764,11 @@ export async function recomputeActionQueue(siteId: number): Promise<RecomputeRes
               impressionsAtStake: want.impressionsAtStake,
               clicksAtStake: want.clicksAtStake,
               source: want.source,
+              ...metadata,
               targetUrl: want.targetUrl,
               lastSeenAt: now,
+              updatedAt: now,
+              version: sql`${actionItemsTable.version} + 1`,
             })
             .where(and(eq(actionItemsTable.id, row.id), eq(actionItemsTable.siteId, siteId))),
         { label: "action_queue:update" },
@@ -624,19 +782,13 @@ export async function recomputeActionQueue(siteId: number): Promise<RecomputeRes
       // Source signal vanished — the underlying problem was fixed (links
       // added, suggestion inserted, optimization completed...). Auto-close;
       // completed_at becomes the impact-tracking baseline event.
-      await withDbRetry(
-        () =>
-          db
-            .update(actionItemsTable)
-            .set({ status: "done", resolution: "auto", completedAt: now, lastSeenAt: now })
-            .where(and(eq(actionItemsTable.id, row.id), eq(actionItemsTable.siteId, siteId))),
-        { label: "action_queue:auto_close" },
-      );
+      await autoCloseActionItem(siteId, row.id, now);
       autoClosed++;
     }
   }
 
   for (const want of desiredByKey.values()) {
+    const metadata = metadataFor(want, now);
     await withDbRetry(
       () =>
         db
@@ -652,8 +804,10 @@ export async function recomputeActionQueue(siteId: number): Promise<RecomputeRes
             impressionsAtStake: want.impressionsAtStake,
             clicksAtStake: want.clicksAtStake,
             source: want.source,
+            ...metadata,
             status: "open",
             lastSeenAt: now,
+            updatedAt: now,
           })
           .onConflictDoNothing({ target: [actionItemsTable.siteId, actionItemsTable.dedupeKey] }),
       { label: "action_queue:insert" },
