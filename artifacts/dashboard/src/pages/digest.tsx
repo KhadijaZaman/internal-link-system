@@ -37,6 +37,7 @@ const ACTION_TYPE_LABELS: Record<string, string> = {
   review_suggestions: "Review suggestions",
   optimize_content: "Optimize content",
   improve_ctr: "Improve CTR",
+  improve_ranking: "Push to page one",
   fix_cannibalization: "Fix cannibalization",
 };
 

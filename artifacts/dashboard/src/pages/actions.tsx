@@ -39,6 +39,7 @@ import {
   Pencil,
   Save,
   AlertTriangle,
+  TrendingUp,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { HowThisWorks } from "@/components/how-this-works";
@@ -109,6 +110,13 @@ const TYPE_CONFIG: Record<
     badgeClass: "bg-cyan-100 text-cyan-800 border-cyan-200",
     route: "/report",
     routeLabel: "Page Report",
+  },
+  improve_ranking: {
+    label: "Push to page one",
+    icon: TrendingUp,
+    badgeClass: "bg-indigo-100 text-indigo-800 border-indigo-200",
+    route: "/link-map",
+    routeLabel: "Link Map",
   },
   fix_cannibalization: {
     label: "Fix cannibalization",

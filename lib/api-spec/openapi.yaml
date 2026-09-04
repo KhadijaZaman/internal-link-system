@@ -2990,7 +2990,7 @@ components:
         id: { type: integer }
         actionType:
           type: string
-          enum: [add_inbound_links, add_outbound_links, fix_losing_query, review_suggestions, optimize_content, improve_ctr, fix_cannibalization, create_topical_content, pursue_authority_prospect]
+          enum: [add_inbound_links, add_outbound_links, fix_losing_query, review_suggestions, optimize_content, improve_ctr, improve_ranking, fix_cannibalization, create_topical_content, pursue_authority_prospect]
         category:
           type: string
           enum: [content, linking, technical, visibility, authority]
@@ -4555,7 +4555,7 @@ components:
       properties:
         id:
           type: string
-          enum: [low_ctr, bing_blind_spot, ai_visibility_gap, bing_upside, declining_queries]
+          enum: [low_ctr, striking_distance, bing_blind_spot, ai_visibility_gap, bing_upside, declining_queries]
         severity:
           type: string
           enum: [issue, opportunity, watch]
@@ -4582,7 +4582,7 @@ components:
         aiCitationsAt: { type: ["string", "null"], format: date-time }
     SeoInsightsKpis:
       type: object
-      required: [pages, gscClicks, gscImpressions, bingClicks, bingImpressions, aiCitations, aiSessions, keyEvents, missedClicks]
+      required: [pages, gscClicks, gscImpressions, bingClicks, bingImpressions, aiCitations, aiSessions, keyEvents, missedClicks, strikingUpside]
       properties:
         # Pages with visibility in at least one source (blocklist-filtered).
         pages: { type: integer }
@@ -4595,6 +4595,8 @@ components:
         keyEvents: { type: integer }
         # Estimated clicks lost to below-benchmark CTR across flagged pages (GSC window).
         missedClicks: { type: integer }
+        # Maximum extra clicks if every page-two opportunity reached the target benchmark.
+        strikingUpside: { type: integer }
     SeoInsightsResponse:
       type: object
       required: [freshness, kpis, insights]

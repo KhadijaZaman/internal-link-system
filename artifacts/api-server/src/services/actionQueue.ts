@@ -24,6 +24,8 @@ import {
   CTR_UNDERPERFORM_RATIO,
   CTR_MIN_IMPRESSIONS,
   CTR_MIN_MISSED_CLICKS,
+  strikingInsight,
+  STRIKING_TARGET_POSITION,
   scoreOf,
   pickCannibalContenders,
 } from "../lib/insights";
@@ -39,6 +41,8 @@ import {
  *   - optimize_content    — pages sitting in the optimize queue
  *   - improve_ctr         — top-10 rankings whose CTR is far below the
  *                           position norm (title/meta rewrite = free clicks)
+ *   - improve_ranking     — page-two rankings (11-20) with proven demand; a
+ *                           rank push, not a snippet rewrite
  *   - fix_cannibalization — two+ pages splitting impressions on one query
  *
  * Score = type weight x (1 + log10(1 + impressions at stake)) so pages with
@@ -59,6 +63,7 @@ export type ActionType =
   | "review_suggestions"
   | "optimize_content"
   | "improve_ctr"
+  | "improve_ranking"
   | "fix_cannibalization"
   | "create_topical_content"
   | "pursue_authority_prospect";
@@ -68,6 +73,7 @@ export type OpportunityCategory = "content" | "linking" | "technical" | "visibil
 const TYPE_WEIGHTS: Record<ActionType, number> = {
   fix_losing_query: 100, // critical gets 100; high 70 (handled below)
   fix_cannibalization: 75, // consolidating split rankings compounds fast
+  improve_ranking: 70, // page two → page one multiplies clicks, not just the rate
   improve_ctr: 65, // title/meta rewrite — cheapest click win available
   add_inbound_links: 60,
   optimize_content: 55,
@@ -149,6 +155,7 @@ const CATEGORY_BY_TYPE: Record<ActionType, OpportunityCategory> = {
   review_suggestions: "linking",
   optimize_content: "content",
   improve_ctr: "visibility",
+  improve_ranking: "visibility",
   fix_cannibalization: "linking",
   create_topical_content: "content",
   pursue_authority_prospect: "authority",
@@ -617,7 +624,59 @@ async function collectDesiredActions(siteId: number): Promise<DesiredAction[]> {
       });
     }
 
-    // 6) fix_cannibalization — 2+ pages each holding a real share of one query.
+    // 6) improve_ranking — aggregate page-two queries per canonical URL so one
+    // page yields one governed Opportunity.
+    interface StrikingQuery {
+      query: string;
+      impressions: number;
+      position: number;
+      upsideCeiling: number;
+    }
+    const rankOpp = new Map<
+      string,
+      { url: string; imps: number; clicks: number; ceiling: number; queries: StrikingQuery[] }
+    >();
+    for (const a of byUrlQuery.values()) {
+      const pos = a.posW > 0 ? a.posSum / a.posW : 0;
+      const insight = strikingInsight(pos, a.imps, a.clicks);
+      if (insight.strikingFlag === null) continue;
+      const k = urlKey(a.url);
+      const entry =
+        rankOpp.get(k) ?? { url: a.url, imps: 0, clicks: 0, ceiling: 0, queries: [] };
+      entry.imps += a.imps;
+      entry.clicks += a.clicks;
+      entry.ceiling += insight.upsideCeiling;
+      entry.queries.push({
+        query: a.query,
+        impressions: a.imps,
+        position: Math.round(pos * 10) / 10,
+        upsideCeiling: insight.upsideCeiling,
+      });
+      rankOpp.set(k, entry);
+    }
+    for (const [k, entry] of rankOpp) {
+      entry.queries.sort((a, b) => b.impressions - a.impressions);
+      const top = entry.queries[0]!;
+      const more = entry.queries.length - 1;
+      desired.push({
+        dedupeKey: `improve_ranking:${k}`,
+        actionType: "improve_ranking",
+        targetUrl: entry.url,
+        title: null,
+        description: `Ranks #${top.position} for "${top.query}"${more > 0 ? ` and ${more} other page-two ${more === 1 ? "query" : "queries"}` : ""} with ${entry.imps.toLocaleString()} impressions/week. Page two earns almost no clicks. Add internal links from strong related pages using the query as anchor text, and deepen the content against what ranks above it — up to ~${entry.ceiling.toLocaleString()} clicks/week if it reaches #${STRIKING_TARGET_POSITION}.`,
+        score: scoreOf(TYPE_WEIGHTS.improve_ranking, entry.imps),
+        impressionsAtStake: entry.imps,
+        clicksAtStake: entry.clicks,
+        source: {
+          kind: "striking_distance",
+          snapshotDate: snapDate,
+          upsideCeilingPerWeek: entry.ceiling,
+          queries: entry.queries.slice(0, 3),
+        },
+      });
+    }
+
+    // 7) fix_cannibalization — 2+ pages each holding a real share of one query.
     interface Contender {
       key: string;
       url: string;

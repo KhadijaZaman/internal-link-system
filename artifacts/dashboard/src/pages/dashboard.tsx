@@ -55,6 +55,7 @@ import {
   SearchCheck,
   MousePointerClick,
   Split,
+  TrendingUp,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -226,6 +227,7 @@ const ACTION_CONFIG: Record<string, { label: string; icon: LucideIcon; color: st
   review_suggestions: { label: "Review suggestions", icon: Inbox, color: "text-violet-500 bg-violet-50 dark:bg-violet-900/20" },
   optimize_content: { label: "Optimize content", icon: Settings2, color: "text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" },
   improve_ctr: { label: "Improve CTR", icon: MousePointerClick, color: "text-cyan-500 bg-cyan-50 dark:bg-cyan-900/20" },
+  improve_ranking: { label: "Push to page one", icon: TrendingUp, color: "text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20" },
   fix_cannibalization: { label: "Fix cannibalization", icon: Split, color: "text-orange-500 bg-orange-50 dark:bg-orange-900/20" },
 };
 

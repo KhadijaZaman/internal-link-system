@@ -16,4 +16,5 @@ export interface SeoInsightsKpis {
   aiSessions: number;
   keyEvents: number;
   missedClicks: number;
+  strikingUpside: number;
 }

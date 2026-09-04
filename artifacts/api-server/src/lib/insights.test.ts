@@ -10,6 +10,10 @@ import {
   BING_GAP_MAX_BING_IMPRESSIONS,
   BING_UPSIDE_MIN_IMPRESSIONS,
   BING_UPSIDE_MIN_POSITION,
+  STRIKING_MIN_POSITION,
+  STRIKING_MAX_POSITION,
+  STRIKING_MIN_IMPRESSIONS,
+  STRIKING_TARGET_POSITION,
   expectedCtrFor,
   scoreOf,
   ctrInsight,
@@ -19,6 +23,7 @@ import {
   searchEngineGap,
   bingUpside,
   aiVisibilityGap,
+  strikingInsight,
 } from "./insights";
 
 describe("expectedCtrFor", () => {
@@ -263,5 +268,48 @@ describe("pickCannibalContenders", () => {
     const c = page(300, 20, 2, "c");
     const out = pickCannibalContenders([a, b, c], 1000);
     expect(out.map((x) => x.url)).toEqual(["c", "b", "a"]); // c wins tie on position
+  });
+});
+
+describe("strikingInsight", () => {
+  it("flags page two with real demand and sizes the upside ceiling", () => {
+    const result = strikingInsight(14.75, 48_536, 0);
+    expect(result.strikingFlag).toBe("striking_distance");
+    expect(result.upsideCeiling).toBe(
+      Math.round(48_536 * EXPECTED_CTR[STRIKING_TARGET_POSITION]!),
+    );
+  });
+
+  it("does not flag the top ten or rankings past page two", () => {
+    expect(strikingInsight(10, 5_000, 10).strikingFlag).toBeNull();
+    expect(strikingInsight(20.01, 5_000, 1).strikingFlag).toBeNull();
+  });
+
+  it("covers the whole 11-20 band inclusively", () => {
+    expect(strikingInsight(STRIKING_MIN_POSITION, 100, 0).strikingFlag).toBe(
+      "striking_distance",
+    );
+    expect(strikingInsight(STRIKING_MAX_POSITION, 100, 0).strikingFlag).toBe(
+      "striking_distance",
+    );
+  });
+
+  it("suppresses low-volume noise at the impression floor", () => {
+    expect(strikingInsight(15, STRIKING_MIN_IMPRESSIONS - 1, 0).strikingFlag).toBeNull();
+    expect(strikingInsight(15, STRIKING_MIN_IMPRESSIONS, 0).strikingFlag).toBe(
+      "striking_distance",
+    );
+  });
+
+  it("never returns a negative ceiling", () => {
+    expect(strikingInsight(15, 1_000, 900).upsideCeiling).toBe(0);
+  });
+
+  it("is disjoint from the CTR rule", () => {
+    for (const position of [1, 5, 10, 11, 15, 20, 21, 30]) {
+      const ctrFlagged = ctrInsight(position, 0, 1_000).ctrFlag !== null;
+      const strikingFlagged = strikingInsight(position, 1_000, 0).strikingFlag !== null;
+      expect(ctrFlagged && strikingFlagged).toBe(false);
+    }
   });
 });

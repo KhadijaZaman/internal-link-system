@@ -466,6 +466,7 @@ export const ActionItemActionType = {
   review_suggestions: 'review_suggestions',
   optimize_content: 'optimize_content',
   improve_ctr: 'improve_ctr',
+  improve_ranking: 'improve_ranking',
   fix_cannibalization: 'fix_cannibalization',
   create_topical_content: 'create_topical_content',
   pursue_authority_prospect: 'pursue_authority_prospect',
@@ -2043,6 +2044,7 @@ export type SeoInsightId = typeof SeoInsightId[keyof typeof SeoInsightId];
 
 export const SeoInsightId = {
   low_ctr: 'low_ctr',
+  striking_distance: 'striking_distance',
   bing_blind_spot: 'bing_blind_spot',
   ai_visibility_gap: 'ai_visibility_gap',
   bing_upside: 'bing_upside',
@@ -2093,6 +2095,7 @@ export interface SeoInsightsKpis {
   aiSessions: number;
   keyEvents: number;
   missedClicks: number;
+  strikingUpside: number;
 }
 
 export interface SeoInsightsResponse {

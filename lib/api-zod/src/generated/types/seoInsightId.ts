@@ -11,6 +11,7 @@ export type SeoInsightId = typeof SeoInsightId[keyof typeof SeoInsightId];
 
 export const SeoInsightId = {
   low_ctr: 'low_ctr',
+  striking_distance: 'striking_distance',
   bing_blind_spot: 'bing_blind_spot',
   ai_visibility_gap: 'ai_visibility_gap',
   bing_upside: 'bing_upside',

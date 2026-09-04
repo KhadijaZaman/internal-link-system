@@ -16,6 +16,7 @@ export const ActionItemActionType = {
   review_suggestions: 'review_suggestions',
   optimize_content: 'optimize_content',
   improve_ctr: 'improve_ctr',
+  improve_ranking: 'improve_ranking',
   fix_cannibalization: 'fix_cannibalization',
   create_topical_content: 'create_topical_content',
   pursue_authority_prospect: 'pursue_authority_prospect',

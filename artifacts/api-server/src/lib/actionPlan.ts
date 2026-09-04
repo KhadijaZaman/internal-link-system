@@ -8,6 +8,7 @@
  */
 import {
   ctrInsight,
+  strikingInsight,
   CTR_MIN_MISSED_CLICKS,
   WEAK_ENGAGEMENT_RATE,
   ENGAGEMENT_MIN_SESSIONS,
@@ -67,11 +68,11 @@ export interface ActionPlanInput {
   cannibalizedWith: string[];
 }
 
-/** Positions 11-20 — page two, one push away from real traffic. */
-export const STRIKING_MIN_POSITION = 11;
-export const STRIKING_MAX_POSITION = 20;
-/** Impressions needed before "striking distance" is a signal, not noise. */
-export const STRIKING_MIN_IMPRESSIONS = 20;
+export {
+  STRIKING_MIN_POSITION,
+  STRIKING_MAX_POSITION,
+  STRIKING_MIN_IMPRESSIONS,
+} from "./insights";
 /** Google impressions needed before "invisible on Bing" is worth flagging. */
 export const BING_GAP_MIN_GOOGLE_IMPRESSIONS = 100;
 /** Top query must beat the tracked keyword by this factor to flag a mismatch. */
@@ -130,12 +131,11 @@ export function buildActionPlan(input: ActionPlanInput): TrackedActionItem[] {
   const scope = useKeyword ? kwTotals : (gsc?.overallTotals ?? null);
   const scopeLabel = useKeyword ? `your keyword "${keyword}"` : "this page";
 
-  // 2. Striking distance — position 11-20 with real impressions.
+  // 2. Striking distance — position 11-20 with real impressions. The shared
+  // primitive keeps this plan aligned with site insights and Opportunities.
   if (
     scope &&
-    scope.position >= STRIKING_MIN_POSITION &&
-    scope.position <= STRIKING_MAX_POSITION &&
-    scope.impressions >= STRIKING_MIN_IMPRESSIONS
+    strikingInsight(scope.position, scope.impressions, scope.clicks).strikingFlag !== null
   ) {
     actions.push({
       id: "push_top10",

@@ -7,6 +7,10 @@ import { withCache, GSC_CACHE_TTL_MS } from "../integrations/gsc";
 import { canonicalPath, isBlockedPath, loadBlockRegexes } from "../lib/urlCanon";
 import {
   ctrInsight,
+  strikingInsight,
+  STRIKING_MIN_POSITION,
+  STRIKING_MAX_POSITION,
+  STRIKING_TARGET_POSITION,
   searchEngineGap,
   bingUpside,
   aiVisibilityGap,
@@ -70,7 +74,8 @@ function toInsightPage(p: RollupRow, detail: string | null) {
 router.get("/insights/overview", requireAuth, requireSite, async (req, res) => {
   const site = getSite(req);
   try {
-    const key = `s${site.id}|insights:v2`;
+    // v3 adds the striking-distance bucket and upside KPI.
+    const key = `s${site.id}|insights:v3`;
     const data = await withCache(key, GSC_CACHE_TTL_MS, async () => {
       const [pages, blockRegexes, [gscJob], latestLoserWeek] = await Promise.all([
         db
@@ -139,6 +144,7 @@ router.get("/insights/overview", requireAuth, requireSite, async (req, res) => {
         aiSessions: 0,
         keyEvents: 0,
         missedClicks: 0,
+        strikingUpside: 0,
       };
       let ga4SyncedAt: Date | null = null;
       let bingSyncedAt: Date | null = null;
@@ -164,6 +170,7 @@ router.get("/insights/overview", requireAuth, requireSite, async (req, res) => {
 
       // ---- Insight buckets (pure rules from lib/insights) ---------------
       const lowCtr: { row: RollupRow; missed: number }[] = [];
+      const striking: { row: RollupRow; ceiling: number }[] = [];
       const blindSpot: RollupRow[] = [];
       const upside: RollupRow[] = [];
       const aiGap: RollupRow[] = [];
@@ -176,12 +183,20 @@ router.get("/insights/overview", requireAuth, requireSite, async (req, res) => {
             lowCtr.push({ row: p, missed: c.missedClicks });
             kpis.missedClicks += c.missedClicks;
           }
+          const s = strikingInsight(p.gscPosition, impressions, clicks);
+          if (s.strikingFlag !== null) {
+            striking.push({ row: p, ceiling: s.upsideCeiling });
+            kpis.strikingUpside += s.upsideCeiling;
+          }
         }
         if (searchEngineGap(p)) blindSpot.push(p);
         if (bingUpside(p)) upside.push(p);
         if (aiVisibilityGap(p)) aiGap.push(p);
       }
       lowCtr.sort((a, b) => b.missed - a.missed);
+      striking.sort(
+        (a, b) => (b.row.gscImpressions ?? 0) - (a.row.gscImpressions ?? 0),
+      );
       blindSpot.sort((a, b) => (b.gscImpressions ?? 0) - (a.gscImpressions ?? 0));
       upside.sort((a, b) => (b.bingImpressions ?? 0) - (a.bingImpressions ?? 0));
       aiGap.sort(
@@ -272,6 +287,23 @@ router.get("/insights/overview", requireAuth, requireSite, async (req, res) => {
             toInsightPage(
               row,
               `~${missed.toLocaleString()} clicks missed at ${fmtPos(row.gscPosition)}${row.topQuery ? ` for “${row.topQuery}”` : ""}`,
+            ),
+          ),
+        });
+      }
+      if (striking.length > 0) {
+        insights.push({
+          id: "striking_distance",
+          severity: "opportunity",
+          title: "Page-two rankings with proven demand",
+          plainEnglish: `${striking.length} page${striking.length === 1 ? "" : "s"} rank between #${STRIKING_MIN_POSITION} and #${STRIKING_MAX_POSITION} — page two, where almost nobody clicks. Google already shows these pages and searchers already look for what they cover, so the demand is proven and the gap to page one is small. Reaching #${STRIKING_TARGET_POSITION} would be worth up to about ${kpis.strikingUpside.toLocaleString()} extra clicks, which is a ceiling if every push lands, not a forecast.`,
+          action:
+            "Push the ranking rather than the snippet: add internal links from your strongest related pages using the target query as the anchor text, then deepen the content against whatever ranks above it. A better title cannot move a page from #16 to #8.",
+          affectedCount: striking.length,
+          topPages: striking.slice(0, TOP_PAGES_PER_INSIGHT).map(({ row, ceiling }) =>
+            toInsightPage(
+              row,
+              `${fmtPos(row.gscPosition)} on ${(row.gscImpressions ?? 0).toLocaleString()} impressions, up to ~${ceiling.toLocaleString()} clicks at #${STRIKING_TARGET_POSITION}${row.topQuery ? ` for “${row.topQuery}”` : ""}`,
             ),
           ),
         });

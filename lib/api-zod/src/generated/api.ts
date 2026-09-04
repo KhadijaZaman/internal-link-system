@@ -2546,10 +2546,11 @@ export const GetSeoInsightsResponse = zod.object({
   "aiCitations": zod.number(),
   "aiSessions": zod.number(),
   "keyEvents": zod.number(),
-  "missedClicks": zod.number()
+  "missedClicks": zod.number(),
+  "strikingUpside": zod.number()
 }),
   "insights": zod.array(zod.object({
-  "id": zod.enum(['low_ctr', 'bing_blind_spot', 'ai_visibility_gap', 'bing_upside', 'declining_queries']),
+  "id": zod.enum(['low_ctr', 'striking_distance', 'bing_blind_spot', 'ai_visibility_gap', 'bing_upside', 'declining_queries']),
   "severity": zod.enum(['issue', 'opportunity', 'watch']),
   "title": zod.string(),
   "plainEnglish": zod.string(),
@@ -3516,7 +3517,7 @@ export const ListActionsResponse = zod.object({
   "gscWindowEnd": zod.coerce.date().nullable(),
   "items": zod.array(zod.object({
   "id": zod.number(),
-  "actionType": zod.enum(['add_inbound_links', 'add_outbound_links', 'fix_losing_query', 'review_suggestions', 'optimize_content', 'improve_ctr', 'fix_cannibalization', 'create_topical_content', 'pursue_authority_prospect']),
+  "actionType": zod.enum(['add_inbound_links', 'add_outbound_links', 'fix_losing_query', 'review_suggestions', 'optimize_content', 'improve_ctr', 'improve_ranking', 'fix_cannibalization', 'create_topical_content', 'pursue_authority_prospect']),
   "category": zod.enum(['content', 'linking', 'technical', 'visibility', 'authority']),
   "targetUrl": zod.string(),
   "title": zod.string().nullish(),
@@ -3656,7 +3657,7 @@ export const SetActionStatusBody = zod.object({
 
 export const SetActionStatusResponse = zod.object({
   "id": zod.number(),
-  "actionType": zod.enum(['add_inbound_links', 'add_outbound_links', 'fix_losing_query', 'review_suggestions', 'optimize_content', 'improve_ctr', 'fix_cannibalization', 'create_topical_content', 'pursue_authority_prospect']),
+  "actionType": zod.enum(['add_inbound_links', 'add_outbound_links', 'fix_losing_query', 'review_suggestions', 'optimize_content', 'improve_ctr', 'improve_ranking', 'fix_cannibalization', 'create_topical_content', 'pursue_authority_prospect']),
   "category": zod.enum(['content', 'linking', 'technical', 'visibility', 'authority']),
   "targetUrl": zod.string(),
   "title": zod.string().nullish(),
@@ -3714,7 +3715,7 @@ export const UpdateActionBody = zod.object({
 
 export const UpdateActionResponse = zod.object({
   "id": zod.number(),
-  "actionType": zod.enum(['add_inbound_links', 'add_outbound_links', 'fix_losing_query', 'review_suggestions', 'optimize_content', 'improve_ctr', 'fix_cannibalization', 'create_topical_content', 'pursue_authority_prospect']),
+  "actionType": zod.enum(['add_inbound_links', 'add_outbound_links', 'fix_losing_query', 'review_suggestions', 'optimize_content', 'improve_ctr', 'improve_ranking', 'fix_cannibalization', 'create_topical_content', 'pursue_authority_prospect']),
   "category": zod.enum(['content', 'linking', 'technical', 'visibility', 'authority']),
   "targetUrl": zod.string(),
   "title": zod.string().nullish(),

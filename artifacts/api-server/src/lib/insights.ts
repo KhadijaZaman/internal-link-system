@@ -79,6 +79,61 @@ export function ctrInsight(position: number, ctr: number, impressions: number): 
   return { expectedCtr: expected, ctrFlag: "underperforming", missedClicks: missed };
 }
 
+// ---------------------------------------------------------------------------
+// Striking distance. Page two with proven demand: the page already ranks and
+// the query already draws impressions, so the work is a RANK push (internal
+// links, depth, anchor alignment) — not a snippet rewrite. Kept deliberately
+// separate from the CTR rules above, because a better title cannot move a page
+// from #16 to #8, and treating the two as one bucket produces the wrong
+// recommendation. Note expectedCtrFor() returns null above position 10, so the
+// CTR rules are structurally incapable of covering this band.
+// ---------------------------------------------------------------------------
+
+/** Positions 11-20 — page two, one push from where the clicks are. */
+export const STRIKING_MIN_POSITION = 11;
+export const STRIKING_MAX_POSITION = 20;
+/** Impressions needed before a page-two ranking is a signal, not noise. */
+export const STRIKING_MIN_IMPRESSIONS = 20;
+/**
+ * Position a successful push is assumed to reach. This sizes the upside
+ * ceiling below; it is not a ranking forecast.
+ */
+export const STRIKING_TARGET_POSITION = 3;
+
+export interface StrikingInsight {
+  /** "striking_distance" when on page two with real demand. */
+  strikingFlag: "striking_distance" | null;
+  /**
+   * Extra clicks at STRIKING_TARGET_POSITION's benchmark CTR over the measured
+   * window. This is a ceiling, not a forecast.
+   */
+  upsideCeiling: number;
+}
+
+/**
+ * Shared per-row striking-distance verdict for site insights, Opportunities,
+ * and the tracked-page action plan.
+ */
+export function strikingInsight(
+  position: number,
+  impressions: number,
+  clicks: number,
+): StrikingInsight {
+  if (
+    position < STRIKING_MIN_POSITION ||
+    position > STRIKING_MAX_POSITION ||
+    impressions < STRIKING_MIN_IMPRESSIONS
+  ) {
+    return { strikingFlag: null, upsideCeiling: 0 };
+  }
+  const targetCtr = EXPECTED_CTR[STRIKING_TARGET_POSITION] ?? 0;
+  const currentCtr = impressions > 0 ? clicks / impressions : 0;
+  return {
+    strikingFlag: "striking_distance",
+    upsideCeiling: Math.max(0, Math.round(impressions * (targetCtr - currentCtr))),
+  };
+}
+
 /** Engagement rate below this on a well-ranking page means the content disappoints. */
 export const WEAK_ENGAGEMENT_RATE = 0.4;
 /** GA4 sessions needed before engagement/conversion verdicts are trustworthy. */

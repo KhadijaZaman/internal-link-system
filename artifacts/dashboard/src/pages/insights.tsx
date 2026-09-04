@@ -86,6 +86,7 @@ const SEVERITY_META: Record<
 /** Where "see all" should send the user for each insight type. */
 const DEEP_LINK: Record<SeoInsightId, { href: string; label: string }> = {
   low_ctr: { href: "/report", label: "Open the Page Report" },
+  striking_distance: { href: "/link-map", label: "Open the Link Map" },
   bing_blind_spot: { href: "/bing", label: "Open Bing & AI Citations" },
   ai_visibility_gap: { href: "/bing", label: "Open Bing & AI Citations" },
   bing_upside: { href: "/bing", label: "Open Bing & AI Citations" },
@@ -232,6 +233,13 @@ export default function InsightsPage() {
             {" "}
             — including roughly <Num>{fmt(kpis.missedClicks)} Google clicks</Num> your rankings
             already earn but your titles are not converting
+          </>
+        ) : null}
+        {kpis.strikingUpside > 0 ? (
+          <>
+            {kpis.missedClicks > 0 ? ", and" : " — including"} up to{" "}
+            <Num>{fmt(kpis.strikingUpside)} more Google clicks</Num> sitting on page two,
+            where the ranking is close but almost nobody clicks
           </>
         ) : null}
         . Each card below explains the finding in plain English and what to do about it.
